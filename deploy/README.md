@@ -1,45 +1,55 @@
-# AWS Deployment Files
+# Deployment Guide
 
-This directory contains all the files needed to deploy the Marketing Tool to AWS using CloudFormation.
+This directory contains all deployment configurations and scripts for the Marketing Tool.
 
-## Files
+## Directory Structure
 
-- **`cloudformation-template.yaml`** - Main CloudFormation template defining the AWS infrastructure
-- **`cloudformation-parameters.json`** - Template parameters file (update with your values)
-- **`deploy.sh`** - Automated deployment script
-- **`AWS_DEPLOYMENT.md`** - Comprehensive deployment guide
+```
+deploy/
+├── README.md                    # This file
+├── docker/                      # Docker Compose configurations
+│   ├── README.md               # Docker setup guide
+│   ├── docker-compose.yml      # Main compose file (API only)
+│   ├── docker-compose.postgres.yml
+│   ├── docker-compose.mongodb.yml
+│   ├── docker-compose.redis.yml
+│   ├── docker-compose.full.yml
+│   └── nginx/                  # Nginx configuration
+├── aws/                        # AWS CloudFormation deployment
+│   ├── cloudformation-template.yaml
+│   ├── cloudformation-parameters.json
+│   ├── deploy.sh
+│   └── deploy-aws.sh
+└── k8s/                        # Kubernetes configurations
+    ├── deployment.yaml
+    ├── service.yaml
+    ├── ingress.yaml
+    └── ...
+```
 
 ## Quick Start
 
-1. Set your environment variables:
-   ```bash
-   export OPENAI_API_KEY="your_openai_api_key_here"
-   export API_KEY="your_32_character_minimum_api_key_here"
-   export DATABASE_PASSWORD="your_database_password_here"
-   export MONGODB_PASSWORD="your_mongodb_password_here"
-   ```
-
-2. Run the deployment script:
-   ```bash
-   cd deploy
-   ./deploy.sh -e production -r us-east-1
-   ```
-
-3. Build and push your Docker image (see AWS_DEPLOYMENT.md for details)
-
-## Manual Deployment
-
-If you prefer to deploy manually:
-
+### Development (Docker)
 ```bash
-cd deploy
-aws cloudformation create-stack \
-  --stack-name marketing-tool-production \
-  --template-body file://cloudformation-template.yaml \
-  --parameters file://cloudformation-parameters.json \
-  --capabilities CAPABILITY_IAM
+cd deploy/docker
+docker-compose up
 ```
 
-## Documentation
+### Production (AWS)
+```bash
+cd deploy/aws
+./deploy.sh -e production
+```
 
-See `AWS_DEPLOYMENT.md` for detailed deployment instructions, troubleshooting, and configuration options.
+### Kubernetes
+```bash
+kubectl apply -f deploy/k8s/
+```
+
+## Deployment Options
+
+1. **Docker Compose** - For development and local testing
+2. **AWS CloudFormation** - For production deployment on AWS
+3. **Kubernetes** - For container orchestration
+
+See individual README files in each subdirectory for detailed instructions.
