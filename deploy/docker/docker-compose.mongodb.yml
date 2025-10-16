@@ -1,0 +1,31 @@
+# Docker Compose with MongoDB
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.mongodb.yml up
+
+version: '3.8'
+
+services:
+  api:
+    environment:
+      - MONGODB_URL=mongodb://mongodb:27017/marketing_project
+    depends_on:
+      - mongodb
+
+  mongodb:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=admin
+      - MONGO_INITDB_ROOT_PASSWORD=password
+      - MONGO_INITDB_DATABASE=marketing_project
+    volumes:
+      - mongodb_data:/data/db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  mongodb_data:
