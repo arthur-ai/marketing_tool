@@ -2,8 +2,9 @@ apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: marketing-project-trigger
+  namespace: marketing-project
   labels:
-    app: marketing-project
+    app: marketing-project-api
 spec:
   schedule: "*/5 * * * *"  # Run every 5 minutes
   concurrencyPolicy: Forbid
@@ -14,7 +15,7 @@ spec:
       template:
         metadata:
           labels:
-            app: marketing-project
+            app: marketing-project-api
             job: trigger
         spec:
           containers:
@@ -27,7 +28,7 @@ spec:
               - "Content-Type: application/json"
               - -d
               - '{"lang": "en"}'
-              - http://marketing-project.default.svc.cluster.local/run
+              - http://marketing-project-service.marketing-project.svc.cluster.local/api/v1/pipeline
             resources:
               requests:
                 memory: "64Mi"
@@ -37,4 +38,3 @@ spec:
                 cpu: "100m"
           restartPolicy: OnFailure
           backoffLimit: 3
-          

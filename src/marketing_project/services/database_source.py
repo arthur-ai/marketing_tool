@@ -17,6 +17,12 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
 
+import aiosqlite
+import aiomysql
+import asyncpg
+import redis.asyncio as redis
+from motor.motor_asyncio import AsyncIOMotorClient
+
 from marketing_project.core.content_sources import (
     ContentSource,
     ContentSourceResult,
@@ -38,15 +44,24 @@ class DatabaseContentSource(ContentSource):
 
     async def initialize(self) -> bool:
         """Initialize database connection."""
-        raise NotImplementedError("Subclasses must implement initialize")
+        # This method should be implemented by subclasses
+        return False
 
     async def fetch_content(self, limit: Optional[int] = None) -> ContentSourceResult:
         """Fetch content from database."""
-        raise NotImplementedError("Subclasses must implement fetch_content")
+        # This method should be implemented by subclasses
+        return ContentSourceResult(
+            source_name=self.config.name,
+            content_items=[],
+            total_count=0,
+            success=False,
+            error_message="Method not implemented",
+        )
 
     async def health_check(self) -> bool:
         """Check database connection health."""
-        raise NotImplementedError("Subclasses must implement health_check")
+        # This method should be implemented by subclasses
+        return False
 
     async def cleanup(self) -> None:
         """Close database connection."""
@@ -74,18 +89,12 @@ class SQLContentSource(DatabaseContentSource):
             connection_string = self.config.connection_string
 
             if connection_string.startswith("sqlite"):
-                import aiosqlite
-
                 self.connection = await aiosqlite.connect(
                     connection_string.replace("sqlite://", "")
                 )
             elif connection_string.startswith("postgresql"):
-                import asyncpg
-
                 self.connection = await asyncpg.connect(connection_string)
             elif connection_string.startswith("mysql"):
-                import aiomysql
-
                 # Parse MySQL connection string
                 # Format: mysql://user:password@host:port/database
                 parts = connection_string.replace("mysql://", "").split("/")
@@ -283,8 +292,6 @@ class MongoDBContentSource(DatabaseContentSource):
     async def initialize(self) -> bool:
         """Initialize MongoDB connection."""
         try:
-            from motor.motor_asyncio import AsyncIOMotorClient
-
             # Parse connection string
             connection_string = self.config.connection_string
             if not connection_string.startswith("mongodb"):
@@ -482,8 +489,6 @@ class RedisContentSource(DatabaseContentSource):
     async def initialize(self) -> bool:
         """Initialize Redis connection."""
         try:
-            import redis.asyncio as redis
-
             # Parse connection string
             connection_string = self.config.connection_string
             if connection_string.startswith("redis://"):

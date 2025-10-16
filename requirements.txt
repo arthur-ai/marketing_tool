@@ -7,13 +7,8 @@ pydantic==2.11.7
 dateparser==1.2.1
 PyYAML==6.0.2
 langdetect==1.0.9
-google-auth==2.40.3
-google-auth-oauthlib==1.2.2
-google-api-python-client==2.173.0
-ics==0.7.2
 python-dotenv==1.1.0
 fastapi[standard]==0.115.13
-apscheduler==3.11.0
 langchain-community==0.3.26
 langchain-openai==0.3.24
 beautifulsoup4==4.13.4
@@ -22,16 +17,12 @@ Pillow>=10.0.0
 requests>=2.25.0
 click>=8.0.0
 uvicorn>=0.23.1
-kwx==1.0.2
+keybert==0.9.0
 
 # Content source dependencies
 aiofiles>=23.0.0
 aiohttp>=3.8.0
 aiosqlite>=0.19.0
-asyncpg>=0.29.0
-aiomysql>=0.2.0
-motor>=3.3.0
-redis>=4.5.0
 feedparser>=6.0.0
 selenium>=4.15.0
 watchdog>=3.0.0

@@ -30,6 +30,10 @@ from marketing_project.core.models import (
     ReleaseNotesContext,
     TranscriptContext,
 )
+from marketing_project.services.content_source_config_loader import (
+    ContentSourceConfigLoader,
+)
+from marketing_project.services.content_source_factory import ContentSourceManager
 
 # Initialize logger
 logger = logging.getLogger("marketing_project.runner")
@@ -61,10 +65,6 @@ async def run_marketing_project_pipeline(prompts_dir, lang):
     # - Database queries
 
     # Content source integration
-    from marketing_project.services.content_source_config_loader import (
-        ContentSourceConfigLoader,
-    )
-    from marketing_project.services.content_source_factory import ContentSourceManager
 
     # Initialize content source manager
     content_manager = ContentSourceManager()
@@ -162,10 +162,6 @@ async def run_content_analysis_pipeline(prompts_dir, lang):
     )
 
     # Content source integration for content analysis pipeline
-    from marketing_project.services.content_source_config_loader import (
-        ContentSourceConfigLoader,
-    )
-    from marketing_project.services.content_source_factory import ContentSourceManager
 
     # Initialize content source manager
     content_manager = ContentSourceManager()
@@ -238,12 +234,6 @@ def build_fastapi_app(prompts_dir, lang):
     @app.on_event("startup")
     async def startup_event():
         nonlocal content_manager
-        from marketing_project.services.content_source_config_loader import (
-            ContentSourceConfigLoader,
-        )
-        from marketing_project.services.content_source_factory import (
-            ContentSourceManager,
-        )
 
         content_manager = ContentSourceManager()
         config_loader = ContentSourceConfigLoader()

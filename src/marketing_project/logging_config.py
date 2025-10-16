@@ -25,7 +25,7 @@ now_str = datetime.datetime.now().strftime("%Y-%m-%d")
 
 
 def log_path(filename):
-    return os.path.join(LOG_DIR, filename, f"{filename}_{now_str}.log")
+    return os.path.join(LOG_DIR, f"{filename}_{now_str}.log")
 
 
 # --- Logging Configuration Dictionary ---

@@ -1,0 +1,85 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: marketing-project-api
+  namespace: marketing-project
+  labels:
+    app: marketing-project-api
+    version: v1
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: marketing-project-api
+  template:
+    metadata:
+      labels:
+        app: marketing-project-api
+        version: v1
+    spec:
+      containers:
+      - name: api
+        image: marketing-project-api:latest
+        ports:
+        - containerPort: 8000
+          name: http
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: ENTRYPOINT_MODE
+          value: "serve"
+        envFrom:
+        - configMapRef:
+            name: marketing-project-config
+        - secretRef:
+            name: marketing-project-secrets
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /api/v1/health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /api/v1/ready
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        volumeMounts:
+        - name: logs
+          mountPath: /app/logs
+        - name: uploads
+          mountPath: /app/uploads
+        - name: cache
+          mountPath: /app/cache
+        - name: secrets
+          mountPath: /secrets
+          readOnly: true
+      volumes:
+      - name: logs
+        emptyDir: {}
+      - name: uploads
+        emptyDir: {}
+      - name: cache
+        emptyDir: {}
+      - name: secrets
+        secret:
+          secretName: marketing-project-secrets
+      restartPolicy: Always

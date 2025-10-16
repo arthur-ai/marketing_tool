@@ -19,6 +19,12 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import urljoin, urlparse
 
 import aiohttp
+from bs4 import BeautifulSoup
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
 
 from marketing_project.core.content_sources import (
     ContentSource,
@@ -154,8 +160,6 @@ class WebScrapingContentSource(ContentSource):
     async def _parse_html(self, html_content: str, url: str) -> List[Dict[str, Any]]:
         """Parse HTML content and extract content items."""
         try:
-            from bs4 import BeautifulSoup
-
             soup = BeautifulSoup(html_content, "html.parser")
             content_items = []
 
@@ -331,30 +335,18 @@ class SeleniumScrapingSource(WebScrapingContentSource):
     async def initialize(self) -> bool:
         """Initialize Selenium scraping source."""
         try:
-            try:
-                from selenium import webdriver
-                from selenium.webdriver.chrome.options import Options
-                from selenium.webdriver.common.by import By
-                from selenium.webdriver.support import expected_conditions as EC
-                from selenium.webdriver.support.ui import WebDriverWait
-            except ImportError:
-                logger.error(
-                    "Selenium is not installed. Install with: pip install selenium"
-                )
-                self.status = ContentSourceStatus.ERROR
-                return False
-
-            # Set up Chrome options
+            # Configure Chrome options
             chrome_options = Options()
             chrome_options.add_argument("--headless")
             chrome_options.add_argument("--no-sandbox")
             chrome_options.add_argument("--disable-dev-shm-usage")
-            chrome_options.add_argument(f"--user-agent={self.config.user_agent}")
-
-            # Create driver
+            chrome_options.add_argument("--disable-gpu")
+            chrome_options.add_argument("--window-size=1920,1080")
+            
+            # Initialize Chrome driver
             self.driver = webdriver.Chrome(options=chrome_options)
-            self.driver.set_page_load_timeout(self.config.timeout)
-
+            
+            self.connected = True
             self.status = ContentSourceStatus.ACTIVE
             logger.info(f"Selenium scraping source {self.config.name} initialized")
             return True
@@ -373,10 +365,6 @@ class SeleniumScrapingSource(WebScrapingContentSource):
 
             # Wait for content to load
             try:
-                from selenium.webdriver.common.by import By
-                from selenium.webdriver.support import expected_conditions as EC
-                from selenium.webdriver.support.ui import WebDriverWait
-
                 WebDriverWait(self.driver, 10).until(
                     EC.presence_of_element_located((By.TAG_NAME, "body"))
                 )
@@ -424,8 +412,6 @@ class BeautifulSoupScrapingSource(WebScrapingContentSource):
     async def _parse_html(self, html_content: str, url: str) -> List[Dict[str, Any]]:
         """Parse HTML with BeautifulSoup optimizations."""
         try:
-            from bs4 import BeautifulSoup
-
             # Use lxml parser for better performance if available
             try:
                 soup = BeautifulSoup(html_content, "lxml")

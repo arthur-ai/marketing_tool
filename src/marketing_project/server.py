@@ -1,10 +1,16 @@
 """
 Marketing Project FastAPI server module.
 
-This module defines the FastAPI application for the marketing project MCP server. It loads configuration, initializes shared services, and exposes an endpoint to trigger the project pipeline asynchronously.
+This module defines the FastAPI application for the marketing project MCP server. It loads configuration, initializes shared services, and exposes comprehensive API endpoints for content processing.
 
 Endpoints:
-    POST /run: Triggers the project pipeline as a background task and returns immediately with a 202 Accepted status.
+    POST /api/v1/analyze: Analyze content for marketing pipeline processing
+    POST /api/v1/pipeline: Run the complete marketing pipeline on content
+    GET /api/v1/content-sources: List all configured content sources
+    GET /api/v1/content-sources/{source_name}/status: Get status of a specific content source
+    POST /api/v1/content-sources/{source_name}/fetch: Fetch content from a specific source
+    GET /api/v1/health: Health check endpoint for Kubernetes probes
+    GET /api/v1/ready: Readiness check endpoint for Kubernetes probes
 
 Usage:
     Run this module directly to start a local development server with Uvicorn.
@@ -12,21 +18,29 @@ Usage:
 
 import logging
 import os
+from typing import Optional
 
 import uvicorn
 import yaml
 
-# src/marketing_project/server.py
-from fastapi import BackgroundTasks, FastAPI, HTTPException
+from fastapi import FastAPI, BackgroundTasks, HTTPException, Request
 from fastapi.responses import JSONResponse
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.openapi.utils import get_openapi
 
-from marketing_project.runner import run_marketing_project_pipeline
-from marketing_project.scheduler import Scheduler
+# Import middleware
+from .middleware.cors import setup_cors
+from .middleware.logging import LoggingMiddleware, RequestIDMiddleware
+from .middleware.error_handling import ErrorHandlingMiddleware
+
+# Import API endpoints
+from .api import api_router
+
+from .runner import run_marketing_project_pipeline
+from .scheduler import Scheduler
 
 # Initialize logger
 logger = logging.getLogger("marketing_project.server")
-
-app = FastAPI(title="Marketing Project MCP Server")
 
 # Load config once
 BASE = os.path.dirname(__file__)
@@ -39,84 +53,77 @@ PROMPTS_DIR = os.path.abspath(os.path.join(BASE, "prompts", TEMPLATE_VERSION))
 # Instantiate shared services
 scheduler = Scheduler()
 
+# Create FastAPI app with comprehensive configuration
+app = FastAPI(
+    title="Marketing Project API",
+    description="Comprehensive API for marketing content processing and analysis",
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
+    servers=[
+        {"url": "http://localhost:8000", "description": "Development server"},
+        {"url": "https://api.marketing-project.com", "description": "Production server"}
+    ]
+)
 
-@app.get("/health")
-async def health_check():
-    """
-    Health check endpoint for Kubernetes probes.
-    Returns 200 OK if the service is healthy.
-    """
-    try:
-        # Basic health checks
-        health_status = {
-            "status": "healthy",
-            "service": "marketing-project",
-            "version": "1.0.0",
-            "checks": {
-                "config_loaded": PIPELINE_SPEC is not None,
-                "prompts_dir_exists": os.path.exists(PROMPTS_DIR),
-                "scheduler_ready": scheduler is not None,
-            },
-        }
+# Configure OpenAPI schema
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    
+    openapi_schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+    )
+    
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
 
-        # Check if any critical checks failed
-        if not all(health_status["checks"].values()):
-            health_status["status"] = "unhealthy"
-            return JSONResponse(status_code=503, content=health_status)
+app.openapi = custom_openapi
 
-        return health_status
-    except Exception as e:
-        logger.error(f"Health check failed: {e}")
-        return JSONResponse(
-            status_code=503, content={"status": "unhealthy", "error": str(e)}
-        )
+# Add middleware in correct order (last added is first executed)
+# 1. Request ID middleware (innermost)
+app.add_middleware(RequestIDMiddleware)
 
+# 2. Logging middleware
+app.add_middleware(LoggingMiddleware, log_requests=True, log_responses=True)
 
-@app.get("/ready")
-async def readiness_check():
-    """
-    Readiness check endpoint for Kubernetes probes.
-    Returns 200 OK if the service is ready to accept traffic.
-    """
-    try:
-        # Check if the service is ready to process requests
-        ready_status = {
-            "status": "ready",
-            "service": "marketing-project",
-            "checks": {
-                "config_loaded": PIPELINE_SPEC is not None,
-                "prompts_dir_exists": os.path.exists(PROMPTS_DIR),
-                "scheduler_ready": scheduler is not None,
-            },
-        }
+# 3. Error handling middleware
+app.add_middleware(ErrorHandlingMiddleware, debug=os.getenv("DEBUG", "false").lower() == "true")
 
-        if not all(ready_status["checks"].values()):
-            ready_status["status"] = "not_ready"
-            return JSONResponse(status_code=503, content=ready_status)
+# 4. CORS middleware
+setup_cors(app)
 
-        return ready_status
-    except Exception as e:
-        logger.error(f"Readiness check failed: {e}")
-        return JSONResponse(
-            status_code=503, content={"status": "not_ready", "error": str(e)}
-        )
+# 5. Trusted host middleware (outermost)
+app.add_middleware(
+    TrustedHostMiddleware,
+    allowed_hosts=["localhost", "127.0.0.1", "*.marketing-project.com"]
+)
+
+# Include API router
+app.include_router(api_router)
 
 
-@app.post("/run")
-async def run_pipeline(background: BackgroundTasks):
-    """
-    Trigger the Marketing Project pipeline asynchronously.
-    Returns immediately with a 202 Accepted.
-    """
-    try:
-        background.add_task(run_marketing_project_pipeline, PROMPTS_DIR, "en")
-        logger.info("Pipeline execution triggered")
-        return {"status": "accepted", "message": "Pipeline execution started"}
-    except Exception as e:
-        logger.error(f"Failed to trigger pipeline: {e}")
-        raise HTTPException(
-            status_code=500, detail=f"Failed to trigger pipeline: {str(e)}"
-        )
+# Startup and shutdown events
+@app.on_event("startup")
+async def startup_event():
+    """Application startup event."""
+    logger.info("Marketing Project API server starting up...")
+    logger.info(f"API version: 1.0.0")
+    logger.info(f"Template version: {TEMPLATE_VERSION}")
+    logger.info(f"Prompts directory: {PROMPTS_DIR}")
+    logger.info("Startup completed successfully")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Application shutdown event."""
+    logger.info("Marketing Project API server shutting down...")
+    # Add any cleanup logic here
+    logger.info("Shutdown completed")
 
 
 if __name__ == "__main__":

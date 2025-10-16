@@ -6,5 +6,6 @@ all content types for routing and processing decisions.
 """
 
 from . import tasks
+from .tasks import analyze_content_for_pipeline
 
-__all__ = ["tasks"]
+__all__ = ["tasks", "analyze_content_for_pipeline"]
