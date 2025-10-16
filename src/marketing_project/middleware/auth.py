@@ -15,9 +15,9 @@ from fastapi.security.api_key import APIKeyHeader
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
-from marketing_project.models import ErrorResponse
-from marketing_project.security import validate_api_key, security_auditor
-from marketing_project.security.input_validation import SecurityValidationError
+from ..models import ErrorResponse
+from ..security import validate_api_key, security_auditor
+from ..security.input_validation import SecurityValidationError
 
 logger = logging.getLogger("marketing_project.middleware.auth")
 

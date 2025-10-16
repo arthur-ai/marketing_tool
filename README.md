@@ -2,9 +2,40 @@
 
 [![CI Status](https://github.com/your-org/marketing-project/actions/workflows/ci.yml/badge.svg)](https://github.com/your-org/marketing-project/actions/workflows/ci.yml)
 [![Coverage](https://img.shields.io/codecov/c/github/your-org/marketing-project/main)](https://codecov.io/gh/your-org/marketing-project)
+[![Security](https://img.shields.io/badge/security-enterprise--grade-green.svg)](https://github.com/your-org/marketing-project/security)
+[![Performance](https://img.shields.io/badge/performance-optimized-blue.svg)](https://github.com/your-org/marketing-project/performance)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-> A marketing agentic project with extensible agents, plugins, and multi-locale support.
+> A production-ready marketing agentic project with enterprise security, performance monitoring, and comprehensive API endpoints.
+
+## ✨ Features
+
+### 🔒 **Enterprise Security**
+- **API Key Authentication** with role-based access control
+- **Advanced Rate Limiting** with attack detection and IP whitelisting
+- **Input Validation** preventing SQL injection, XSS, and command injection
+- **Security Audit Logging** with comprehensive event tracking
+- **Content Sanitization** and validation
+
+### 🚀 **High Performance**
+- **Real-time Performance Monitoring** with metrics collection
+- **Intelligent Caching** with TTL and LRU eviction
+- **Connection Pooling** for database optimization
+- **Query Optimization** for SQL and MongoDB
+- **Load Testing Framework** with multiple test scenarios
+
+### 🗄️ **Database Support**
+- **SQL Databases**: SQLite, PostgreSQL, MySQL
+- **NoSQL Databases**: MongoDB, Redis
+- **Content Sources**: File, API, Web Scraping, Webhook
+- **Health Monitoring** and connection management
+
+### 🌐 **Production Ready**
+- **Docker & Kubernetes** deployment with HPA and monitoring
+- **CI/CD Pipeline** with security scanning and performance testing
+- **Comprehensive Testing** with 456+ tests
+- **API Documentation** with Swagger/OpenAPI
+- **Monitoring & Observability** with Prometheus and Grafana
 
 ## 🚀 Quick Start
 
@@ -40,11 +71,124 @@ python -m src.marketing_project.main serve
 
 # Run tests
 pytest
+
+# Run security and database tests
+python test_security_and_database.py
+
+# Run load tests
+python run_load_test.py --url http://localhost:8000 --test basic
 ```
+
+## 🔌 API Endpoints
+
+The Marketing Project provides a comprehensive REST API with enterprise-grade security and performance monitoring.
+
+### **Core Endpoints**
+
+| Method | Endpoint | Description | Authentication |
+|--------|----------|-------------|----------------|
+| `GET` | `/api/v1/health` | Health check for Kubernetes probes | None |
+| `GET` | `/api/v1/ready` | Readiness check for Kubernetes probes | None |
+| `POST` | `/api/v1/analyze` | Analyze content for marketing insights | API Key |
+| `POST` | `/api/v1/pipeline` | Run complete marketing pipeline | API Key |
+| `GET` | `/api/v1/content-sources` | List all content sources | API Key |
+| `GET` | `/api/v1/content-sources/{name}/status` | Get source status | API Key |
+| `POST` | `/api/v1/content-sources/{name}/fetch` | Fetch content from source | API Key |
+
+### **Authentication**
+
+All protected endpoints require an API key in the `X-API-Key` header:
+
+```bash
+curl -H "X-API-Key: your-api-key-here" \
+     -H "Content-Type: application/json" \
+     -d '{"content": {"id": "test", "title": "Test", "content": "Test content", "type": "blog_post"}}' \
+     http://localhost:8000/api/v1/analyze
+```
+
+### **API Documentation**
+
+- **Swagger UI**: `http://localhost:8000/docs`
+- **ReDoc**: `http://localhost:8000/redoc`
+- **OpenAPI Schema**: `http://localhost:8000/openapi.json`
 
 ## 🧩 Agents & Extensions
 
 Drop new agents into `agents/` and workflows into `plugins/` with `@task` decorator. Manage sequences via `config/pipeline.yml`.
+
+## 🔒 Security Features
+
+### **Authentication & Authorization**
+- **API Key Authentication**: Secure API key validation with role-based access
+- **Rate Limiting**: Advanced rate limiting with IP and user-based limits
+- **Attack Detection**: Automatic detection and blocking of suspicious patterns
+- **IP Whitelisting**: Configurable IP whitelist for trusted sources
+
+### **Input Validation**
+- **SQL Injection Prevention**: Pattern detection and query sanitization
+- **XSS Protection**: Script injection detection and content sanitization
+- **Command Injection Prevention**: Shell command pattern blocking
+- **Content Validation**: Comprehensive input validation and sanitization
+
+### **Security Monitoring**
+- **Audit Logging**: Comprehensive security event logging
+- **Risk Scoring**: Automatic risk assessment for requests
+- **Anomaly Detection**: Detection of unusual access patterns
+- **Security Alerts**: Real-time security event notifications
+
+## 🚀 Performance & Monitoring
+
+### **Performance Monitoring**
+- **Real-time Metrics**: Request/response time, memory, CPU usage
+- **Performance Dashboards**: Built-in performance monitoring
+- **Load Testing**: Comprehensive load testing framework
+- **Query Optimization**: Automatic database query optimization
+
+### **Caching & Optimization**
+- **Intelligent Caching**: LRU cache with TTL support
+- **Connection Pooling**: Database connection optimization
+- **Query Caching**: Automatic query result caching
+- **Response Compression**: Automatic response compression
+
+### **Load Testing**
+```bash
+# Basic load test
+python run_load_test.py --url http://localhost:8000 --test basic
+
+# Stress test
+python run_load_test.py --url http://localhost:8000 --test stress
+
+# Comprehensive test
+python run_load_test.py --url http://localhost:8000 --test all
+```
+
+## 🐳 Deployment
+
+### **Docker**
+```bash
+# Build and run with Docker Compose
+docker-compose up -d
+
+# Build production image
+docker build -t marketing-project-api:latest .
+```
+
+### **Kubernetes**
+```bash
+# Deploy to Kubernetes
+kubectl apply -k k8s/
+
+# Check deployment status
+kubectl get pods -n marketing-project
+```
+
+### **Environment Configuration**
+Copy `env.example` to `.env` and configure:
+- API keys and authentication
+- Database connections
+- Security settings
+- Performance monitoring
+- Logging configuration
 
 ## 🌐 Internationalization
 

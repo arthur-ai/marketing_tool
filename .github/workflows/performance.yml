@@ -19,10 +19,10 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       
-    - name: Set up Python 3.12
+    - name: Set up Python 3.13
       uses: actions/setup-python@v4
       with:
-        python-version: '3.12'
+        python-version: '3.13'
         
     - name: Install dependencies
       run: |
@@ -36,13 +36,21 @@ jobs:
         pytest tests/ -v --benchmark-only --benchmark-sort=mean
       env:
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        API_KEY: test-key-12345678901234567890123456789012
         
     - name: Memory usage test
       run: |
         python -m memory_profiler -c "
-        from marketing_project.runner import run_marketing_project_pipeline
+        from src.marketing_project.runner import run_marketing_project_pipeline
         print('Memory test completed')
         "
+        
+    - name: Security performance test
+      run: |
+        python test_security_and_database.py
+      env:
+        API_KEY: test-key-12345678901234567890123456789012
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
   load-test:
     name: Load Test
@@ -53,10 +61,10 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       
-    - name: Set up Python 3.12
+    - name: Set up Python 3.13
       uses: actions/setup-python@v4
       with:
-        python-version: '3.12'
+        python-version: '3.13'
         
     - name: Install dependencies
       run: |
@@ -67,9 +75,20 @@ jobs:
         
     - name: Start server in background
       run: |
-        marketing-project serve --host 0.0.0.0 --port 8000 &
+        python -m uvicorn src.marketing_project.server:app --host 0.0.0.0 --port 8000 &
         sleep 10
+      env:
+        API_KEY: test-key-12345678901234567890123456789012
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         
-    - name: Run load test
+    - name: Run comprehensive load test
       run: |
-        locust --headless --users 10 --spawn-rate 2 --run-time 30s --host http://localhost:8000
+        python run_load_test.py --url http://localhost:8000 --test all --output comprehensive_load_test.json
+      env:
+        API_KEY: test-key-12345678901234567890123456789012
+        
+    - name: Upload load test results
+      uses: actions/upload-artifact@v4
+      with:
+        name: load-test-results
+        path: comprehensive_load_test.json

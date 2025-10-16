@@ -14,7 +14,7 @@ from fastapi.exceptions import RequestValidationError
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from marketing_project.models import ErrorResponse
+from ..models import ErrorResponse
 
 logger = logging.getLogger("marketing_project.middleware.error_handling")
 

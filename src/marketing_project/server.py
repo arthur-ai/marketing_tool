@@ -29,18 +29,18 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.openapi.utils import get_openapi
 
 # Import middleware
-from marketing_project.middleware.auth import AuthenticationMiddleware
-from marketing_project.middleware.cors import setup_cors
-from marketing_project.middleware.rate_limiting import RateLimitingMiddleware
-from marketing_project.middleware.logging import LoggingMiddleware, RequestIDMiddleware
-from marketing_project.middleware.error_handling import ErrorHandlingMiddleware
-from marketing_project.middleware.performance import PerformanceMonitoringMiddleware
+from .middleware.auth import AuthenticationMiddleware
+from .middleware.cors import setup_cors
+from .middleware.rate_limiting import RateLimitingMiddleware
+from .middleware.logging import LoggingMiddleware, RequestIDMiddleware
+from .middleware.error_handling import ErrorHandlingMiddleware
+from .middleware.performance import PerformanceMonitoringMiddleware
 
 # Import API endpoints
-from marketing_project.api_endpoints import api_router
+from .api_endpoints import api_router
 
-from marketing_project.runner import run_marketing_project_pipeline
-from marketing_project.scheduler import Scheduler
+from .runner import run_marketing_project_pipeline
+from .scheduler import Scheduler
 
 # Initialize logger
 logger = logging.getLogger("marketing_project.server")

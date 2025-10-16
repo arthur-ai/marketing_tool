@@ -12,7 +12,7 @@ from typing import Callable
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from marketing_project.performance.monitoring import performance_monitor
+from ..performance.monitoring import performance_monitor
 
 logger = logging.getLogger("marketing_project.middleware.performance")
 

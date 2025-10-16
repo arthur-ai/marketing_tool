@@ -15,7 +15,7 @@ from fastapi import Request, HTTPException, status
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from marketing_project.models import ErrorResponse, RateLimitResponse
+from ..models import ErrorResponse, RateLimitResponse
 
 logger = logging.getLogger("marketing_project.middleware.rate_limiting")
 

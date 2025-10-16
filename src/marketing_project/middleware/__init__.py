@@ -9,6 +9,7 @@ from .cors import setup_cors
 from .rate_limiting import RateLimitingMiddleware, RateLimiter
 from .logging import LoggingMiddleware, RequestIDMiddleware
 from .error_handling import ErrorHandlingMiddleware, create_error_response
+from .performance import PerformanceMonitoringMiddleware
 
 __all__ = [
     "AuthenticationMiddleware",
@@ -22,5 +23,6 @@ __all__ = [
     "LoggingMiddleware",
     "RequestIDMiddleware",
     "ErrorHandlingMiddleware",
-    "create_error_response"
+    "create_error_response",
+    "PerformanceMonitoringMiddleware"
 ]
