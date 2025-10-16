@@ -5,7 +5,6 @@ services:
   api:
     build:
       context: .
-      target: production
     ports:
       - "8000:8000"
     environment:

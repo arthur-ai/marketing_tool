@@ -275,7 +275,7 @@ if eval "$CF_COMMAND"; then
             print_info "ECR Repository URI: $ECR_URI"
             echo ""
             print_info "To build and push your Docker image:"
-            echo "  # Build the image"
+            echo "  # Build the image (using Uvicorn)"
             echo "  docker build -t $ECR_URI:latest ."
             echo ""
             echo "  # Login to ECR"
@@ -286,6 +286,8 @@ if eval "$CF_COMMAND"; then
             echo ""
             echo "  # Update the ECS service to use the new image"
             echo "  aws ecs update-service --cluster $PROJECT_NAME-$ENVIRONMENT-cluster --service $PROJECT_NAME-$ENVIRONMENT-service --force-new-deployment"
+            echo ""
+            print_info "Note: This deployment uses Uvicorn as the ASGI server, optimized for FastAPI applications."
         fi
         
     else

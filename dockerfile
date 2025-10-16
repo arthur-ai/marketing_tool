@@ -1,5 +1,5 @@
-# Multi-stage Dockerfile for Marketing Project API
-FROM python:3.13-slim as base
+# Dockerfile for Marketing Project API
+FROM python:3.13-slim
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
@@ -48,33 +48,3 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
 
 # Default command
 CMD ["python", "-m", "uvicorn", "src.marketing_project.server:app", "--host", "0.0.0.0", "--port", "8000"]
-
-# Production stage
-FROM base as production
-
-# Install additional production dependencies
-RUN pip install --no-cache-dir gunicorn
-
-# Copy production configuration
-COPY docker/production.conf.py ./production.conf.py
-
-# Override command for production
-CMD ["gunicorn", "src.marketing_project.server:app", "-c", "production.conf.py"]
-
-# Development stage
-FROM base as development
-
-# Install development dependencies
-RUN pip install --no-cache-dir \
-    pytest \
-    pytest-asyncio \
-    pytest-cov \
-    black \
-    flake8 \
-    mypy
-
-# Copy development configuration
-COPY docker/development.conf.py ./development.conf.py
-
-# Override command for development
-CMD ["python", "-m", "uvicorn", "src.marketing_project.server:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

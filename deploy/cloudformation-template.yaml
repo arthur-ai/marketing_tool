@@ -473,6 +473,10 @@ Resources:
               Value: 'en'
             - Name: SUPPORTED_LANGUAGES
               Value: 'en,es,fr,de'
+            - Name: WORKERS
+              Value: !If [IsProduction, '4', '1']
+            - Name: WORKER_CLASS
+              Value: 'uvicorn.workers.UvicornWorker'
           Secrets:
             - Name: OPENAI_API_KEY
               ValueFrom: !Ref OpenAISecret
@@ -492,6 +496,8 @@ Resources:
             Timeout: 5
             Retries: 3
             StartPeriod: 60
+          Essential: true
+          StopTimeout: 30
 
   # ECS Service
   ECSService:
@@ -540,9 +546,11 @@ Resources:
       HealthCheckPath: /api/v1/health
       HealthCheckProtocol: HTTP
       HealthCheckIntervalSeconds: 30
-      HealthCheckTimeoutSeconds: 5
+      HealthCheckTimeoutSeconds: 10
       HealthyThresholdCount: 2
-      UnhealthyThresholdCount: 3
+      UnhealthyThresholdCount: 5
+      HealthCheckMatcher: '200'
+      HealthCheckEnabled: true
       Tags:
         - Key: Name
           Value: !Sub '${ProjectName}-${Environment}-tg'
@@ -725,7 +733,8 @@ Resources:
       LogGroupName: !Sub '/ecs/${ProjectName}-${Environment}'
       RetentionInDays: !If [IsProduction, 30, 7]
 
-  # CloudWatch Dashboard
+
+  # Basic CloudWatch Dashboard
   CloudWatchDashboard:
     Type: AWS::CloudWatch::Dashboard
     Properties:
