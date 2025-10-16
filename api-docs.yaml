@@ -1,0 +1,687 @@
+openapi: 3.0.3
+info:
+  title: Marketing Project API
+  description: |
+    Comprehensive API for marketing content processing and analysis.
+    
+    This API provides endpoints for:
+    - Content analysis and quality assessment
+    - Complete marketing pipeline processing
+    - Content source management
+    - System health monitoring
+    
+    ## Content Types
+    The API supports various content types:
+    - **Blog Posts**: Marketing blog content
+    - **Transcripts**: Audio/video transcripts
+    - **Release Notes**: Software release documentation
+    
+  version: 1.0.0
+  contact:
+    name: Marketing Project Team
+    email: support@marketing-project.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8000
+    description: Development server
+  - url: https://api.marketing-project.com
+    description: Production server
+
+
+paths:
+  /api/v1/health:
+    get:
+      tags:
+        - Health
+      summary: Health Check
+      description: |
+        Health check endpoint for Kubernetes probes.
+        Returns 200 OK if the service is healthy.
+      operationId: healthCheck
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '503':
+          description: Service is unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /api/v1/ready:
+    get:
+      tags:
+        - Health
+      summary: Readiness Check
+      description: |
+        Readiness check endpoint for Kubernetes probes.
+        Returns 200 OK if the service is ready to accept traffic.
+      operationId: readinessCheck
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '503':
+          description: Service is not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /api/v1/system/info:
+    get:
+      tags:
+        - System
+      summary: Get System Information
+      description: |
+        Get system information and configuration.
+        Returns system information including version, configuration status, and environment details.
+      operationId: getSystemInfo
+      responses:
+        '200':
+          description: System information retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemInfo'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/analyze:
+    post:
+      tags:
+        - Core
+      summary: Analyze Content
+      description: |
+        Analyze content for marketing pipeline processing.
+        
+        This endpoint performs comprehensive content analysis including:
+        - Content quality assessment
+        - SEO potential analysis
+        - Marketing value evaluation
+        - Processing recommendations
+      operationId: analyzeContent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalyzeRequest'
+      responses:
+        '200':
+          description: Content analysis completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContentAnalysisResponse'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/pipeline:
+    post:
+      tags:
+        - Core
+      summary: Run Marketing Pipeline
+      description: |
+        Run the complete marketing pipeline on content.
+        
+        This endpoint executes the full 7-step marketing pipeline:
+        1. AnalyzeContent - Initial content analysis
+        2. ExtractSEOKeywords - SEO keyword extraction
+        3. GenerateMarketingBrief - Marketing brief generation
+        4. GenerateArticle - Article generation
+        5. OptimizeSEO - SEO optimization
+        6. SuggestInternalDocs - Internal document suggestions
+        7. FormatContent - Final content formatting
+      operationId: runPipeline
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PipelineRequest'
+      responses:
+        '200':
+          description: Marketing pipeline completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PipelineResponse'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/content-sources:
+    get:
+      tags:
+        - Content Sources
+      summary: List Content Sources
+      description: |
+        List all configured content sources.
+        Returns a list of all available content sources with their status and configuration.
+      operationId: listContentSources
+      responses:
+        '200':
+          description: Content sources retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContentSourceListResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/content-sources/{source_name}/status:
+    get:
+      tags:
+        - Content Sources
+      summary: Get Source Status
+      description: |
+        Get the status of a specific content source.
+      operationId: getSourceStatus
+      parameters:
+        - name: source_name
+          in: path
+          required: true
+          description: Name of the content source to check
+          schema:
+            type: string
+            example: "blog-posts"
+      responses:
+        '200':
+          description: Source status retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContentSourceResponse'
+        '404':
+          description: Content source not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/content-sources/{source_name}/fetch:
+    post:
+      tags:
+        - Content Sources
+      summary: Fetch Content from Source
+      description: |
+        Fetch content from a specific content source.
+      operationId: fetchFromSource
+      parameters:
+        - name: source_name
+          in: path
+          required: true
+          description: Name of the content source to fetch from
+          schema:
+            type: string
+            example: "blog-posts"
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of content items to fetch
+          schema:
+            type: integer
+            default: 10
+            minimum: 1
+            maximum: 100
+      responses:
+        '200':
+          description: Content fetched successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContentFetchResponse'
+        '404':
+          description: Content source not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    # Base Models
+    APIResponse:
+      type: object
+      required:
+        - success
+        - timestamp
+      properties:
+        success:
+          type: boolean
+          description: Whether the operation was successful
+        message:
+          type: string
+          description: Response message
+        timestamp:
+          type: string
+          format: date-time
+          description: Response timestamp
+        request_id:
+          type: string
+          description: Request ID for tracking
+
+    ErrorResponse:
+      allOf:
+        - $ref: '#/components/schemas/APIResponse'
+        - type: object
+          required:
+            - success
+            - error_code
+          properties:
+            success:
+              type: boolean
+              default: false
+              description: Always false for errors
+            error_code:
+              type: string
+              description: Error code
+            error_details:
+              type: object
+              description: Additional error details
+
+    # Content Models
+    ContentType:
+      type: string
+      enum: [blog_post, transcript, release_notes]
+      description: Type of content
+
+    ContentContext:
+      type: object
+      required:
+        - id
+        - type
+        - title
+        - content
+      properties:
+        id:
+          type: string
+          description: Unique content identifier
+        type:
+          $ref: '#/components/schemas/ContentType'
+        title:
+          type: string
+          description: Content title
+        content:
+          type: string
+          description: Content body
+        metadata:
+          type: object
+          description: Additional content metadata
+
+    BlogPostContext:
+      allOf:
+        - $ref: '#/components/schemas/ContentContext'
+        - type: object
+          properties:
+            type:
+              type: string
+              enum: [blog_post]
+            author:
+              type: string
+              description: Blog post author
+            tags:
+              type: array
+              items:
+                type: string
+              description: Blog post tags
+            published_date:
+              type: string
+              format: date-time
+              description: Publication date
+
+    TranscriptContext:
+      allOf:
+        - $ref: '#/components/schemas/ContentContext'
+        - type: object
+          properties:
+            type:
+              type: string
+              enum: [transcript]
+            speaker:
+              type: string
+              description: Speaker name
+            duration:
+              type: number
+              description: Audio/video duration in seconds
+            language:
+              type: string
+              description: Transcript language
+
+    ReleaseNotesContext:
+      allOf:
+        - $ref: '#/components/schemas/ContentContext'
+        - type: object
+          properties:
+            type:
+              type: string
+              enum: [release_notes]
+            version:
+              type: string
+              description: Software version
+            release_date:
+              type: string
+              format: date-time
+              description: Release date
+            changes:
+              type: array
+              items:
+                type: string
+              description: List of changes
+
+    # Request Models
+    AnalyzeRequest:
+      type: object
+      required:
+        - content
+      properties:
+        content:
+          oneOf:
+            - $ref: '#/components/schemas/ContentContext'
+            - $ref: '#/components/schemas/BlogPostContext'
+            - $ref: '#/components/schemas/TranscriptContext'
+            - $ref: '#/components/schemas/ReleaseNotesContext'
+          description: Content to analyze
+
+    PipelineRequest:
+      type: object
+      required:
+        - content
+      properties:
+        content:
+          oneOf:
+            - $ref: '#/components/schemas/ContentContext'
+            - $ref: '#/components/schemas/BlogPostContext'
+            - $ref: '#/components/schemas/TranscriptContext'
+            - $ref: '#/components/schemas/ReleaseNotesContext'
+          description: Content to process through pipeline
+        options:
+          type: object
+          description: Pipeline options
+          additionalProperties: true
+
+    # Response Models
+    ContentAnalysisResponse:
+      allOf:
+        - $ref: '#/components/schemas/APIResponse'
+        - type: object
+          required:
+            - content_id
+            - analysis
+          properties:
+            content_id:
+              type: string
+              description: Content ID that was analyzed
+            analysis:
+              type: object
+              description: Analysis results
+              additionalProperties: true
+            metadata:
+              type: object
+              description: Additional metadata
+              additionalProperties: true
+
+    PipelineResponse:
+      allOf:
+        - $ref: '#/components/schemas/APIResponse'
+        - type: object
+          required:
+            - content_id
+            - result
+          properties:
+            content_id:
+              type: string
+              description: Content ID that was processed
+            result:
+              type: object
+              description: Pipeline results
+              additionalProperties: true
+            metadata:
+              type: object
+              description: Additional metadata
+              additionalProperties: true
+            execution_time:
+              type: number
+              description: Execution time in seconds
+
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - service
+        - version
+        - checks
+        - timestamp
+      properties:
+        status:
+          type: string
+          enum: [healthy, unhealthy, ready, not_ready]
+          description: Service status
+        service:
+          type: string
+          description: Service name
+        version:
+          type: string
+          description: Service version
+        checks:
+          type: object
+          description: Health check results
+          additionalProperties:
+            type: boolean
+        timestamp:
+          type: string
+          format: date-time
+          description: Check timestamp
+
+    SystemInfo:
+      type: object
+      required:
+        - service
+        - version
+        - python_version
+        - platform
+        - environment
+        - configuration
+      properties:
+        service:
+          type: string
+          description: Service name
+        version:
+          type: string
+          description: Service version
+        python_version:
+          type: string
+          description: Python version
+        platform:
+          type: string
+          description: Platform information
+        environment:
+          type: object
+          properties:
+            debug:
+              type: boolean
+              description: Debug mode enabled
+            log_level:
+              type: string
+              description: Log level
+            template_version:
+              type: string
+              description: Template version
+        configuration:
+          type: object
+          properties:
+            pipeline_loaded:
+              type: boolean
+              description: Pipeline configuration loaded
+            prompts_dir_exists:
+              type: boolean
+              description: Prompts directory exists
+            prompts_dir:
+              type: string
+              description: Prompts directory path
+
+    ContentSourceResponse:
+      type: object
+      required:
+        - success
+        - message
+        - source
+      properties:
+        success:
+          type: boolean
+          description: Whether the operation was successful
+        message:
+          type: string
+          description: Response message
+        source:
+          type: object
+          description: Source information
+          properties:
+            name:
+              type: string
+              description: Source name
+            type:
+              type: string
+              description: Source type
+            status:
+              type: string
+              enum: [healthy, unhealthy, error]
+              description: Source status
+            last_checked:
+              type: string
+              format: date-time
+              description: Last check timestamp
+            config:
+              type: object
+              description: Source configuration
+              properties:
+                enabled:
+                  type: boolean
+                  description: Whether source is enabled
+                priority:
+                  type: integer
+                  description: Source priority
+                metadata:
+                  type: object
+                  description: Additional metadata
+                  additionalProperties: true
+
+    ContentSourceListResponse:
+      allOf:
+        - $ref: '#/components/schemas/APIResponse'
+        - type: object
+          required:
+            - sources
+          properties:
+            sources:
+              type: array
+              items:
+                type: object
+                properties:
+                  name:
+                    type: string
+                    description: Source name
+                  type:
+                    type: string
+                    description: Source type
+                  status:
+                    type: string
+                    enum: [healthy, unhealthy, error]
+                    description: Source status
+                  healthy:
+                    type: boolean
+                    description: Whether source is healthy
+                  last_check:
+                    type: string
+                    format: date-time
+                    description: Last check timestamp
+                  metadata:
+                    type: object
+                    description: Source metadata
+                    additionalProperties: true
+
+    ContentFetchResponse:
+      allOf:
+        - $ref: '#/components/schemas/APIResponse'
+        - type: object
+          required:
+            - source_name
+            - total_count
+            - content_items
+          properties:
+            source_name:
+              type: string
+              description: Source name
+            total_count:
+              type: integer
+              description: Total items fetched
+            content_items:
+              type: array
+              items:
+                type: object
+                additionalProperties: true
+              description: Fetched content items
+            error_message:
+              type: string
+              description: Error message if failed
+
+
+tags:
+  - name: Health
+    description: Health and readiness check endpoints
+  - name: System
+    description: System information and configuration endpoints
+  - name: Core
+    description: Core content processing endpoints
+  - name: Content Sources
+    description: Content source management endpoints
