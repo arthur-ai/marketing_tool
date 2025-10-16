@@ -26,8 +26,6 @@ spec:
               - POST
               - -H
               - "Content-Type: application/json"
-              - -H
-              - "X-API-Key: test-key-12345678901234567890123456789012"
               - -d
               - '{"lang": "en"}'
               - http://marketing-project-service.marketing-project.svc.cluster.local/api/v1/pipeline

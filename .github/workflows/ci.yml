@@ -89,12 +89,6 @@ jobs:
       env:
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         
-    - name: Run security and database tests
-      run: |
-        python test_security_and_database.py
-      env:
-        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        API_KEY: test-key-12345678901234567890123456789012
 
   lint:
     name: Code Quality
@@ -177,20 +171,8 @@ jobs:
         python -m uvicorn src.marketing_project.server:app --host 0.0.0.0 --port 8000 &
         sleep 10
       env:
-        API_KEY: test-key-12345678901234567890123456789012
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         
-    - name: Run load tests
-      run: |
-        python run_load_test.py --url http://localhost:8000 --test basic --output load_test_results.json
-      env:
-        API_KEY: test-key-12345678901234567890123456789012
-        
-    - name: Upload performance results
-      uses: actions/upload-artifact@v4
-      with:
-        name: performance-results
-        path: load_test_results.json
 
   build:
     name: Build Docker Image

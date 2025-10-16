@@ -10,26 +10,23 @@ services:
       - "8000:8000"
     environment:
       - DEBUG=false
-      - API_KEY=prod-api-key-12345678901234567890123456789012
-      - API_KEY_1=admin-key-12345678901234567890123456789012
-      - API_KEY_1_ROLE=admin
-      - API_KEY_2=user-key-12345678901234567890123456789012
-      - API_KEY_2_ROLE=user
-      - RATE_LIMIT_REQUESTS_PER_MINUTE=1000
-      - RATE_LIMIT_BURST_LIMIT=100
+      - HOST=0.0.0.0
+      - PORT=8000
+      - LOG_LEVEL=INFO
+      - TEMPLATE_VERSION=v1
       - CORS_ORIGINS=https://marketing-project.com,https://www.marketing-project.com
       - CORS_ALLOW_CREDENTIALS=true
-      - REDIS_URL=redis://redis:6379
-      - MONGODB_URL=mongodb://mongodb:27017/marketing_project
+      - CONTENT_DATABASE_URL=sqlite:///./content.db
       - POSTGRES_URL=postgresql://postgres:password@postgres:5432/marketing_project
+      - MONGODB_URL=mongodb://mongodb:27017/marketing_project
+      - REDIS_URL=redis://redis:6379
     depends_on:
-      - redis
-      - mongodb
       - postgres
+      - mongodb
+      - redis
     volumes:
       - ./logs:/app/logs
       - ./uploads:/app/uploads
-      - ./cache:/app/cache
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
@@ -38,16 +35,20 @@ services:
       retries: 3
       start_period: 40s
 
-  # Redis for caching and rate limiting
-  redis:
-    image: redis:7-alpine
+  # PostgreSQL for content storage
+  postgres:
+    image: postgres:15-alpine
     ports:
-      - "6379:6379"
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=marketing_project
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
     volumes:
-      - redis_data:/data
+      - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -70,20 +71,16 @@ services:
       timeout: 10s
       retries: 3
 
-  # PostgreSQL for structured data
-  postgres:
-    image: postgres:15-alpine
+  # Redis for content caching
+  redis:
+    image: redis:7-alpine
     ports:
-      - "5432:5432"
-    environment:
-      - POSTGRES_DB=marketing_project
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=password
+      - "6379:6379"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - redis_data:/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -106,44 +103,10 @@ services:
       timeout: 10s
       retries: 3
 
-  # Prometheus for metrics
-  prometheus:
-    image: prom/prometheus:latest
-    ports:
-      - "9090:9090"
-    volumes:
-      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
-      - prometheus_data:/prometheus
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/etc/prometheus/console_libraries'
-      - '--web.console.templates=/etc/prometheus/consoles'
-      - '--storage.tsdb.retention.time=200h'
-      - '--web.enable-lifecycle'
-    restart: unless-stopped
-
-  # Grafana for dashboards
-  grafana:
-    image: grafana/grafana:latest
-    ports:
-      - "3000:3000"
-    environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
-    volumes:
-      - grafana_data:/var/lib/grafana
-      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
-      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
-    depends_on:
-      - prometheus
-    restart: unless-stopped
-
 volumes:
-  redis_data:
-  mongodb_data:
   postgres_data:
-  prometheus_data:
-  grafana_data:
+  mongodb_data:
+  redis_data:
 
 networks:
   default:

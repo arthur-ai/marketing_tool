@@ -26,13 +26,15 @@ class ErrorResponse(APIResponse):
 
 class ContentAnalysisResponse(APIResponse):
     """Response model for content analysis."""
-    data: Dict[str, Any] = Field(..., description="Analysis results")
+    content_id: str = Field(..., description="Content ID that was analyzed")
+    analysis: Dict[str, Any] = Field(..., description="Analysis results")
     metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
 
 
 class PipelineResponse(APIResponse):
     """Response model for pipeline execution."""
-    data: Dict[str, Any] = Field(..., description="Pipeline results")
+    content_id: str = Field(..., description="Content ID that was processed")
+    result: Dict[str, Any] = Field(..., description="Pipeline results")
     metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
     execution_time: Optional[float] = Field(None, description="Execution time in seconds")
 
@@ -48,25 +50,21 @@ class HealthResponse(BaseModel):
 
 class ContentSourceResponse(BaseModel):
     """Content source response model."""
-    name: str = Field(..., description="Source name")
-    type: str = Field(..., description="Source type")
-    status: str = Field(..., description="Source status")
-    healthy: bool = Field(..., description="Whether source is healthy")
-    last_check: Optional[datetime] = Field(None, description="Last health check time")
-    metadata: Optional[Dict[str, Any]] = Field(None, description="Source metadata")
+    success: bool = Field(..., description="Whether the operation was successful")
+    message: str = Field(..., description="Response message")
+    source: Dict[str, Any] = Field(..., description="Source information")
 
 
 class ContentSourceListResponse(APIResponse):
     """Response model for listing content sources."""
-    sources: List[ContentSourceResponse] = Field(..., description="List of content sources")
+    sources: List[Dict[str, Any]] = Field(..., description="List of content sources")
 
 
 class ContentFetchResponse(APIResponse):
     """Response model for content fetching."""
     source_name: str = Field(..., description="Source name")
-    success: bool = Field(..., description="Whether fetch was successful")
     total_count: int = Field(..., description="Total items fetched")
-    items: List[Dict[str, Any]] = Field(default_factory=list, description="Fetched items")
+    content_items: List[Dict[str, Any]] = Field(default_factory=list, description="Fetched content items")
     error_message: Optional[str] = Field(None, description="Error message if failed")
 
 

@@ -3,16 +3,12 @@ Core API endpoints for content analysis and pipeline processing.
 """
 
 import logging
-from typing import Dict, Any
 
-from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException
 
 from marketing_project.models import (
     AnalyzeRequest, PipelineRequest, ContentAnalysisResponse, PipelineResponse
 )
-from marketing_project.security import validate_content_input, security_auditor
-from marketing_project.security.input_validation import SecurityValidationError
-from marketing_project.middleware.auth import get_current_user
 from marketing_project.plugins.content_analysis import analyze_content_for_pipeline
 from marketing_project.runner import run_marketing_project_pipeline
 
@@ -25,8 +21,7 @@ router = APIRouter()
 @router.post("/analyze", response_model=ContentAnalysisResponse)
 async def analyze_content(
     request: AnalyzeRequest,
-    background_tasks: BackgroundTasks,
-    current_user: Dict[str, Any] = Depends(get_current_user)
+    background_tasks: BackgroundTasks
 ):
     """
     Analyze content for marketing pipeline processing.
@@ -40,37 +35,8 @@ async def analyze_content(
     try:
         logger.info(f"Content analysis request for content ID: {request.content.id}")
         
-        # Security validation
-        try:
-            validate_content_input(request.content.dict())
-        except SecurityValidationError as e:
-            logger.warning(f"Security validation failed for content {request.content.id}: {e}")
-            await security_auditor.audit_logger.log_security_event(
-                event_type="input_validation_failure",
-                details={
-                    "content_id": request.content.id,
-                    "error": str(e),
-                    "user_id": current_user.get("role"),
-                    "ip_address": "unknown"
-                }
-            )
-            raise HTTPException(
-                status_code=400,
-                detail=f"Content validation failed: {str(e)}"
-            )
-        
         # Perform content analysis
-        analysis_result = await analyze_content_for_pipeline(request.content)
-        
-        # Log successful analysis
-        await security_auditor.audit_logger.log_security_event(
-            event_type="content_analysis_success",
-            details={
-                "content_id": request.content.id,
-                "content_type": request.content.type,
-                "user_id": current_user.get("role")
-            }
-        )
+        analysis_result = analyze_content_for_pipeline(request.content)
         
         return ContentAnalysisResponse(
             success=True,
@@ -92,8 +58,7 @@ async def analyze_content(
 @router.post("/pipeline", response_model=PipelineResponse)
 async def run_pipeline(
     request: PipelineRequest,
-    background_tasks: BackgroundTasks,
-    current_user: Dict[str, Any] = Depends(get_current_user)
+    background_tasks: BackgroundTasks
 ):
     """
     Run the complete marketing pipeline on content.
@@ -110,40 +75,11 @@ async def run_pipeline(
     try:
         logger.info(f"Pipeline request for content ID: {request.content.id}")
         
-        # Security validation
-        try:
-            validate_content_input(request.content.dict())
-        except SecurityValidationError as e:
-            logger.warning(f"Security validation failed for pipeline content {request.content.id}: {e}")
-            await security_auditor.audit_logger.log_security_event(
-                event_type="input_validation_failure",
-                details={
-                    "content_id": request.content.id,
-                    "error": str(e),
-                    "user_id": current_user.get("role"),
-                    "ip_address": "unknown"
-                }
-            )
-            raise HTTPException(
-                status_code=400,
-                detail=f"Content validation failed: {str(e)}"
-            )
-        
         # Run the marketing pipeline
+        from marketing_project.server import PROMPTS_DIR
         pipeline_result = await run_marketing_project_pipeline(
-            content=request.content,
-            background_tasks=background_tasks
-        )
-        
-        # Log successful pipeline execution
-        await security_auditor.audit_logger.log_security_event(
-            event_type="pipeline_execution_success",
-            details={
-                "content_id": request.content.id,
-                "content_type": request.content.type,
-                "user_id": current_user.get("role"),
-                "pipeline_steps": len(pipeline_result.get("steps", []))
-            }
+            prompts_dir=PROMPTS_DIR,
+            lang="en"
         )
         
         return PipelineResponse(

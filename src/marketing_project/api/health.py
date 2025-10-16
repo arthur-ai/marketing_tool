@@ -47,6 +47,16 @@ async def health_check():
         )
 
 
+# Make these available for testing
+PIPELINE_SPEC = None
+PROMPTS_DIR = None
+
+try:
+    from marketing_project.server import PIPELINE_SPEC, PROMPTS_DIR
+except ImportError:
+    pass
+
+
 @router.get("/ready")
 async def readiness_check():
     """

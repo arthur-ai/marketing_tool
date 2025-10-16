@@ -29,12 +29,9 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.openapi.utils import get_openapi
 
 # Import middleware
-from .middleware.auth import AuthenticationMiddleware
 from .middleware.cors import setup_cors
-from .middleware.rate_limiting import RateLimitingMiddleware
 from .middleware.logging import LoggingMiddleware, RequestIDMiddleware
 from .middleware.error_handling import ErrorHandlingMiddleware
-from .middleware.performance import PerformanceMonitoringMiddleware
 
 # Import API endpoints
 from .api import api_router
@@ -82,19 +79,6 @@ def custom_openapi():
         routes=app.routes,
     )
     
-    # Add security schemes
-    openapi_schema["components"]["securitySchemes"] = {
-        "ApiKeyAuth": {
-            "type": "apiKey",
-            "in": "header",
-            "name": "X-API-Key",
-            "description": "API key for authentication"
-        }
-    }
-    
-    # Add security requirements
-    openapi_schema["security"] = [{"ApiKeyAuth": []}]
-    
     app.openapi_schema = openapi_schema
     return app.openapi_schema
 
@@ -110,27 +94,10 @@ app.add_middleware(LoggingMiddleware, log_requests=True, log_responses=True)
 # 3. Error handling middleware
 app.add_middleware(ErrorHandlingMiddleware, debug=os.getenv("DEBUG", "false").lower() == "true")
 
-# 4. Rate limiting middleware
-rate_limit_requests = int(os.getenv("RATE_LIMIT_REQUESTS_PER_MINUTE", "100"))
-rate_limit_burst = int(os.getenv("RATE_LIMIT_BURST_LIMIT", "20"))
-app.add_middleware(
-    RateLimitingMiddleware,
-    requests_per_minute=rate_limit_requests,
-    burst_limit=rate_limit_burst,
-    per_ip=True,
-    per_user=True
-)
-
-# 5. Authentication middleware
-app.add_middleware(AuthenticationMiddleware)
-
-# 6. Performance monitoring middleware
-app.add_middleware(PerformanceMonitoringMiddleware, monitor_health_endpoints=False)
-
-# 7. CORS middleware
+# 4. CORS middleware
 setup_cors(app)
 
-# 8. Trusted host middleware (outermost)
+# 5. Trusted host middleware (outermost)
 app.add_middleware(
     TrustedHostMiddleware,
     allowed_hosts=["localhost", "127.0.0.1", "*.marketing-project.com"]
@@ -148,7 +115,6 @@ async def startup_event():
     logger.info(f"API version: 1.0.0")
     logger.info(f"Template version: {TEMPLATE_VERSION}")
     logger.info(f"Prompts directory: {PROMPTS_DIR}")
-    logger.info(f"Rate limit: {rate_limit_requests} requests/minute")
     logger.info("Startup completed successfully")
 
 

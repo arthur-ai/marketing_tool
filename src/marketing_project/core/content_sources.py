@@ -313,6 +313,14 @@ class ContentSourceManager:
                     break
                 await asyncio.sleep(source.config.polling_interval)
 
+    def get_all_sources(self) -> List[ContentSource]:
+        """Get all content sources."""
+        return list(self.sources.values())
+
+    def get_source(self, name: str) -> Optional[ContentSource]:
+        """Get a specific content source by name."""
+        return self.sources.get(name)
+
     async def cleanup(self) -> None:
         """Cleanup all sources."""
         await self.stop_polling()

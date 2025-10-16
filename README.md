@@ -32,6 +32,7 @@
 
 ### 🌐 **Production Ready**
 - **Docker & Kubernetes** deployment with HPA and monitoring
+- **AWS CloudFormation** templates for complete infrastructure deployment
 - **CI/CD Pipeline** with security scanning and performance testing
 - **Comprehensive Testing** with 456+ tests
 - **API Documentation** with Swagger/OpenAPI
@@ -212,6 +213,24 @@ kubectl apply -k k8s/
 kubectl get pods -n marketing-project
 ```
 
+### **AWS CloudFormation**
+```bash
+# Set required environment variables
+export OPENAI_API_KEY="your_openai_api_key_here"
+export API_KEY="your_32_character_minimum_api_key_here"
+export DATABASE_PASSWORD="your_database_password_here"
+export MONGODB_PASSWORD="your_mongodb_password_here"
+
+# Deploy to AWS (from project root)
+./deploy-aws.sh -e production -r us-east-1
+
+# Or deploy from deploy directory
+cd deploy
+./deploy.sh -e production -r us-east-1
+```
+
+See `deploy/AWS_DEPLOYMENT.md` for detailed AWS deployment instructions.
+
 ### **Environment Configuration**
 Copy `env.example` to `.env` and configure:
 - API keys and authentication
@@ -235,7 +254,8 @@ Templates live under `prompts/${TEMPLATE_VERSION}/{en,fr,...}/`. Set `TEMPLATE_V
 - `tests/` - Test suite
 - `config/` - Configuration files
 - `docs/` - Documentation
-- `k8/` - Kubernetes deployment files
+- `k8s/` - Kubernetes deployment files
+- `deploy/` - AWS CloudFormation deployment files
 
 ## 🧩 Architecture
 

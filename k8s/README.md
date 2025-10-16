@@ -58,10 +58,8 @@ kubectl apply -k k8s/ --namespace=marketing-project-staging
 
 The application uses the following environment variables:
 
-- `API_KEY` - Main API key for authentication
-- `API_KEY_1` - Admin API key
-- `API_KEY_2` - User API key
-- `OPENAI_API_KEY` - OpenAI API key for AI processing
+- `OPENAI_API_KEY` - OpenAI API key for AI processing (optional)
+- `CONTENT_API_KEY` - External content API key (optional)
 - `TEMPLATE_VERSION` - Version of prompts to use (default: v1)
 - `LOG_LEVEL` - Logging level (default: INFO)
 - `DEBUG` - Debug mode (default: false)

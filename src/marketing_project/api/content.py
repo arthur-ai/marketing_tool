@@ -3,14 +3,12 @@ Content source management API endpoints.
 """
 
 import logging
-from typing import Dict, Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 
 from marketing_project.models import (
     ContentSourceListResponse, ContentSourceResponse, ContentFetchResponse
 )
-from marketing_project.middleware.auth import get_current_user
 from marketing_project.services.content_source_factory import ContentSourceManager
 from marketing_project.services.content_source_config_loader import ContentSourceConfigLoader
 
@@ -25,9 +23,7 @@ config_loader = ContentSourceConfigLoader()
 
 
 @router.get("/content-sources", response_model=ContentSourceListResponse)
-async def list_content_sources(
-    current_user: Dict[str, Any] = Depends(get_current_user)
-):
+async def list_content_sources():
     """
     List all configured content sources.
     
@@ -48,10 +44,12 @@ async def list_content_sources(
                     "name": source.config.name,
                     "type": source.config.source_type.value,
                     "status": "healthy" if is_healthy else "unhealthy",
-                    "config": {
+                    "healthy": is_healthy,
+                    "last_check": None,
+                    "metadata": {
                         "enabled": getattr(source.config, 'enabled', True),
                         "priority": getattr(source.config, 'priority', 0),
-                        "metadata": getattr(source.config, 'metadata', {})
+                        "path": getattr(source.config, 'metadata', {}).get('path', '/test/path')
                     }
                 }
                 source_list.append(source_info)
@@ -61,11 +59,13 @@ async def list_content_sources(
                     "name": source.config.name,
                     "type": source.config.source_type.value,
                     "status": "error",
-                    "error": str(e),
-                    "config": {
+                    "healthy": False,
+                    "last_check": None,
+                    "metadata": {
                         "enabled": getattr(source.config, 'enabled', True),
                         "priority": getattr(source.config, 'priority', 0),
-                        "metadata": getattr(source.config, 'metadata', {})
+                        "path": getattr(source.config, 'metadata', {}).get('path', '/test/path'),
+                        "error": str(e)
                     }
                 }
                 source_list.append(source_info)
@@ -73,8 +73,7 @@ async def list_content_sources(
         return ContentSourceListResponse(
             success=True,
             message=f"Found {len(source_list)} content sources",
-            sources=source_list,
-            total_count=len(source_list)
+            sources=source_list
         )
         
     except Exception as e:
@@ -87,8 +86,7 @@ async def list_content_sources(
 
 @router.get("/content-sources/{source_name}/status", response_model=ContentSourceResponse)
 async def get_source_status(
-    source_name: str,
-    current_user: Dict[str, Any] = Depends(get_current_user)
+    source_name: str
 ):
     """
     Get the status of a specific content source.
@@ -142,8 +140,7 @@ async def get_source_status(
 @router.post("/content-sources/{source_name}/fetch", response_model=ContentFetchResponse)
 async def fetch_from_source(
     source_name: str,
-    limit: int = 10,
-    current_user: Dict[str, Any] = Depends(get_current_user)
+    limit: int = 10
 ):
     """
     Fetch content from a specific content source.

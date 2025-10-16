@@ -1,0 +1,102 @@
+[
+  {
+    "ParameterKey": "Environment",
+    "ParameterValue": "production",
+    "Description": "Environment name (development, staging, production)"
+  },
+  {
+    "ParameterKey": "ProjectName",
+    "ParameterValue": "marketing-tool",
+    "Description": "Name of the project"
+  },
+  {
+    "ParameterKey": "VpcCIDR",
+    "ParameterValue": "10.0.0.0/16",
+    "Description": "CIDR block for the VPC"
+  },
+  {
+    "ParameterKey": "PublicSubnet1CIDR",
+    "ParameterValue": "10.0.1.0/24",
+    "Description": "CIDR block for public subnet 1"
+  },
+  {
+    "ParameterKey": "PublicSubnet2CIDR",
+    "ParameterValue": "10.0.2.0/24",
+    "Description": "CIDR block for public subnet 2"
+  },
+  {
+    "ParameterKey": "PrivateSubnet1CIDR",
+    "ParameterValue": "10.0.3.0/24",
+    "Description": "CIDR block for private subnet 1"
+  },
+  {
+    "ParameterKey": "PrivateSubnet2CIDR",
+    "ParameterValue": "10.0.4.0/24",
+    "Description": "CIDR block for private subnet 2"
+  },
+  {
+    "ParameterKey": "DatabaseSubnet1CIDR",
+    "ParameterValue": "10.0.5.0/24",
+    "Description": "CIDR block for database subnet 1"
+  },
+  {
+    "ParameterKey": "DatabaseSubnet2CIDR",
+    "ParameterValue": "10.0.6.0/24",
+    "Description": "CIDR block for database subnet 2"
+  },
+  {
+    "ParameterKey": "InstanceType",
+    "ParameterValue": "t3.medium",
+    "Description": "ECS task instance type"
+  },
+  {
+    "ParameterKey": "DesiredCount",
+    "ParameterValue": "2",
+    "Description": "Desired number of ECS tasks"
+  },
+  {
+    "ParameterKey": "DatabaseInstanceClass",
+    "ParameterValue": "db.t3.micro",
+    "Description": "RDS instance class"
+  },
+  {
+    "ParameterKey": "DatabaseAllocatedStorage",
+    "ParameterValue": "20",
+    "Description": "RDS allocated storage in GB"
+  },
+  {
+    "ParameterKey": "RedisNodeType",
+    "ParameterValue": "cache.t3.micro",
+    "Description": "ElastiCache Redis node type"
+  },
+  {
+    "ParameterKey": "DomainName",
+    "ParameterValue": "",
+    "Description": "Domain name for the application (optional)"
+  },
+  {
+    "ParameterKey": "CertificateArn",
+    "ParameterValue": "",
+    "Description": "ACM certificate ARN for HTTPS (optional)"
+  },
+  {
+    "ParameterKey": "OpenAIApiKey",
+    "ParameterValue": "YOUR_OPENAI_API_KEY_HERE",
+    "Description": "OpenAI API key"
+  },
+  {
+    "ParameterKey": "ApiKey",
+    "ParameterValue": "YOUR_API_KEY_HERE_32_CHARS_MINIMUM",
+    "Description": "API authentication key"
+  },
+  {
+    "ParameterKey": "DatabasePassword",
+    "ParameterValue": "YOUR_DATABASE_PASSWORD_HERE",
+    "Description": "Database master password"
+  },
+  {
+    "ParameterKey": "MongoDBPassword",
+    "ParameterValue": "YOUR_MONGODB_PASSWORD_HERE",
+    "Description": "MongoDB password"
+  }
+]
