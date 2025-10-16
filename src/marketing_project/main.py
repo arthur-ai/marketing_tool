@@ -16,6 +16,10 @@ from marketing_project.runner import (
     run_marketing_project_pipeline,
     run_marketing_project_server,
 )
+from marketing_project.services.content_source_config_loader import (
+    ContentSourceConfigLoader,
+)
+from marketing_project.services.content_source_factory import ContentSourceManager
 
 # # Load .env variables
 dotenv_path = find_dotenv()
@@ -97,10 +101,6 @@ async def _content_sources_async(
     list_sources, check_status, test_sources, fetch_content, lang, prompts_dir
 ):
     """Handle content sources commands asynchronously."""
-    from marketing_project.services.content_source_config_loader import (
-        ContentSourceConfigLoader,
-    )
-    from marketing_project.services.content_source_factory import ContentSourceManager
 
     # Default prompts_dir logic
     if not prompts_dir:

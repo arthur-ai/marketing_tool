@@ -1,0 +1,40 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: marketing-project
+
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - secret.yaml
+  - deployment.yaml
+  - service.yaml
+  - ingress.yaml
+  - hpa.yaml
+  - cronjob.yaml
+
+commonLabels:
+  app: marketing-project-api
+  version: v1
+  environment: production
+
+images:
+  - name: marketing-project-api
+    newTag: latest
+
+replicas:
+  - name: marketing-project-api
+    count: 3
+
+patchesStrategicMerge:
+  - |-
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: marketing-project-api
+    spec:
+      template:
+        spec:
+          containers:
+          - name: api
+            image: marketing-project-api:latest

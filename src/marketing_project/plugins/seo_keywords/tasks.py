@@ -20,7 +20,7 @@ import re
 from collections import Counter
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from marketing_project.core.models import AppContext, ContentContext
+from marketing_project.core.models import AppContext, ContentContext, BlogPostContext, TranscriptContext, ReleaseNotesContext
 from marketing_project.core.utils import (
     create_standard_task_result,
     ensure_content_context,
@@ -29,11 +29,11 @@ from marketing_project.core.utils import (
 )
 
 try:
-    from kwx.model import extract_kws
+    from keybert import KeyBERT
 
-    KWX_AVAILABLE = True
+    KEYBERT_AVAILABLE = True
 except ImportError:
-    KWX_AVAILABLE = False
+    KEYBERT_AVAILABLE = False
 
 logger = logging.getLogger("marketing_project.plugins.seo_keywords")
 
@@ -743,32 +743,32 @@ def calculate_keyword_scores(
         )
 
 
-def extract_keywords_with_kwx(
+def extract_keywords_with_keybert(
     content: Union[ContentContext, Dict[str, Any]],
     max_keywords: int = 10,
-    method: str = "frequency",
+    method: str = "mmr",
     ngram_range: Tuple[int, int] = (1, 3),
     language: str = "english",
 ) -> Dict[str, Any]:
     """
-    Extracts keywords using the kwx library with advanced NLP techniques.
+    Extracts keywords using the KeyBERT library with advanced NLP techniques.
 
     Args:
         content: Content context object or dictionary
         max_keywords: Maximum number of keywords to extract
-        method: Extraction method ('frequency', 'tfidf', 'yake', 'textrank', 'rake')
+        method: Extraction method ('mmr', 'maxsum', 'maximal_marginal_relevance')
         ngram_range: Range of n-grams to consider (min, max)
         language: Language for processing ('english', 'spanish', 'french', etc.)
 
     Returns:
-        Dict[str, Any]: Standardized task result with kwx-extracted keywords
+        Dict[str, Any]: Standardized task result with KeyBERT-extracted keywords
     """
     try:
-        if not KWX_AVAILABLE:
+        if not KEYBERT_AVAILABLE:
             return create_standard_task_result(
                 success=False,
-                error="kwx library not available. Please install with: pip install kwx",
-                task_name="extract_keywords_with_kwx",
+                error="KeyBERT library not available. Please install with: pip install keybert",
+                task_name="extract_keywords_with_keybert",
             )
 
         # Ensure content is a ContentContext object
@@ -785,7 +785,7 @@ def extract_keywords_with_kwx(
                     "ngram_range": ngram_range,
                     "language": language,
                 },
-                task_name="extract_keywords_with_kwx",
+                task_name="extract_keywords_with_keybert",
                 metadata=extract_content_metadata_for_pipeline(content_obj),
             )
 
@@ -795,7 +795,7 @@ def extract_keywords_with_kwx(
             return create_standard_task_result(
                 success=False,
                 error=f"Content validation failed: {', '.join(validation['issues'])}",
-                task_name="extract_keywords_with_kwx",
+                task_name="extract_keywords_with_keybert",
             )
 
         # Prepare text for processing
@@ -805,51 +805,45 @@ def extract_keywords_with_kwx(
             return create_standard_task_result(
                 success=False,
                 error="No text content available for keyword extraction",
-                task_name="extract_keywords_with_kwx",
+                task_name="extract_keywords_with_keybert",
             )
 
-        # Map method names to kwx method names
+        # Map method names to KeyBERT method names
         method_mapping = {
-            "frequency": "frequency",
-            "tfidf": "TFIDF",
-            "yake": "yake",
-            "textrank": "textrank",
-            "rake": "rake",
-            "lda": "lda",
-            "bert": "BERT",
+            "mmr": "mmr",
+            "maxsum": "maxsum",
+            "maximal_marginal_relevance": "mmr",
         }
 
-        kwx_method = method_mapping.get(method, "frequency")
+        keybert_method = method_mapping.get(method, "mmr")
 
-        # Extract keywords using kwx
+        # Extract keywords using KeyBERT
         try:
-            keywords_result = extract_kws(
-                method=kwx_method,
-                text_corpus=[text],
-                input_language=language,
-                num_keywords=max_keywords,
-                return_topics=False,
-                prompt_remove_words=False,
+            # Initialize KeyBERT model
+            kw_model = KeyBERT()
+            
+            # Extract keywords
+            keywords_result = kw_model.extract_keywords(
+                text,
+                keyphrase_ngram_range=ngram_range,
+                stop_words=language,
+                use_mmr=True if keybert_method == "mmr" else False,
+                use_maxsum=True if keybert_method == "maxsum" else False,
+                diversity=0.5 if keybert_method == "mmr" else 0.0,
+                top_n=max_keywords,
             )
 
-            # Convert kwx result to our format
-            if isinstance(keywords_result, list) and len(keywords_result) > 0:
-                # kwx returns a list of lists, take the first one
-                keywords_list = (
-                    keywords_result[0]
-                    if isinstance(keywords_result[0], list)
-                    else keywords_result
-                )
-                # Convert to (keyword, score) tuples with dummy scores
-                keywords = [(kw, 1.0) for kw in keywords_list[:max_keywords]]
+            # Convert KeyBERT result to our format
+            if keywords_result:
+                keywords = [(kw, score) for kw, score in keywords_result]
             else:
                 keywords = []
         except Exception as e:
-            logger.error(f"KWX extraction failed with method {kwx_method}: {str(e)}")
+            logger.error(f"KeyBERT extraction failed with method {keybert_method}: {str(e)}")
             return create_standard_task_result(
                 success=False,
-                error=f"KWX keyword extraction failed: {str(e)}",
-                task_name="extract_keywords_with_kwx",
+                error=f"KeyBERT keyword extraction failed: {str(e)}",
+                task_name="extract_keywords_with_keybert",
             )
 
         # Format keywords for consistency with other functions
@@ -874,18 +868,18 @@ def extract_keywords_with_kwx(
                 "method": method,
                 "ngram_range": ngram_range,
                 "language": language,
-                "extraction_library": "kwx",
+                "extraction_library": "keybert",
             },
-            task_name="extract_keywords_with_kwx",
+            task_name="extract_keywords_with_keybert",
             metadata=extract_content_metadata_for_pipeline(content_obj),
         )
 
     except Exception as e:
-        logger.error(f"Error in extract_keywords_with_kwx: {str(e)}")
+        logger.error(f"Error in extract_keywords_with_keybert: {str(e)}")
         return create_standard_task_result(
             success=False,
-            error=f"KWX keyword extraction failed: {str(e)}",
-            task_name="extract_keywords_with_kwx",
+            error=f"KeyBERT keyword extraction failed: {str(e)}",
+            task_name="extract_keywords_with_keybert",
         )
 
 
@@ -901,23 +895,23 @@ def extract_keywords_advanced(
     Args:
         content: Content context object or dictionary
         max_keywords: Maximum number of keywords to extract per method
-        methods: List of methods to use ['frequency', 'tfidf', 'yake', 'textrank', 'rake']
+        methods: List of methods to use ['mmr', 'maxsum', 'maximal_marginal_relevance']
         combine_results: Whether to combine and deduplicate results from all methods
 
     Returns:
         Dict[str, Any]: Standardized task result with advanced keyword extraction
     """
     try:
-        if not KWX_AVAILABLE:
+        if not KEYBERT_AVAILABLE:
             return create_standard_task_result(
                 success=False,
-                error="kwx library not available. Please install with: pip install kwx",
+                error="KeyBERT library not available. Please install with: pip install keybert",
                 task_name="extract_keywords_advanced",
             )
 
         # Default methods if none specified
         if methods is None:
-            methods = ["frequency", "tfidf", "yake"]
+            methods = ["mmr", "maxsum"]
 
         # Ensure content is a ContentContext object
         content_obj = ensure_content_context(content)
@@ -951,7 +945,7 @@ def extract_keywords_advanced(
         # Extract keywords using each method
         for method in methods:
             try:
-                result = extract_keywords_with_kwx(content_obj, max_keywords, method)
+                result = extract_keywords_with_keybert(content_obj, max_keywords, method)
                 if result["success"]:
                     method_results[method] = result["data"]["keywords"]
                     # Add to combined results
@@ -982,7 +976,7 @@ def extract_keywords_advanced(
                     "method_results": method_results,
                     "combined_results": combine_results,
                     "total_keywords_found": 0,
-                    "extraction_library": "kwx",
+                    "extraction_library": "keybert",
                 },
                 task_name="extract_keywords_advanced",
                 metadata=extract_content_metadata_for_pipeline(content_obj),
@@ -1010,7 +1004,7 @@ def extract_keywords_advanced(
                 "method_results": method_results,
                 "combined_results": combine_results,
                 "total_keywords_found": len(sorted_keywords),
-                "extraction_library": "kwx",
+                "extraction_library": "keybert",
             },
             task_name="extract_keywords_advanced",
             metadata=extract_content_metadata_for_pipeline(content_obj),

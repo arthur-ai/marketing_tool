@@ -4,4 +4,4 @@ metadata:
   name: marketing-project
   labels:
     name: marketing-project
-    environment: production
+    app: marketing-project-api

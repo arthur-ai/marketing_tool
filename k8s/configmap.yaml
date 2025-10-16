@@ -1,0 +1,38 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: marketing-project-config
+  namespace: marketing-project
+  labels:
+    app: marketing-project-api
+data:
+  # Application settings
+  DEBUG: "false"
+  HOST: "0.0.0.0"
+  PORT: "8000"
+  LOG_LEVEL: "INFO"
+  TEMPLATE_VERSION: "v1"
+  
+  # API settings
+  RATE_LIMIT_REQUESTS_PER_MINUTE: "1000"
+  RATE_LIMIT_BURST_LIMIT: "100"
+  CORS_ORIGINS: "https://marketing-project.com,https://www.marketing-project.com"
+  CORS_ALLOW_CREDENTIALS: "true"
+  API_TIMEOUT: "30"
+  MAX_RETRIES: "3"
+  
+  # Database connections
+  REDIS_URL: "redis://redis-service:6379"
+  MONGODB_URL: "mongodb://mongodb-service:27017/marketing_project"
+  POSTGRES_URL: "postgresql://postgres:password@postgres-service:5432/marketing_project"
+  
+  # Pipeline configuration
+  PIPELINE_CONFIG_PATH: "/app/config/pipeline.yml"
+  PROMPTS_DIR: "/app/prompts"
+  
+  # Content processing settings
+  MAX_CONTENT_LENGTH: "1000000"
+  CONTENT_BATCH_SIZE: "10"
+  CONTENT_TYPES: "transcript,blog_post,release_notes"
+  DEFAULT_LANGUAGE: "en"
+  SUPPORTED_LANGUAGES: "en,es,fr,de"

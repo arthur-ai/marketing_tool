@@ -2,14 +2,13 @@ apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
   name: marketing-project-hpa
-  labels:
-    app: marketing-project
+  namespace: marketing-project
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: marketing-project-server
-  minReplicas: 1
+    name: marketing-project-api
+  minReplicas: 3
   maxReplicas: 10
   metrics:
   - type: Resource
@@ -25,19 +24,20 @@ spec:
         type: Utilization
         averageUtilization: 80
   behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 15
+      - type: Pods
+        value: 2
+        periodSeconds: 60
+      selectPolicy: Max
     scaleDown:
       stabilizationWindowSeconds: 300
       policies:
       - type: Percent
         value: 10
         periodSeconds: 60
-    scaleUp:
-      stabilizationWindowSeconds: 60
-      policies:
-      - type: Percent
-        value: 50
-        periodSeconds: 60
-      - type: Pods
-        value: 2
-        periodSeconds: 60
-      selectPolicy: Max
+      selectPolicy: Min

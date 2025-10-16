@@ -119,7 +119,8 @@ def ensure_content_context(
     Returns:
         ContentContext: ContentContext object
     """
-    if isinstance(content, ContentContext):
+    # Check for any content context type (from either import path)
+    if hasattr(content, 'id') and hasattr(content, 'title') and hasattr(content, 'content') and hasattr(content, 'snippet'):
         return content
     elif isinstance(content, dict):
         return convert_dict_to_content_context(content)

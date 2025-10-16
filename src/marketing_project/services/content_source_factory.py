@@ -15,13 +15,11 @@ from typing import Any, Dict, List, Optional, Union
 
 from marketing_project.core.content_sources import (
     ContentSource,
-)
-from marketing_project.core.content_sources import (
     ContentSourceManager as BaseContentSourceManager,
-)
-from marketing_project.core.content_sources import (
     ContentSourceResult,
     ContentSourceType,
+    DatabaseSourceConfig,
+    FileSourceConfig,
     SourceConfig,
 )
 from marketing_project.core.models import (
@@ -62,6 +60,14 @@ class ContentSourceFactory:
     def create_source(config: SourceConfig) -> Optional[ContentSource]:
         """Create a content source from configuration."""
         try:
+            # Validate configuration
+            if not config.name:
+                logger.error("Content source name is required")
+                return None
+            
+            if not config.source_type:
+                logger.error("Content source type is required")
+                return None
             if config.source_type == ContentSourceType.FILE:
                 if config.watch_directory:
                     return DirectoryWatcherSource(config)
@@ -78,6 +84,16 @@ class ContentSourceFactory:
                 return RSSContentSource(config)
 
             elif config.source_type == ContentSourceType.DATABASE:
+                # Ensure we have a DatabaseSourceConfig
+                if not isinstance(config, DatabaseSourceConfig):
+                    logger.error(f"Expected DatabaseSourceConfig for database source, got {type(config)}")
+                    return None
+                
+                # Validate database configuration
+                if not config.connection_string:
+                    logger.error("Database connection string is required")
+                    return None
+                
                 # Determine database type from connection string
                 connection_string = config.connection_string.lower()
                 if "mongodb" in connection_string:
@@ -107,8 +123,6 @@ class ContentSourceFactory:
         name: str, upload_directory: str = "uploads"
     ) -> UploadedFileSource:
         """Create a special uploaded file source."""
-        from marketing_project.core.content_sources import FileSourceConfig
-
         config = FileSourceConfig(
             name=name,
             source_type=ContentSourceType.FILE,
@@ -405,8 +419,6 @@ async def create_default_content_manager() -> ContentSourceManager:
     manager = ContentSourceManager()
 
     # Add a file source for local content
-    from marketing_project.core.content_sources import FileSourceConfig
-
     file_config = FileSourceConfig(
         name="local_files",
         source_type=ContentSourceType.FILE,

@@ -12,10 +12,12 @@ Classes:
 """
 
 import asyncio
+import base64
 import hashlib
 import hmac
 import json
 import logging
+import re
 from datetime import datetime, timedelta
 from typing import Any, AsyncGenerator, Dict, List, Optional
 from urllib.parse import parse_qs, urljoin, urlparse
@@ -167,8 +169,6 @@ class APIContentSource(ContentSource):
             username = self.config.auth_config.get("username")
             password = self.config.auth_config.get("password")
             if username and password:
-                import base64
-
                 credentials = base64.b64encode(
                     f"{username}:{password}".encode()
                 ).decode()
@@ -568,8 +568,6 @@ class RSSContentSource(ContentSource):
 
             # Clean HTML tags if needed
             if content and "<" in content:
-                import re
-
                 content = re.sub(r"<[^>]+>", "", content)
 
             return {
