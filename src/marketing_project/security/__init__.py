@@ -25,6 +25,9 @@ from .audit import (
     SecurityEvent
 )
 
+# Create global security auditor instance
+security_auditor = SecurityAuditor()
+
 __all__ = [
     # Input validation
     "validate_api_key",
@@ -42,5 +45,6 @@ __all__ = [
     # Audit
     "SecurityAuditor",
     "AuditLogger", 
-    "SecurityEvent"
+    "SecurityEvent",
+    "security_auditor"
 ]

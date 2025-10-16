@@ -95,6 +95,36 @@ The Marketing Project provides a comprehensive REST API with enterprise-grade se
 | `GET` | `/api/v1/content-sources/{name}/status` | Get source status | API Key |
 | `POST` | `/api/v1/content-sources/{name}/fetch` | Fetch content from source | API Key |
 
+### **Performance & Monitoring Endpoints**
+
+| Method | Endpoint | Description | Authentication |
+|--------|----------|-------------|----------------|
+| `GET` | `/api/v1/performance/summary` | Get performance summary and metrics | API Key |
+| `GET` | `/api/v1/performance/endpoints` | Get performance metrics by endpoint | API Key |
+| `GET` | `/api/v1/performance/slow-requests` | Get requests slower than threshold | API Key |
+| `GET` | `/api/v1/performance/error-requests` | Get error requests from last hour | API Key |
+
+### **Security & Audit Endpoints**
+
+| Method | Endpoint | Description | Authentication |
+|--------|----------|-------------|----------------|
+| `GET` | `/api/v1/security/audit` | Get security audit logs | API Key |
+| `GET` | `/api/v1/security/stats` | Get security statistics and metrics | API Key |
+
+### **Cache Management Endpoints**
+
+| Method | Endpoint | Description | Authentication |
+|--------|----------|-------------|----------------|
+| `GET` | `/api/v1/cache/stats` | Get cache statistics and performance | API Key |
+| `POST` | `/api/v1/cache/clear` | Clear all cache entries | Admin API Key |
+
+### **System & Database Endpoints**
+
+| Method | Endpoint | Description | Authentication |
+|--------|----------|-------------|----------------|
+| `GET` | `/api/v1/database/status` | Get database connection status | API Key |
+| `GET` | `/api/v1/system/info` | Get system information and configuration | API Key |
+
 ### **Authentication**
 
 All protected endpoints require an API key in the `X-API-Key` header:

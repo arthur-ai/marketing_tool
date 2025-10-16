@@ -403,3 +403,338 @@ async def readiness_check():
             status_code=503, 
             content={"status": "not_ready", "error": str(e)}
         )
+
+
+@api_router.get("/performance/summary")
+async def get_performance_summary(
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Get performance summary and metrics.
+    
+    Returns comprehensive performance metrics including:
+    - Request/response times
+    - Memory and CPU usage
+    - Error rates
+    - Throughput statistics
+    """
+    try:
+        from marketing_project.performance.monitoring import performance_monitor
+        
+        summary = await performance_monitor.get_performance_summary()
+        return summary
+    except Exception as e:
+        logger.error(f"Failed to get performance summary: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve performance summary: {str(e)}"
+        )
+
+
+@api_router.get("/performance/endpoints")
+async def get_endpoint_performance(
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Get performance metrics by endpoint.
+    
+    Returns detailed performance statistics for each API endpoint.
+    """
+    try:
+        from marketing_project.performance.monitoring import performance_monitor
+        
+        endpoint_stats = await performance_monitor.get_endpoint_performance()
+        return endpoint_stats
+    except Exception as e:
+        logger.error(f"Failed to get endpoint performance: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve endpoint performance: {str(e)}"
+        )
+
+
+@api_router.get("/performance/slow-requests")
+async def get_slow_requests(
+    threshold: float = 1.0,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Get requests slower than the specified threshold.
+    
+    Args:
+        threshold: Response time threshold in seconds (default: 1.0)
+    """
+    try:
+        from marketing_project.performance.monitoring import performance_monitor
+        
+        slow_requests = await performance_monitor.get_slow_requests(threshold)
+        return {
+            "threshold_seconds": threshold,
+            "slow_requests": [req.to_dict() for req in slow_requests],
+            "count": len(slow_requests)
+        }
+    except Exception as e:
+        logger.error(f"Failed to get slow requests: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve slow requests: {str(e)}"
+        )
+
+
+@api_router.get("/performance/error-requests")
+async def get_error_requests(
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Get all error requests from the last hour.
+    
+    Returns requests that resulted in 4xx or 5xx status codes.
+    """
+    try:
+        from marketing_project.performance.monitoring import performance_monitor
+        
+        error_requests = await performance_monitor.get_error_requests()
+        return {
+            "error_requests": [req.to_dict() for req in error_requests],
+            "count": len(error_requests)
+        }
+    except Exception as e:
+        logger.error(f"Failed to get error requests: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve error requests: {str(e)}"
+        )
+
+
+@api_router.get("/security/audit")
+async def get_security_audit_logs(
+    limit: int = 100,
+    event_type: Optional[str] = None,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Get security audit logs.
+    
+    Args:
+        limit: Maximum number of logs to return (default: 100)
+        event_type: Filter by specific event type (optional)
+    """
+    try:
+        from marketing_project.security.audit import security_auditor
+        
+        logs = await security_auditor.get_recent_logs(limit=limit, event_type=event_type)
+        return {
+            "logs": logs,
+            "count": len(logs),
+            "limit": limit,
+            "event_type": event_type
+        }
+    except Exception as e:
+        logger.error(f"Failed to get security audit logs: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve security audit logs: {str(e)}"
+        )
+
+
+@api_router.get("/security/stats")
+async def get_security_stats(
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Get security statistics and metrics.
+    
+    Returns security-related statistics including:
+    - Authentication success/failure rates
+    - Rate limiting violations
+    - Attack detection events
+    - Risk scores
+    """
+    try:
+        from marketing_project.security.audit import security_auditor
+        
+        stats = await security_auditor.get_security_stats()
+        return stats
+    except Exception as e:
+        logger.error(f"Failed to get security stats: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve security statistics: {str(e)}"
+        )
+
+
+@api_router.get("/cache/stats")
+async def get_cache_stats(
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Get cache statistics and performance metrics.
+    
+    Returns cache performance metrics including:
+    - Hit/miss rates
+    - Cache size
+    - Eviction statistics
+    """
+    try:
+        from marketing_project.performance.optimization import get_cache_manager
+        
+        cache_manager = get_cache_manager()
+        stats = await cache_manager.get_stats()
+        return stats
+    except Exception as e:
+        logger.error(f"Failed to get cache stats: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve cache statistics: {str(e)}"
+        )
+
+
+@api_router.post("/cache/clear")
+async def clear_cache(
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Clear all cache entries.
+    
+    Requires admin permissions.
+    """
+    try:
+        # Check if user has admin permissions
+        if current_user.get("role") != "admin":
+            raise HTTPException(
+                status_code=403,
+                detail="Admin permissions required to clear cache"
+            )
+        
+        from marketing_project.performance.optimization import get_cache_manager
+        
+        cache_manager = get_cache_manager()
+        await cache_manager.clear()
+        
+        return {"message": "Cache cleared successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to clear cache: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to clear cache: {str(e)}"
+        )
+
+
+@api_router.get("/database/status")
+async def get_database_status(
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Get database connection status and health.
+    
+    Returns status for all configured databases:
+    - PostgreSQL
+    - MongoDB
+    - Redis
+    """
+    try:
+        from marketing_project.services.database_source import (
+            SQLContentSource, MongoDBContentSource, RedisContentSource
+        )
+        from marketing_project.core.content_sources import DatabaseSourceConfig
+        
+        status = {}
+        
+        # Check PostgreSQL
+        try:
+            postgres_config = DatabaseSourceConfig(
+                name="postgres_check",
+                source_type="database",
+                connection_string=os.getenv("POSTGRES_URL", "postgresql://localhost:5432/test")
+            )
+            postgres_source = SQLContentSource(postgres_config)
+            postgres_healthy = await postgres_source.health_check()
+            status["postgresql"] = {"status": "healthy" if postgres_healthy else "unhealthy"}
+        except Exception as e:
+            status["postgresql"] = {"status": "error", "error": str(e)}
+        
+        # Check MongoDB
+        try:
+            mongodb_config = DatabaseSourceConfig(
+                name="mongodb_check",
+                source_type="database",
+                connection_string=os.getenv("MONGODB_URL", "mongodb://localhost:27017/test")
+            )
+            mongodb_source = MongoDBContentSource(mongodb_config)
+            mongodb_healthy = await mongodb_source.health_check()
+            status["mongodb"] = {"status": "healthy" if mongodb_healthy else "unhealthy"}
+        except Exception as e:
+            status["mongodb"] = {"status": "error", "error": str(e)}
+        
+        # Check Redis
+        try:
+            redis_config = DatabaseSourceConfig(
+                name="redis_check",
+                source_type="database",
+                connection_string=os.getenv("REDIS_URL", "redis://localhost:6379")
+            )
+            redis_source = RedisContentSource(redis_config)
+            redis_healthy = await redis_source.health_check()
+            status["redis"] = {"status": "healthy" if redis_healthy else "unhealthy"}
+        except Exception as e:
+            status["redis"] = {"status": "error", "error": str(e)}
+        
+        return status
+    except Exception as e:
+        logger.error(f"Failed to get database status: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve database status: {str(e)}"
+        )
+
+
+@api_router.get("/system/info")
+async def get_system_info(
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Get system information and configuration.
+    
+    Returns system information including:
+    - Version information
+    - Configuration status
+    - Environment details
+    - Feature flags
+    """
+    try:
+        import platform
+        import sys
+        from marketing_project.server import PIPELINE_SPEC, PROMPTS_DIR
+        
+        info = {
+            "service": "marketing-project",
+            "version": "1.0.0",
+            "python_version": sys.version,
+            "platform": platform.platform(),
+            "environment": {
+                "debug": os.getenv("DEBUG", "false").lower() == "true",
+                "log_level": os.getenv("LOG_LEVEL", "INFO"),
+                "template_version": os.getenv("TEMPLATE_VERSION", "v1"),
+            },
+            "configuration": {
+                "pipeline_loaded": PIPELINE_SPEC is not None,
+                "prompts_dir_exists": os.path.exists(PROMPTS_DIR),
+                "prompts_dir": PROMPTS_DIR,
+            },
+            "features": {
+                "security_audit": os.getenv("SECURITY_AUDIT_ENABLED", "true").lower() == "true",
+                "performance_monitoring": os.getenv("PERFORMANCE_MONITORING_ENABLED", "true").lower() == "true",
+                "caching": os.getenv("PERFORMANCE_CACHE_ENABLED", "true").lower() == "true",
+                "rate_limiting": os.getenv("SECURITY_RATE_LIMIT_ENABLED", "true").lower() == "true",
+            }
+        }
+        
+        return info
+    except Exception as e:
+        logger.error(f"Failed to get system info: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve system information: {str(e)}"
+        )

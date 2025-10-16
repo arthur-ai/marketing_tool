@@ -37,7 +37,7 @@ from .middleware.error_handling import ErrorHandlingMiddleware
 from .middleware.performance import PerformanceMonitoringMiddleware
 
 # Import API endpoints
-from .api_endpoints import api_router
+from .api import api_router
 
 from .runner import run_marketing_project_pipeline
 from .scheduler import Scheduler
