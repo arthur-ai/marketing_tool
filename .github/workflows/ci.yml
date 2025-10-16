@@ -9,15 +9,9 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
     
     steps:
     - uses: actions/checkout@v4
-      with:
-        token: ${{ secrets.PAT_TOKEN }}
-        fetch-depth: 0
     
     - name: Set up Python
       uses: actions/setup-python@v4
@@ -34,6 +28,29 @@ jobs:
       run: pytest tests/ -v
       env:
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+  format:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        fetch-depth: 0
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.13'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements-dev.txt
+        pip install -e .
         
     - name: Format code
       run: |

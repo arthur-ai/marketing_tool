@@ -20,7 +20,13 @@ import re
 from collections import Counter
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from marketing_project.core.models import AppContext, ContentContext, BlogPostContext, TranscriptContext, ReleaseNotesContext
+from marketing_project.core.models import (
+    AppContext,
+    BlogPostContext,
+    ContentContext,
+    ReleaseNotesContext,
+    TranscriptContext,
+)
 from marketing_project.core.utils import (
     create_standard_task_result,
     ensure_content_context,
@@ -821,7 +827,7 @@ def extract_keywords_with_keybert(
         try:
             # Initialize KeyBERT model
             kw_model = KeyBERT()
-            
+
             # Extract keywords
             keywords_result = kw_model.extract_keywords(
                 text,
@@ -839,7 +845,9 @@ def extract_keywords_with_keybert(
             else:
                 keywords = []
         except Exception as e:
-            logger.error(f"KeyBERT extraction failed with method {keybert_method}: {str(e)}")
+            logger.error(
+                f"KeyBERT extraction failed with method {keybert_method}: {str(e)}"
+            )
             return create_standard_task_result(
                 success=False,
                 error=f"KeyBERT keyword extraction failed: {str(e)}",
@@ -945,7 +953,9 @@ def extract_keywords_advanced(
         # Extract keywords using each method
         for method in methods:
             try:
-                result = extract_keywords_with_keybert(content_obj, max_keywords, method)
+                result = extract_keywords_with_keybert(
+                    content_obj, max_keywords, method
+                )
                 if result["success"]:
                     method_results[method] = result["data"]["keywords"]
                     # Add to combined results

@@ -13,15 +13,17 @@ from fastapi.middleware.cors import CORSMiddleware
 logger = logging.getLogger("marketing_project.middleware.cors")
 
 
-def setup_cors(app: FastAPI, 
-               allowed_origins: Optional[List[str]] = None,
-               allowed_methods: Optional[List[str]] = None,
-               allowed_headers: Optional[List[str]] = None,
-               allow_credentials: bool = True,
-               max_age: int = 600) -> None:
+def setup_cors(
+    app: FastAPI,
+    allowed_origins: Optional[List[str]] = None,
+    allowed_methods: Optional[List[str]] = None,
+    allowed_headers: Optional[List[str]] = None,
+    allow_credentials: bool = True,
+    max_age: int = 600,
+) -> None:
     """
     Setup CORS middleware for FastAPI application.
-    
+
     Args:
         app: FastAPI application instance
         allowed_origins: List of allowed origins (default: ["*"] for development)
@@ -30,7 +32,7 @@ def setup_cors(app: FastAPI,
         allow_credentials: Whether to allow credentials
         max_age: Maximum age for preflight requests
     """
-    
+
     # Default configuration
     if allowed_origins is None:
         allowed_origins = [
@@ -41,10 +43,10 @@ def setup_cors(app: FastAPI,
             "http://127.0.0.1:8080",
             "http://127.0.0.1:4200",
         ]
-    
+
     if allowed_methods is None:
         allowed_methods = ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
-    
+
     if allowed_headers is None:
         allowed_headers = [
             "Accept",
@@ -59,7 +61,7 @@ def setup_cors(app: FastAPI,
             "Access-Control-Request-Method",
             "Access-Control-Request-Headers",
         ]
-    
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=allowed_origins,
@@ -68,5 +70,5 @@ def setup_cors(app: FastAPI,
         allow_headers=allowed_headers,
         max_age=max_age,
     )
-    
+
     logger.info(f"CORS middleware configured with origins: {allowed_origins}")
