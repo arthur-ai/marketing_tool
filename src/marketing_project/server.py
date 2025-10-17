@@ -42,7 +42,7 @@ logger = logging.getLogger("marketing_project.server")
 
 # Load config once
 BASE = os.path.dirname(__file__)
-SPEC_PATH = os.path.abspath(os.path.join(BASE, "..", "..", "config", "pipeline.yml"))
+SPEC_PATH = os.path.abspath(os.path.join(BASE, "config", "pipeline.yml"))
 with open(SPEC_PATH) as f:
     PIPELINE_SPEC = yaml.safe_load(f)
 TEMPLATE_VERSION = os.getenv("TEMPLATE_VERSION", "v1")

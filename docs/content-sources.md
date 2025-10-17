@@ -82,7 +82,7 @@ CONTENT_CACHE_MAX_SIZE=1000
 
 ### Pipeline Configuration
 
-The `config/pipeline.yml` file includes content source configuration:
+The `src/marketing_project/config/pipeline.yml` file includes content source configuration:
 
 ```yaml
 content_sources:

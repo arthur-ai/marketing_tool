@@ -145,7 +145,7 @@ curl -H "X-API-Key: your-api-key-here" \
 
 ## 🧩 Agents & Extensions
 
-Drop new agents into `agents/` and workflows into `plugins/` with `@task` decorator. Manage sequences via `config/pipeline.yml`.
+Drop new agents into `src/marketing_project/agents/` and workflows into `src/marketing_project/plugins/` with `@task` decorator. Manage sequences via `src/marketing_project/config/pipeline.yml`.
 
 ## 🔒 Security Features
 

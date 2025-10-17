@@ -281,7 +281,7 @@ To create a custom plugin:
 
 4. **Add to Pipeline Configuration**:
    ```yaml
-   # In config/pipeline.yml
+   # In src/marketing_project/config/pipeline.yml
    pipelines:
      default:
        - AnalyzeContent

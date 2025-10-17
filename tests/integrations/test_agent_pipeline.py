@@ -8,7 +8,14 @@ import pytest
 async def test_full_pipeline(monkeypatch, tmp_path):
     # Use real prompt templates from the prompts directory
     lang = "en"
-    prompts_source_dir = Path(__file__).parent.parent.parent / "prompts" / "v1" / lang
+    prompts_source_dir = (
+        Path(__file__).parent.parent.parent
+        / "src"
+        / "marketing_project"
+        / "prompts"
+        / "v1"
+        / lang
+    )
     prompts_test_dir = tmp_path / lang
     prompts_test_dir.mkdir(parents=True)
 

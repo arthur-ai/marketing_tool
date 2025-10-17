@@ -460,9 +460,9 @@ Resources:
             - Name: POSTGRES_URL
               Value: !Sub 'postgresql://postgres:${DatabasePassword}@${Database.Endpoint.Address}:5432/marketing_project'
             - Name: PIPELINE_CONFIG_PATH
-              Value: '/app/config/pipeline.yml'
+              Value: '/app/src/marketing_project/config/pipeline.yml'
             - Name: PROMPTS_DIR
-              Value: '/app/prompts'
+              Value: '/app/src/marketing_project/prompts'
             - Name: MAX_CONTENT_LENGTH
               Value: '1000000'
             - Name: CONTENT_BATCH_SIZE

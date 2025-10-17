@@ -54,7 +54,13 @@ def test_content_files():
 def test_prompts_dir():
     """Use the real prompts directory for testing."""
     # Use real prompt templates from the prompts directory
-    prompts_dir = Path(__file__).parent.parent.parent / "prompts" / "v1"
+    prompts_dir = (
+        Path(__file__).parent.parent.parent
+        / "src"
+        / "marketing_project"
+        / "prompts"
+        / "v1"
+    )
 
     # Verify prompts directory exists
     assert prompts_dir.exists(), f"Prompts directory not found: {prompts_dir}"
@@ -88,7 +94,13 @@ def test_prompts_dir():
 @pytest.fixture
 def test_pipeline_config():
     """Load and return the pipeline configuration."""
-    config_file = Path(__file__).parent.parent.parent / "config" / "pipeline.yml"
+    config_file = (
+        Path(__file__).parent.parent.parent
+        / "src"
+        / "marketing_project"
+        / "config"
+        / "pipeline.yml"
+    )
     assert config_file.exists(), f"Pipeline config not found: {config_file}"
 
     import yaml

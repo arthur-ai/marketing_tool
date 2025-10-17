@@ -132,3 +132,15 @@ dmypy.json
 logs/
 *.log
 secrets/
+uploads/
+bandit-report.json
+security_audit.log
+
+# OS specific
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
