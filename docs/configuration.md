@@ -8,7 +8,7 @@ The Arthur Marketing Generator is highly configurable through YAML configuration
 
 ### Main Configuration File
 
-The primary configuration is stored in `config/pipeline.yml`:
+The primary configuration is stored in `src/marketing_project/config/pipeline.yml`:
 
 ```yaml
 version: "2"

@@ -24,8 +24,8 @@ data:
   REDIS_URL: "redis://redis-service:6379"
 
   # Pipeline configuration
-  PIPELINE_CONFIG_PATH: "/app/config/pipeline.yml"
-  PROMPTS_DIR: "/app/prompts"
+  PIPELINE_CONFIG_PATH: "/app/src/marketing_project/config/pipeline.yml"
+  PROMPTS_DIR: "/app/src/marketing_project/prompts"
 
   # Content processing settings
   MAX_CONTENT_LENGTH: "1000000"

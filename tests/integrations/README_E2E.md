@@ -54,8 +54,8 @@ OPENAI_API_KEY=your_actual_openai_key_here
 ### Required Files
 - `content/example_blog_post.json` - Blog post content for testing
 - `content/example_transcript.md` - Podcast transcript for testing
-- `prompts/v1/en/*.j2` - Prompt templates
-- `config/pipeline.yml` - Pipeline configuration
+- `src/marketing_project/prompts/v1/en/*.j2` - Prompt templates
+- `src/marketing_project/config/pipeline.yml` - Pipeline configuration
 
 ### Dependencies
 ```bash

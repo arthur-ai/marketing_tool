@@ -29,7 +29,11 @@ class ContentSourceConfigLoader:
     """Loads content source configurations from various sources."""
 
     def __init__(self, config_file: Optional[str] = None):
-        self.config_file = config_file or "config/pipeline.yml"
+        # Default to the config file in the marketing_project package
+        if config_file is None:
+            base_dir = os.path.dirname(os.path.dirname(__file__))
+            config_file = os.path.join(base_dir, "config", "pipeline.yml")
+        self.config_file = config_file
         self.env_prefix = "CONTENT_SOURCE_"
 
     def load_configs(self) -> List[Dict[str, Any]]:

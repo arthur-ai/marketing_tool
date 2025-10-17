@@ -184,7 +184,7 @@ src/marketing_project/plugins/
 
 ## Configuration
 
-The pipeline is configured through `config/pipeline.yml`:
+The pipeline is configured through `src/marketing_project/config/pipeline.yml`:
 
 ```yaml
 version: "2"
