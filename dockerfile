@@ -25,10 +25,8 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
+# Copy application code (includes config and prompts now)
 COPY src/ ./src/
-COPY config/ ./config/
-COPY prompts/ ./prompts/
 
 # Create necessary directories
 RUN mkdir -p /app/logs /app/uploads /app/cache
