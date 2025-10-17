@@ -254,21 +254,21 @@ print_info "Deploying CloudFormation stack..."
 
 if eval "$CF_COMMAND"; then
     print_success "CloudFormation stack $ACTION initiated successfully"
-    
+
     print_info "Waiting for stack $ACTION to complete..."
     if aws cloudformation wait "stack-${ACTION}-complete" --stack-name "$STACK_NAME"; then
         print_success "Stack $ACTION completed successfully!"
-        
+
         # Get stack outputs
         print_info "Retrieving stack outputs..."
         aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query 'Stacks[0].Outputs' --output table
-        
+
         # Get the ALB URL
         ALB_URL=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query 'Stacks[0].Outputs[?OutputKey==`ALBURL`].OutputValue' --output text)
         if [[ -n "$ALB_URL" ]]; then
             print_success "Application is available at: $ALB_URL"
         fi
-        
+
         # Get ECR repository URI
         ECR_URI=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query 'Stacks[0].Outputs[?OutputKey==`ECRRepositoryURI`].OutputValue' --output text)
         if [[ -n "$ECR_URI" ]]; then
@@ -289,7 +289,7 @@ if eval "$CF_COMMAND"; then
             echo ""
             print_info "Note: This deployment uses Uvicorn as the ASGI server, optimized for FastAPI applications."
         fi
-        
+
     else
         print_error "Stack $ACTION failed or timed out"
         print_info "Check the CloudFormation console for details: https://console.aws.amazon.com/cloudformation/home?region=$REGION#/stacks"

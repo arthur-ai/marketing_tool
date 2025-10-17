@@ -123,7 +123,9 @@ class TestKeyBERTKeywordExtraction:
             ("customer analytics", 0.82),
         ]
 
-        result = extract_keywords_with_keybert(sample_content, method="maximal_marginal_relevance")
+        result = extract_keywords_with_keybert(
+            sample_content, method="maximal_marginal_relevance"
+        )
 
         assert result["success"] is True
         assert result["data"]["method"] == "maximal_marginal_relevance"
@@ -175,7 +177,9 @@ class TestKeyBERTKeywordExtraction:
         # Mock the KeyBERT instance to raise an exception
         mock_keybert_instance = MagicMock()
         mock_keybert_class.return_value = mock_keybert_instance
-        mock_keybert_instance.extract_keywords.side_effect = Exception("KeyBERT processing error")
+        mock_keybert_instance.extract_keywords.side_effect = Exception(
+            "KeyBERT processing error"
+        )
 
         result = extract_keywords_with_keybert(sample_content)
 
@@ -300,12 +304,18 @@ class TestKeyBERTKeywordExtraction:
         mock_extract.side_effect = mock_extract_side_effect
 
         result = extract_keywords_advanced(
-            sample_content, methods=["mmr", "maxsum", "maximal_marginal_relevance"], max_keywords=3
+            sample_content,
+            methods=["mmr", "maxsum", "maximal_marginal_relevance"],
+            max_keywords=3,
         )
 
         assert result["success"] is True
         assert result["data"]["total_keywords_found"] == 3
-        assert result["data"]["methods_used"] == ["mmr", "maxsum", "maximal_marginal_relevance"]
+        assert result["data"]["methods_used"] == [
+            "mmr",
+            "maxsum",
+            "maximal_marginal_relevance",
+        ]
 
         keywords = result["data"]["keywords"]
         # Should be sorted by total_score
@@ -324,9 +334,7 @@ class TestKeyBERTKeywordExtraction:
         # Mock all methods to fail
         mock_extract.return_value = {"success": False, "error": "Method failed"}
 
-        result = extract_keywords_advanced(
-            sample_content, methods=["mmr", "maxsum"]
-        )
+        result = extract_keywords_advanced(sample_content, methods=["mmr", "maxsum"])
 
         assert result["success"] is True  # Now returns success with empty results
         assert result["data"]["total_keywords_found"] == 0
@@ -368,7 +376,9 @@ class TestKeyBERTKeywordExtraction:
     def test_extract_keywords_advanced_default_methods(self, sample_content):
         """Test advanced extraction with default methods."""
         with (
-            patch("marketing_project.plugins.seo_keywords.tasks.KEYBERT_AVAILABLE", True),
+            patch(
+                "marketing_project.plugins.seo_keywords.tasks.KEYBERT_AVAILABLE", True
+            ),
             patch(
                 "marketing_project.plugins.seo_keywords.tasks.extract_keywords_with_keybert"
             ) as mock_extract,

@@ -7,107 +7,107 @@ Parameters:
     Default: production
     AllowedValues: [development, staging, production]
     Description: Environment name
-  
+
   ProjectName:
     Type: String
     Default: marketing-tool
     Description: Name of the project
-  
+
   VpcCIDR:
     Type: String
     Default: 10.0.0.0/16
     Description: CIDR block for the VPC
-  
+
   PublicSubnet1CIDR:
     Type: String
     Default: 10.0.1.0/24
     Description: CIDR block for public subnet 1
-  
+
   PublicSubnet2CIDR:
     Type: String
     Default: 10.0.2.0/24
     Description: CIDR block for public subnet 2
-  
+
   PrivateSubnet1CIDR:
     Type: String
     Default: 10.0.3.0/24
     Description: CIDR block for private subnet 1
-  
+
   PrivateSubnet2CIDR:
     Type: String
     Default: 10.0.4.0/24
     Description: CIDR block for private subnet 2
-  
+
   DatabaseSubnet1CIDR:
     Type: String
     Default: 10.0.5.0/24
     Description: CIDR block for database subnet 1
-  
+
   DatabaseSubnet2CIDR:
     Type: String
     Default: 10.0.6.0/24
     Description: CIDR block for database subnet 2
-  
+
   InstanceType:
     Type: String
     Default: t3.medium
     AllowedValues: [t3.small, t3.medium, t3.large, t3.xlarge]
     Description: ECS task instance type
-  
+
   DesiredCount:
     Type: Number
     Default: 2
     MinValue: 1
     MaxValue: 10
     Description: Desired number of ECS tasks
-  
+
   DatabaseInstanceClass:
     Type: String
     Default: db.t3.micro
     AllowedValues: [db.t3.micro, db.t3.small, db.t3.medium, db.t3.large]
     Description: RDS instance class
-  
+
   DatabaseAllocatedStorage:
     Type: Number
     Default: 20
     MinValue: 20
     MaxValue: 1000
     Description: RDS allocated storage in GB
-  
+
   RedisNodeType:
     Type: String
     Default: cache.t3.micro
     AllowedValues: [cache.t3.micro, cache.t3.small, cache.t3.medium, cache.t3.large]
     Description: ElastiCache Redis node type
-  
+
   DomainName:
     Type: String
     Default: ''
     Description: Domain name for the application (optional)
-  
+
   CertificateArn:
     Type: String
     Default: ''
     Description: ACM certificate ARN for HTTPS (optional)
-  
+
   OpenAIApiKey:
     Type: String
     NoEcho: true
     Description: OpenAI API key
     MinLength: 1
-  
+
   ApiKey:
     Type: String
     NoEcho: true
     Description: API authentication key
     MinLength: 32
-  
+
   DatabasePassword:
     Type: String
     NoEcho: true
     Description: Database master password
     MinLength: 8
-  
+
   MongoDBPassword:
     Type: String
     NoEcho: true

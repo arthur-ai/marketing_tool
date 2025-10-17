@@ -192,8 +192,8 @@ Always update `__init__.py` when adding new models.
 
 ```python
 from marketing_project.models import (
-    BlogPostContext, 
-    AnalyzeRequest, 
+    BlogPostContext,
+    AnalyzeRequest,
     ContentAnalysisResponse
 )
 

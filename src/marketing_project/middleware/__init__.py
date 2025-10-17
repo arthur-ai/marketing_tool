@@ -5,13 +5,13 @@ This package contains essential middleware components for the marketing project 
 """
 
 from .cors import setup_cors
-from .logging import LoggingMiddleware, RequestIDMiddleware
 from .error_handling import ErrorHandlingMiddleware, create_error_response
+from .logging import LoggingMiddleware, RequestIDMiddleware
 
 __all__ = [
     "setup_cors",
     "LoggingMiddleware",
     "RequestIDMiddleware",
     "ErrorHandlingMiddleware",
-    "create_error_response"
+    "create_error_response",
 ]

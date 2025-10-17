@@ -12,21 +12,21 @@ data:
   PORT: "8000"
   LOG_LEVEL: "INFO"
   TEMPLATE_VERSION: "v1"
-  
+
   # CORS settings
   CORS_ORIGINS: "https://marketing-project.com,https://www.marketing-project.com"
   CORS_ALLOW_CREDENTIALS: "true"
-  
+
   # Database connections (for content sources)
   CONTENT_DATABASE_URL: "sqlite:///./content.db"
   POSTGRES_URL: "postgresql://postgres:password@postgres-service:5432/marketing_project"
   MONGODB_URL: "mongodb://mongodb-service:27017/marketing_project"
   REDIS_URL: "redis://redis-service:6379"
-  
+
   # Pipeline configuration
   PIPELINE_CONFIG_PATH: "/app/config/pipeline.yml"
   PROMPTS_DIR: "/app/prompts"
-  
+
   # Content processing settings
   MAX_CONTENT_LENGTH: "1000000"
   CONTENT_BATCH_SIZE: "10"

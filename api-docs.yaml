@@ -3,19 +3,19 @@ info:
   title: Marketing Project API
   description: |
     Comprehensive API for marketing content processing and analysis.
-    
+
     This API provides endpoints for:
     - Content analysis and quality assessment
     - Complete marketing pipeline processing
     - Content source management
     - System health monitoring
-    
+
     ## Content Types
     The API supports various content types:
     - **Blog Posts**: Marketing blog content
     - **Transcripts**: Audio/video transcripts
     - **Release Notes**: Software release documentation
-    
+
   version: 1.0.0
   contact:
     name: Marketing Project Team
@@ -108,7 +108,7 @@ paths:
       summary: Analyze Content
       description: |
         Analyze content for marketing pipeline processing.
-        
+
         This endpoint performs comprehensive content analysis including:
         - Content quality assessment
         - SEO potential analysis
@@ -148,7 +148,7 @@ paths:
       summary: Run Marketing Pipeline
       description: |
         Run the complete marketing pipeline on content.
-        
+
         This endpoint executes the full 7-step marketing pipeline:
         1. AnalyzeContent - Initial content analysis
         2. ExtractSEOKeywords - SEO keyword extraction

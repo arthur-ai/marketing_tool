@@ -10,24 +10,24 @@ jobs:
   update-dependencies:
     name: Update Dependencies
     runs-on: ubuntu-latest
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      
+
     - name: Set up Python 3.12
       uses: actions/setup-python@v4
       with:
         python-version: '3.12'
-        
+
     - name: Install pip-tools
       run: pip install pip-tools
-        
+
     - name: Update requirements.txt
       run: |
         pip-compile --upgrade requirements.in
         pip-compile --upgrade requirements-dev.in
-        
+
     - name: Check for changes
       id: changes
       run: |
@@ -36,7 +36,7 @@ jobs:
         else
           echo "changed=true" >> $GITHUB_OUTPUT
         fi
-        
+
     - name: Create Pull Request
       if: steps.changes.outputs.changed == 'true'
       uses: peter-evans/create-pull-request@v5
@@ -46,11 +46,11 @@ jobs:
         title: 'chore: update dependencies'
         body: |
           This PR updates the project dependencies to their latest versions.
-          
+
           **Changes:**
           - Updated Python package dependencies
           - Updated development dependencies
-          
+
           **Testing:**
           - [ ] All tests pass
           - [ ] No breaking changes detected

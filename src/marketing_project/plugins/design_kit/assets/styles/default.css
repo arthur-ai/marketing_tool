@@ -226,15 +226,15 @@
     grid-template-columns: 1fr;
     gap: 1rem;
   }
-  
+
   .design-kit .hero-section h1 {
     font-size: 2rem;
   }
-  
+
   .design-kit .hero-section .subtitle {
     font-size: 1.125rem;
   }
-  
+
   .design-kit .container {
     padding: 0 0.75rem;
   }
@@ -244,11 +244,11 @@
   .design-kit .hero-section {
     padding: 2rem 1rem;
   }
-  
+
   .design-kit .hero-section h1 {
     font-size: 1.75rem;
   }
-  
+
   .design-kit .btn {
     width: 100%;
     text-align: center;
@@ -279,11 +279,11 @@
   .design-kit .btn {
     display: none;
   }
-  
+
   .design-kit .content-wrapper {
     grid-template-columns: 1fr;
   }
-  
+
   .design-kit .hero-section {
     background: none;
     border: 1px solid #e2e8f0;

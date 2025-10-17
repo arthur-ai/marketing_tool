@@ -16,31 +16,31 @@ graph TD
     F --> G[SuggestInternalDocs]
     G --> H[FormatContent]
     H --> I[Publication-Ready Content]
-    
+
     B --> B1[Content Quality Assessment]
     B --> B2[SEO Potential Analysis]
     B --> B3[Marketing Value Evaluation]
-    
+
     C --> C1[Primary Keywords]
     C --> C2[Secondary Keywords]
     C --> C3[Keyword Density Analysis]
-    
+
     D --> D1[Target Audience Definition]
     D --> D2[Content Objectives]
     D --> D3[Marketing Strategy]
-    
+
     E --> E1[Article Structure]
     E --> E2[Content Writing]
     E --> E3[Supporting Elements]
-    
+
     F --> F1[Title Optimization]
     F --> F2[Meta Description]
     F --> F3[Heading Structure]
-    
+
     G --> G1[Content Gap Analysis]
     G --> G2[Related Documents]
     G --> G3[Cross-References]
-    
+
     H --> H1[Formatting Rules]
     H --> H2[Readability Optimization]
     H --> H3[Visual Elements]

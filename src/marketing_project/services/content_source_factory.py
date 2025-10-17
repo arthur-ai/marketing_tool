@@ -13,9 +13,11 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
 
+from marketing_project.core.content_sources import ContentSource
 from marketing_project.core.content_sources import (
-    ContentSource,
     ContentSourceManager as BaseContentSourceManager,
+)
+from marketing_project.core.content_sources import (
     ContentSourceResult,
     ContentSourceType,
     DatabaseSourceConfig,
@@ -64,7 +66,7 @@ class ContentSourceFactory:
             if not config.name:
                 logger.error("Content source name is required")
                 return None
-            
+
             if not config.source_type:
                 logger.error("Content source type is required")
                 return None
@@ -86,14 +88,16 @@ class ContentSourceFactory:
             elif config.source_type == ContentSourceType.DATABASE:
                 # Ensure we have a DatabaseSourceConfig
                 if not isinstance(config, DatabaseSourceConfig):
-                    logger.error(f"Expected DatabaseSourceConfig for database source, got {type(config)}")
+                    logger.error(
+                        f"Expected DatabaseSourceConfig for database source, got {type(config)}"
+                    )
                     return None
-                
+
                 # Validate database configuration
                 if not config.connection_string:
                     logger.error("Database connection string is required")
                     return None
-                
+
                 # Determine database type from connection string
                 connection_string = config.connection_string.lower()
                 if "mongodb" in connection_string:

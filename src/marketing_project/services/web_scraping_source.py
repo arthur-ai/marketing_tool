@@ -342,10 +342,10 @@ class SeleniumScrapingSource(WebScrapingContentSource):
             chrome_options.add_argument("--disable-dev-shm-usage")
             chrome_options.add_argument("--disable-gpu")
             chrome_options.add_argument("--window-size=1920,1080")
-            
+
             # Initialize Chrome driver
             self.driver = webdriver.Chrome(options=chrome_options)
-            
+
             self.connected = True
             self.status = ContentSourceStatus.ACTIVE
             logger.info(f"Selenium scraping source {self.config.name} initialized")

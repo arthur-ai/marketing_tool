@@ -26,14 +26,14 @@ All plugins follow these standards:
 ### 1. Function Signatures
 ```python
 def task_function(
-    content: Union[ContentContext, Dict[str, Any]], 
+    content: Union[ContentContext, Dict[str, Any]],
     **kwargs
 ) -> Dict[str, Any]:
     """Function docstring."""
     try:
         # Ensure content is a ContentContext object
         content_obj = ensure_content_context(content)
-        
+
         # Validate content
         validation = validate_content_for_processing(content_obj)
         if not validation['is_valid']:
@@ -42,10 +42,10 @@ def task_function(
                 error=f"Validation failed: {', '.join(validation['issues'])}",
                 task_name='task_function'
             )
-        
+
         # Process content
         result_data = process_content(content_obj, **kwargs)
-        
+
         # Return standardized result
         return create_standard_task_result(
             success=True,
@@ -53,7 +53,7 @@ def task_function(
             task_name='task_function',
             metadata=extract_content_metadata_for_pipeline(content_obj)
         )
-        
+
     except Exception as e:
         logger.error(f"Error in task_function: {str(e)}")
         return create_standard_task_result(
@@ -224,7 +224,7 @@ To create a custom plugin:
    """
    Your Plugin Name - Description
    """
-   
+
    from .tasks import *
    ```
 
@@ -233,7 +233,7 @@ To create a custom plugin:
    """
    Your Plugin Name processing tasks.
    """
-   
+
    import logging
    from typing import Dict, Any, Union
    from marketing_project.core.models import ContentContext
@@ -241,15 +241,15 @@ To create a custom plugin:
        ensure_content_context, create_standard_task_result,
        validate_content_for_processing, extract_content_metadata_for_pipeline
    )
-   
+
    logger = logging.getLogger("marketing_project.plugins.your_plugin_name")
-   
+
    def your_task_function(content: Union[ContentContext, Dict[str, Any]]) -> Dict[str, Any]:
        """Your task function."""
        try:
            # Ensure content is a ContentContext object
            content_obj = ensure_content_context(content)
-           
+
            # Validate content
            validation = validate_content_for_processing(content_obj)
            if not validation['is_valid']:
@@ -258,10 +258,10 @@ To create a custom plugin:
                    error=f"Validation failed: {', '.join(validation['issues'])}",
                    task_name='your_task_function'
                )
-           
+
            # Process content
            result_data = process_your_content(content_obj)
-           
+
            # Return standardized result
            return create_standard_task_result(
                success=True,
@@ -269,7 +269,7 @@ To create a custom plugin:
                task_name='your_task_function',
                metadata=extract_content_metadata_for_pipeline(content_obj)
            )
-           
+
        except Exception as e:
            logger.error(f"Error in your_task_function: {str(e)}")
            return create_standard_task_result(
@@ -293,7 +293,7 @@ To create a custom plugin:
    ```python
    # In src/marketing_project/agents/your_agent.py
    from marketing_project.plugins.your_plugin_name import tasks as your_tasks
-   
+
    tools = [
        your_tasks.your_task_function,
        # ... other tools
@@ -330,9 +330,9 @@ def test_your_task_function():
         title="Test Content",
         content="This is test content."
     )
-    
+
     result = tasks.your_task_function(content)
-    
+
     assert isinstance(result, dict)
     assert result.get('success') is not None
     assert result.get('task_name') == 'your_task_function'

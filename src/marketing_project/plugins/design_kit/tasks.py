@@ -840,20 +840,20 @@ def generate_responsive_css(responsive_config: Dict[str, Any]) -> str:
         margin: 0 auto;
         padding: 1rem;
     }}
-    
+
     @media (max-width: {responsive_config['breakpoints']['mobile']}) {{
         .responsive-content {{
             padding: 0.5rem;
             font-size: {responsive_config['mobile_optimizations']['font_size_scale']}em;
         }}
     }}
-    
+
     @media (min-width: {responsive_config['breakpoints']['tablet']}) {{
         .responsive-content {{
             max-width: 800px;
         }}
     }}
-    
+
     @media (min-width: {responsive_config['breakpoints']['desktop']}) {{
         .responsive-content {{
             max-width: 1200px;

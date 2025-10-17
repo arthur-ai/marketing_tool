@@ -17,7 +17,7 @@ router = APIRouter()
 async def get_system_info():
     """
     Get system information and configuration.
-    
+
     Returns system information including:
     - Version information
     - Configuration status
@@ -26,8 +26,9 @@ async def get_system_info():
     try:
         import platform
         import sys
+
         from marketing_project.server import PIPELINE_SPEC, PROMPTS_DIR
-        
+
         info = {
             "service": "marketing-project",
             "version": "1.0.0",
@@ -42,13 +43,12 @@ async def get_system_info():
                 "pipeline_loaded": PIPELINE_SPEC is not None,
                 "prompts_dir_exists": os.path.exists(PROMPTS_DIR),
                 "prompts_dir": PROMPTS_DIR,
-            }
+            },
         }
-        
+
         return info
     except Exception as e:
         logger.error(f"Failed to get system info: {e}")
         raise HTTPException(
-            status_code=500,
-            detail=f"Failed to retrieve system information: {str(e)}"
+            status_code=500, detail=f"Failed to retrieve system information: {str(e)}"
         )

@@ -151,13 +151,13 @@ content_analysis:
     min_score: 60
     max_score: 100
     target_score: 75
-  
+
   quality_checks:
     min_word_count: 100
     max_word_count: 10000
     require_title: true
     require_snippet: false
-  
+
   seo_analysis:
     check_keywords: true
     check_meta_tags: true
@@ -174,13 +174,13 @@ seo_keywords:
     max_keywords: 10
     min_keyword_length: 3
     max_keyword_length: 20
-  
+
   scoring:
     frequency_weight: 0.4
     position_weight: 0.3
     length_weight: 0.2
     uniqueness_weight: 0.1
-  
+
   filtering:
     min_frequency: 2
     min_score: 0.5
@@ -197,12 +197,12 @@ marketing_brief:
       age_range: "25-45"
       experience_level: "intermediate"
       industry: "technology"
-  
+
   content_objectives:
     default_primary: "educate"
     default_secondary: "generate_leads"
     default_tertiary: "establish_authority"
-  
+
   success_metrics:
     engagement:
       min_time_on_page: 180  # seconds
@@ -224,7 +224,7 @@ article_generation:
     max_sections: 8
     min_words_per_section: 200
     max_words_per_section: 800
-  
+
   content:
     default_tone: "professional"
     default_style: "informative"
@@ -233,7 +233,7 @@ article_generation:
       min: 10
       max: 25
       target: 15
-  
+
   seo_integration:
     keyword_density_target: 0.02
     title_keyword_placement: "beginning"
@@ -250,20 +250,20 @@ seo_optimization:
     target_length: 50
     include_primary_keyword: true
     include_brand: false
-  
+
   meta_descriptions:
     min_length: 120
     max_length: 160
     target_length: 150
     include_call_to_action: true
     include_primary_keyword: true
-  
+
   headings:
     use_h1_once: true
     h2_keyword_placement: "natural"
     h3_keyword_placement: "optional"
     heading_hierarchy: "logical"
-  
+
   content_structure:
     min_paragraphs: 3
     max_paragraphs: 20
@@ -282,12 +282,12 @@ internal_docs:
     check_missing_sections: true
     check_unexplained_concepts: true
     min_gap_score: 0.3
-  
+
   suggestions:
     max_suggestions: 5
     priority_levels: ["high", "medium", "low"]
     target_audiences: ["beginners", "intermediate", "advanced", "all"]
-  
+
   cross_references:
     min_relevance_score: 0.7
     max_suggestions: 3
@@ -306,14 +306,14 @@ content_formatting:
     code_style: "fenced"  # fenced, inline, indented
     link_style: "markdown"  # markdown, html, plain
     emphasis_style: "bold_italic"  # bold, italic, bold_italic
-  
+
   readability:
     target_grade_level: 8
     max_sentence_length: 25
     min_sentence_length: 10
     use_transition_words: true
     break_long_paragraphs: true
-  
+
   visual_elements:
     add_headers: true
     add_lists: true
@@ -334,37 +334,37 @@ agents:
     temperature: 0.7
     max_tokens: 4000
     timeout: 30
-  
+
   seo_keywords_agent:
     model: "gpt-3.5-turbo"
     temperature: 0.5
     max_tokens: 2000
     timeout: 20
-  
+
   marketing_brief_agent:
     model: "gpt-4"
     temperature: 0.8
     max_tokens: 3000
     timeout: 25
-  
+
   article_generation_agent:
     model: "gpt-4"
     temperature: 0.7
     max_tokens: 4000
     timeout: 30
-  
+
   seo_optimization_agent:
     model: "gpt-3.5-turbo"
     temperature: 0.6
     max_tokens: 2000
     timeout: 20
-  
+
   internal_docs_agent:
     model: "gpt-3.5-turbo"
     temperature: 0.5
     max_tokens: 2000
     timeout: 20
-  
+
   content_formatting_agent:
     model: "gpt-3.5-turbo"
     temperature: 0.4
@@ -381,13 +381,13 @@ models:
     base_url: "https://api.openai.com/v1"
     max_retries: 3
     retry_delay: 1
-  
+
   gpt-3.5-turbo:
     api_key: "${OPENAI_API_KEY}"
     base_url: "https://api.openai.com/v1"
     max_retries: 3
     retry_delay: 1
-  
+
   claude-3:
     api_key: "${ANTHROPIC_API_KEY}"
     base_url: "https://api.anthropic.com/v1"
@@ -427,15 +427,15 @@ loggers:
   marketing_project.agents:
     level: DEBUG
     handlers: [console, file]
-  
+
   marketing_project.plugins:
     level: INFO
     handlers: [console, file]
-  
+
   marketing_project.core:
     level: INFO
     handlers: [console, file]
-  
+
   marketing_project.services:
     level: WARNING
     handlers: [console, file]
@@ -486,13 +486,13 @@ monitoring:
     port: 8080
     path: "/metrics"
     interval: 60  # seconds
-  
+
   health_checks:
     enabled: true
     port: 8081
     path: "/health"
     interval: 30  # seconds
-  
+
   alerts:
     enabled: true
     webhook_url: "${ALERT_WEBHOOK_URL}"
@@ -511,12 +511,12 @@ performance:
     enabled: false
     sample_rate: 0.1
     output_dir: "profiles"
-  
+
   tracing:
     enabled: false
     jaeger_endpoint: "http://localhost:14268/api/traces"
     sample_rate: 0.1
-  
+
   benchmarks:
     enabled: false
     output_dir: "benchmarks"
@@ -534,7 +534,7 @@ security:
     api_key_header: "X-API-Key"
     jwt_secret: "${JWT_SECRET}"
     jwt_expiry: 3600  # seconds
-  
+
   authorization:
     enabled: true
     default_role: "user"
@@ -545,7 +545,7 @@ security:
         permissions: ["read", "write"]
       viewer:
         permissions: ["read"]
-  
+
   rate_limiting:
     enabled: true
     requests_per_minute: 100
@@ -562,12 +562,12 @@ data_protection:
     enabled: true
     algorithm: "AES-256-GCM"
     key: "${ENCRYPTION_KEY}"
-  
+
   anonymization:
     enabled: false
     fields: ["email", "phone", "ssn"]
     method: "hash"  # hash, mask, remove
-  
+
   retention:
     logs: 90  # days
     metrics: 30  # days
@@ -587,7 +587,7 @@ application:
   debug: false
   host: "0.0.0.0"
   port: 8000
-  
+
   workers: 4
   worker_class: "uvicorn.workers.UvicornWorker"
   worker_connections: 1000
@@ -604,23 +604,23 @@ features:
   content_analysis:
     enabled: true
     experimental_features: false
-  
+
   seo_optimization:
     enabled: true
     advanced_analysis: true
-  
+
   marketing_brief:
     enabled: true
     competitor_analysis: false
-  
+
   article_generation:
     enabled: true
     ai_writing: true
-  
+
   internal_docs:
     enabled: true
     cross_reference: true
-  
+
   content_formatting:
     enabled: true
     visual_elements: true
@@ -637,17 +637,17 @@ def validate_config(config: Dict[str, Any]) -> bool:
     required_sections = [
         "pipelines", "context_passing", "sub_pipelines"
     ]
-    
+
     for section in required_sections:
         if section not in config:
             raise ConfigurationError(f"Missing required section: {section}")
-    
+
     # Validate pipeline steps
     for pipeline_name, steps in config["pipelines"].items():
         for step in steps:
             if step not in AVAILABLE_STEPS:
                 raise ConfigurationError(f"Unknown pipeline step: {step}")
-    
+
     return True
 ```
 

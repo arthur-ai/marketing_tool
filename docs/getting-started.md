@@ -181,7 +181,7 @@ blog_post = BlogPostContext(
     content="""
     Marketing automation can revolutionize how small businesses reach their customers.
     Here are 10 essential tips to get started:
-    
+
     1. Start with email marketing
     2. Use lead scoring
     3. Personalize your messages
@@ -192,7 +192,7 @@ blog_post = BlogPostContext(
     8. Analyze your results
     9. A/B test your campaigns
     10. Continuously optimize
-    
+
     By following these tips, you can create a powerful marketing automation system
     that drives results for your business.
     """,

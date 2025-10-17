@@ -68,14 +68,14 @@ def test_parse_blog_post():
     """Test blog post parsing functionality."""
     blog_content = """
     # How to Use AI in Marketing
-    
+
     This is a comprehensive guide about AI.
-    
+
     ## Key Points
     - AI is transforming marketing
     - Automation is key
     - #AI #Marketing #Automation
-    
+
     Check out https://example.com for more info.
     """
 
@@ -98,17 +98,17 @@ def test_parse_release_notes():
     """Test release notes parsing functionality."""
     release_content = """
     # Version 2.0.0 Release Notes
-    
+
     Released on 2024-01-15
-    
+
     ## New Features
     - Added new dashboard
     - Enhanced security features
-    
+
     ## Bug Fixes
     - Fixed login issue
     - Resolved memory leak
-    
+
     ## Breaking Changes
     - Removed deprecated API
     """

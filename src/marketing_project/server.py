@@ -22,20 +22,18 @@ from typing import Optional
 
 import uvicorn
 import yaml
-
-from fastapi import FastAPI, BackgroundTasks, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.openapi.utils import get_openapi
-
-# Import middleware
-from .middleware.cors import setup_cors
-from .middleware.logging import LoggingMiddleware, RequestIDMiddleware
-from .middleware.error_handling import ErrorHandlingMiddleware
+from fastapi.responses import JSONResponse
 
 # Import API endpoints
 from .api import api_router
 
+# Import middleware
+from .middleware.cors import setup_cors
+from .middleware.error_handling import ErrorHandlingMiddleware
+from .middleware.logging import LoggingMiddleware, RequestIDMiddleware
 from .runner import run_marketing_project_pipeline
 from .scheduler import Scheduler
 
@@ -63,24 +61,29 @@ app = FastAPI(
     openapi_url="/openapi.json",
     servers=[
         {"url": "http://localhost:8000", "description": "Development server"},
-        {"url": "https://api.marketing-project.com", "description": "Production server"}
-    ]
+        {
+            "url": "https://api.marketing-project.com",
+            "description": "Production server",
+        },
+    ],
 )
+
 
 # Configure OpenAPI schema
 def custom_openapi():
     if app.openapi_schema:
         return app.openapi_schema
-    
+
     openapi_schema = get_openapi(
         title=app.title,
         version=app.version,
         description=app.description,
         routes=app.routes,
     )
-    
+
     app.openapi_schema = openapi_schema
     return app.openapi_schema
+
 
 app.openapi = custom_openapi
 
@@ -92,7 +95,9 @@ app.add_middleware(RequestIDMiddleware)
 app.add_middleware(LoggingMiddleware, log_requests=True, log_responses=True)
 
 # 3. Error handling middleware
-app.add_middleware(ErrorHandlingMiddleware, debug=os.getenv("DEBUG", "false").lower() == "true")
+app.add_middleware(
+    ErrorHandlingMiddleware, debug=os.getenv("DEBUG", "false").lower() == "true"
+)
 
 # 4. CORS middleware
 setup_cors(app)
@@ -100,7 +105,7 @@ setup_cors(app)
 # 5. Trusted host middleware (outermost)
 app.add_middleware(
     TrustedHostMiddleware,
-    allowed_hosts=["localhost", "127.0.0.1", "*.marketing-project.com"]
+    allowed_hosts=["localhost", "127.0.0.1", "*.marketing-project.com"],
 )
 
 # Include API router

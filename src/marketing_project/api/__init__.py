@@ -7,7 +7,7 @@ This package contains all API endpoints organized by functionality.
 from fastapi import APIRouter
 
 # Import all endpoint modules
-from . import core, content, health, system, upload
+from . import content, core, health, system, upload
 
 # Create main API router
 api_router = APIRouter(prefix="/api/v1", tags=["Marketing API"])

@@ -117,7 +117,7 @@ The test suite is designed for CI environments:
 - name: Run Tests
   run: |
     python -m pytest tests/ --cov=src/marketing_project --cov-report=xml
-    
+
 - name: Upload Coverage
   uses: codecov/codecov-action@v1
   with:
