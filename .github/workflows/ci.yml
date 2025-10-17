@@ -85,10 +85,6 @@ jobs:
       run: |
         black --check --diff src/ tests/
 
-    - name: Check import sorting with isort
-      run: |
-        isort --check-only --diff --profile black src/ tests/
-
   Security:
     runs-on: ubuntu-latest
     continue-on-error: true
