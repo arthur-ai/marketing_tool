@@ -60,13 +60,13 @@ Ensures the input is a ContentContext object.
 def ensure_content_context(content: Union[ContentContext, Dict[str, Any]]) -> ContentContext:
     """
     Ensures the input is a ContentContext object. If it's a dictionary, it converts it.
-    
+
     Args:
         content: Content context object or dictionary
-        
+
     Returns:
         ContentContext: Content context object
-        
+
     Raises:
         TypeError: If content type is not supported
     """
@@ -86,14 +86,14 @@ def create_standard_task_result(
 ) -> Dict[str, Any]:
     """
     Creates a standardized dictionary for task results, compatible with Any Agent.
-    
+
     Args:
         success: Whether the task was successful
         task_name: Name of the task
         data: Task-specific data
         error: Error message if unsuccessful
         metadata: Additional metadata
-        
+
     Returns:
         Dict[str, Any]: Standardized task result
     """
@@ -107,10 +107,10 @@ Validates that content has the required structure for pipeline processing.
 def validate_content_for_processing(content: ContentContext) -> Dict[str, Any]:
     """
     Validates that the content has the required structure and basic information for pipeline processing.
-    
+
     Args:
         content: Content context object
-        
+
     Returns:
         Dict[str, Any]: Validation result with 'is_valid' (bool) and 'issues' (List[str])
     """
@@ -126,10 +126,10 @@ Comprehensive content analysis for pipeline processing.
 def analyze_content_for_pipeline(content: Union[ContentContext, Dict[str, Any]]) -> Dict[str, Any]:
     """
     Analyzes content for the new marketing pipeline workflow.
-    
+
     Args:
         content: Content context object or dictionary
-        
+
     Returns:
         Dict[str, Any]: Comprehensive content analysis for pipeline
     """
@@ -186,16 +186,16 @@ Extract main SEO keywords from content.
 
 ```python
 def extract_primary_keywords(
-    content: Union[ContentContext, Dict[str, Any]], 
+    content: Union[ContentContext, Dict[str, Any]],
     max_keywords: int = 5
 ) -> Dict[str, Any]:
     """
     Extracts primary SEO keywords from content.
-    
+
     Args:
         content: Content context object or dictionary
         max_keywords: Maximum number of keywords to extract
-        
+
     Returns:
         Dict[str, Any]: Primary keywords with scores
     """
@@ -239,16 +239,16 @@ Analyze keyword density and distribution.
 
 ```python
 def analyze_keyword_density(
-    content: Union[ContentContext, Dict[str, Any]], 
+    content: Union[ContentContext, Dict[str, Any]],
     keywords: List[str]
 ) -> Dict[str, Any]:
     """
     Analyzes keyword density and distribution in content.
-    
+
     Args:
         content: Content context object or dictionary
         keywords: List of keywords to analyze
-        
+
     Returns:
         Dict[str, Any]: Keyword density analysis
     """
@@ -262,16 +262,16 @@ Generate structured marketing brief outline.
 
 ```python
 def generate_brief_outline(
-    content: Union[ContentContext, Dict[str, Any]], 
+    content: Union[ContentContext, Dict[str, Any]],
     seo_keywords: List[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """
     Generates a structured marketing brief outline based on content analysis.
-    
+
     Args:
         content: Content context object or dictionary
         seo_keywords: List of SEO keywords from previous analysis
-        
+
     Returns:
         Dict[str, Any]: Structured marketing brief outline
     """
@@ -356,16 +356,16 @@ Generate article structure and outline.
 
 ```python
 def generate_article_structure(
-    marketing_brief: Union[Dict[str, Any], ContentContext], 
+    marketing_brief: Union[Dict[str, Any], ContentContext],
     seo_keywords: List[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """
     Generates article structure and outline based on marketing brief.
-    
+
     Args:
         marketing_brief: Marketing brief dictionary or ContentContext
         seo_keywords: List of SEO keywords for optimization
-        
+
     Returns:
         Dict[str, Any]: Article structure and outline
     """
@@ -435,16 +435,16 @@ Optimize title tags for SEO.
 
 ```python
 def optimize_title_tags(
-    article: Union[Dict[str, Any], ContentContext], 
+    article: Union[Dict[str, Any], ContentContext],
     keywords: List[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """
     Optimizes title tags for better SEO performance.
-    
+
     Args:
         article: Article dictionary with content or ContentContext
         keywords: List of SEO keywords for optimization
-        
+
     Returns:
         Dict[str, Any]: Optimized title tags and recommendations
     """
@@ -485,16 +485,16 @@ Analyze content for gaps that could be filled with internal documents.
 
 ```python
 def analyze_content_gaps(
-    article: Union[Dict[str, Any], ContentContext], 
+    article: Union[Dict[str, Any], ContentContext],
     existing_docs: List[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """
     Analyzes content for gaps that could be filled with internal documents.
-    
+
     Args:
         article: Article dictionary with content or ContentContext
         existing_docs: List of existing internal documents
-        
+
     Returns:
         Dict[str, Any]: Content gap analysis results
     """
@@ -554,16 +554,16 @@ Apply consistent formatting rules to content.
 
 ```python
 def apply_formatting_rules(
-    article: Union[Dict[str, Any], ContentContext], 
+    article: Union[Dict[str, Any], ContentContext],
     style_guide: Dict[str, Any] = None
 ) -> Dict[str, Any]:
     """
     Applies consistent formatting rules to content.
-    
+
     Args:
         article: Article dictionary with content or ContentContext
         style_guide: Style guide configuration
-        
+
     Returns:
         Dict[str, Any]: Formatted content with applied rules
     """

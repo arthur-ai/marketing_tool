@@ -116,7 +116,7 @@ content_sources:
         file_patterns: ["content/**/*.md", "content/**/*.json", "data/**/*.txt"]
         watch_directory: true
         supported_formats: [".md", ".json", ".txt", ".yaml", ".yml"]
-    
+
     - name: "content_api"
       type: "api"
       enabled: false
@@ -127,7 +127,7 @@ content_sources:
         auth_config:
           key_name: "X-API-Key"
           key_value: "${CONTENT_API_KEY}"
-    
+
     - name: "content_database"
       type: "database"
       enabled: false
@@ -135,7 +135,7 @@ content_sources:
         connection_string: "${CONTENT_DATABASE_URL}"
         query: "SELECT * FROM content"
         table_name: "content"
-    
+
     - name: "web_content"
       type: "web_scraping"
       enabled: false
@@ -152,7 +152,7 @@ content_sources:
     enabled: true
     interval: 300  # seconds
     batch_size: 10
-  
+
   caching:
     enabled: true
     ttl: 300  # seconds

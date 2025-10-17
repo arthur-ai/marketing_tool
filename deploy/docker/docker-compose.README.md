@@ -58,7 +58,7 @@ The API automatically detects which services are available and configures itself
 
 - **SQLite**: Always available (default)
 - **PostgreSQL**: Used if `POSTGRES_URL` is set
-- **MongoDB**: Used if `MONGODB_URL` is set  
+- **MongoDB**: Used if `MONGODB_URL` is set
 - **Redis**: Used if `REDIS_URL` is set
 
 ## Development Tips

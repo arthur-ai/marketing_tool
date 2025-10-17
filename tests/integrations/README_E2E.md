@@ -17,7 +17,7 @@ The E2E tests validate the complete content processing pipeline using real conte
 - **Original 3-Agent Pipeline**: transcripts, blog, release notes
 - **New 8-Step Pipeline**: Complete content analysis workflow
   1. AnalyzeContent
-  2. ExtractSEOKeywords  
+  2. ExtractSEOKeywords
   3. GenerateMarketingBrief
   4. GenerateArticle
   5. OptimizeSEO

@@ -237,7 +237,7 @@ pytest --cov=src/marketing_project --cov-report=html -v -s
    ```python
    def test_user_can_login_with_valid_credentials():
        pass
-   
+
    def test_user_cannot_login_with_invalid_credentials():
        pass
    ```

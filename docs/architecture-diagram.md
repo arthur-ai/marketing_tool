@@ -115,7 +115,7 @@
 - **Orchestrator**: `MarketingOrchestratorAgent`
 - **Flow**: Content → Orchestrator → Specialized Agent → Processed Content
 
-### Content Analysis Pipeline  
+### Content Analysis Pipeline
 - **Purpose**: Comprehensive 8-step content analysis and generation
 - **Orchestrator**: `ContentPipelineAgent`
 - **Flow**: Content → Orchestrator → 8-Step Workflow → Enhanced Content

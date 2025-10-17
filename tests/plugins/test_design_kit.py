@@ -446,18 +446,18 @@ class TestDesignKitPlugin:
             title="Complete Marketing Guide: From Strategy to Implementation",
             content="""
             # Marketing Strategy Fundamentals
-            
+
             Marketing strategy is the foundation of business success. Here's how to build an effective strategy:
-            
+
             ## 1. Market Research
             Understanding your market is crucial for success.
-            
+
             ## 2. Target Audience
             Define your ideal customer profile.
-            
+
             ## 3. Value Proposition
             Create compelling value propositions.
-            
+
             ## 4. Implementation
             Execute your strategy effectively.
             """,
