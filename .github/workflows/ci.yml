@@ -87,7 +87,7 @@ jobs:
 
     - name: Check import sorting with isort
       run: |
-        isort --check-only --diff src/ tests/
+        isort --check-only --diff --profile black src/ tests/
 
   Security:
     runs-on: ubuntu-latest
@@ -119,6 +119,6 @@ jobs:
       uses: trufflesecurity/trufflehog@main
       with:
         path: ./
-        base: main
-        head: HEAD
+        base: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        head: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
         extra_args: --debug --only-verified
