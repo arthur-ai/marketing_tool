@@ -6,6 +6,11 @@ import logging
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 
+from marketing_project.agents.blog_agent import get_blog_agent
+from marketing_project.agents.marketing_agent import get_marketing_orchestrator_agent
+from marketing_project.agents.releasenotes_agent import get_releasenotes_agent
+from marketing_project.agents.transcripts_agent import get_transcripts_agent
+from marketing_project.config.settings import PROMPTS_DIR
 from marketing_project.models import (
     AnalyzeRequest,
     ContentAnalysisResponse,
@@ -13,7 +18,6 @@ from marketing_project.models import (
     PipelineResponse,
 )
 from marketing_project.plugins.content_analysis import analyze_content_for_pipeline
-from marketing_project.runner import run_marketing_project_pipeline
 
 logger = logging.getLogger("marketing_project.api.core")
 
@@ -71,17 +75,51 @@ async def run_pipeline(request: PipelineRequest, background_tasks: BackgroundTas
     try:
         logger.info(f"Pipeline request for content ID: {request.content.id}")
 
-        # Run the marketing pipeline
-        from marketing_project.server import PROMPTS_DIR
-
-        pipeline_result = await run_marketing_project_pipeline(
-            prompts_dir=PROMPTS_DIR, lang="en"
+        # Set up specialized agents and orchestrator
+        transcripts_agent = await get_transcripts_agent(PROMPTS_DIR, "en")
+        blog_agent = await get_blog_agent(PROMPTS_DIR, "en")
+        releasenotes_agent = await get_releasenotes_agent(PROMPTS_DIR, "en")
+        orchestrator_agent = await get_marketing_orchestrator_agent(
+            PROMPTS_DIR, "en", transcripts_agent, blog_agent, releasenotes_agent
         )
+
+        # Process the content from the request through the orchestrator
+        # Convert Pydantic model to JSON string for LangChain compatibility
+        content_dict = request.content.model_dump(mode="json")
+        content_type = request.content.__class__.__name__.replace("Context", "").lower()
+
+        # Format as a clear prompt string for the agent
+        prompt = f"""Process the following {content_type} content:
+
+Content ID: {request.content.id}
+Title: {request.content.title or 'N/A'}
+Content Type: {content_type}
+
+Content:
+{request.content.content or 'No content provided'}
+
+Additional Context:
+{content_dict}
+"""
+
+        # Run through orchestrator
+        logger.info(
+            f"Processing content through orchestrator for content ID: {request.content.id}"
+        )
+        processed = await orchestrator_agent.run_async(prompt)
+
+        # Extract only serializable data from the result
+        serializable_result = {
+            "processed_content": processed,
+            "stats": {
+                "content_type": content_type,
+            },
+        }
 
         return PipelineResponse(
             success=True,
             message="Marketing pipeline completed successfully",
-            result=pipeline_result,
+            result=serializable_result,
             content_id=request.content.id,
         )
 

@@ -84,16 +84,28 @@ async def run_marketing_project_pipeline(prompts_dir, lang):
     for content_context in content_models:
         try:
             # Process through orchestrator (which routes to appropriate agents)
-            app_context = {
-                "content": content_context,
-                "labels": {},
-                "content_type": content_context.__class__.__name__.replace(
-                    "Context", ""
-                ).lower(),
-            }
+            # Convert Pydantic model to JSON string for LangChain compatibility
+            content_dict = content_context.model_dump(mode="json")
+            content_type = content_context.__class__.__name__.replace(
+                "Context", ""
+            ).lower()
+
+            # Format as a clear prompt string for the agent
+            prompt = f"""Process the following {content_type} content:
+
+Content ID: {content_context.id}
+Title: {content_context.title or 'N/A'}
+Content Type: {content_type}
+
+Content:
+{content_context.content or 'No content provided'}
+
+Additional Context:
+{content_dict}
+"""
 
             # Let the orchestrator handle routing to the appropriate agent
-            processed = await orchestrator_agent.run_async(app_context)
+            processed = await orchestrator_agent.run_async(prompt)
             processed_content.append(processed)
 
         except Exception as e:

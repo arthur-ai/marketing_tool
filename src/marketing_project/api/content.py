@@ -183,16 +183,21 @@ async def get_source_status(source_name: str):
 @router.post(
     "/content-sources/{source_name}/fetch", response_model=ContentFetchResponse
 )
-async def fetch_from_source(source_name: str, limit: int = 10):
+async def fetch_from_source(
+    source_name: str, limit: int = 10, include_cached: bool = True
+):
     """
     Fetch content from a specific content source.
 
     Args:
         source_name: Name of the content source to fetch from
         limit: Maximum number of content items to fetch (default: 10)
+        include_cached: Include cached/previously fetched items (default: True)
     """
     try:
-        logger.info(f"Fetching content from source: {source_name} (limit: {limit})")
+        logger.info(
+            f"Fetching content from source: {source_name} (limit: {limit}, include_cached: {include_cached})"
+        )
 
         # Find the source
         source = content_manager.get_source(source_name)
@@ -202,7 +207,14 @@ async def fetch_from_source(source_name: str, limit: int = 10):
             )
 
         # Fetch content from the source
-        result = await source.fetch_content(limit=limit)
+        # Pass include_cached parameter if the source supports it (file sources)
+        try:
+            result = await source.fetch_content(
+                limit=limit, include_cached=include_cached
+            )
+        except TypeError:
+            # Source doesn't support include_cached parameter, use default
+            result = await source.fetch_content(limit=limit)
 
         return ContentFetchResponse(
             success=result.success,
