@@ -25,12 +25,14 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
+# Copy application code (includes config and prompts now)
 COPY src/ ./src/
-COPY config/ ./config/
-COPY prompts/ ./prompts/
+COPY setup.py ./
+COPY pyproject.toml ./
 
-# Create necessary directories
+# Install the package
+RUN pip install -e .
+
 RUN mkdir -p /app/logs /app/uploads /app/cache
 
 # Change ownership to appuser

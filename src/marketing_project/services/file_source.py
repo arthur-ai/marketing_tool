@@ -83,11 +83,20 @@ class FileContentSource(ContentSource):
             self.status = ContentSourceStatus.ERROR
             return False
 
-    async def fetch_content(self, limit: Optional[int] = None) -> ContentSourceResult:
-        """Fetch content from files."""
+    async def fetch_content(
+        self, limit: Optional[int] = None, include_cached: bool = True
+    ) -> ContentSourceResult:
+        """Fetch content from files.
+
+        Args:
+            limit: Maximum number of files to fetch
+            include_cached: If True, returns all files. If False, only returns new/modified files.
+        """
         try:
             content_items = []
             processed_count = 0
+            new_files_count = 0
+            cached_files_count = 0
 
             # Get all file paths
             all_paths = []
@@ -113,15 +122,24 @@ class FileContentSource(ContentSource):
                     # Check if file has been modified
                     current_mtime = datetime.fromtimestamp(os.path.getmtime(file_path))
                     cached_mtime = self.file_cache.get(file_path)
+                    is_new_or_modified = (
+                        not cached_mtime or current_mtime > cached_mtime
+                    )
 
-                    if cached_mtime and current_mtime <= cached_mtime:
-                        continue  # File hasn't changed
+                    # Skip cached files if include_cached is False
+                    if not include_cached and not is_new_or_modified:
+                        cached_files_count += 1
+                        continue
 
                     # Read file content
                     content_item = await self._read_file(file_path)
                     if content_item:
                         content_items.append(content_item)
                         processed_count += 1
+                        if is_new_or_modified:
+                            new_files_count += 1
+                        else:
+                            cached_files_count += 1
 
                     # Update cache
                     self.file_cache[file_path] = current_mtime
@@ -135,7 +153,11 @@ class FileContentSource(ContentSource):
                 content_items=content_items,
                 total_count=processed_count,
                 success=True,
-                metadata={"files_processed": processed_count},
+                metadata={
+                    "files_processed": processed_count,
+                    "new_files": new_files_count,
+                    "cached_files": cached_files_count,
+                },
             )
 
         except Exception as e:

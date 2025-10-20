@@ -7,6 +7,8 @@ import os
 
 from fastapi import APIRouter, HTTPException
 
+from marketing_project.config.settings import PIPELINE_SPEC, PROMPTS_DIR
+
 logger = logging.getLogger("marketing_project.api.system")
 
 # Create router
@@ -26,8 +28,6 @@ async def get_system_info():
     try:
         import platform
         import sys
-
-        from marketing_project.server import PIPELINE_SPEC, PROMPTS_DIR
 
         info = {
             "service": "marketing-project",

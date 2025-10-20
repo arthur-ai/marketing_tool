@@ -86,19 +86,35 @@ class TestAnalyzeEndpoint:
 class TestPipelineEndpoint:
     """Test the /pipeline endpoint."""
 
-    @patch("marketing_project.api.core.run_marketing_project_pipeline")
-    def test_run_pipeline_success(self, mock_run_pipeline, client, pipeline_request):
+    @patch("marketing_project.api.core.get_marketing_orchestrator_agent")
+    @patch("marketing_project.api.core.get_releasenotes_agent")
+    @patch("marketing_project.api.core.get_blog_agent")
+    @patch("marketing_project.api.core.get_transcripts_agent")
+    @pytest.mark.asyncio
+    async def test_run_pipeline_success(
+        self,
+        mock_transcripts_agent,
+        mock_blog_agent,
+        mock_releasenotes_agent,
+        mock_orchestrator_agent,
+        client,
+        pipeline_request,
+    ):
         """Test successful pipeline execution."""
-        # Setup mocks
-        mock_run_pipeline.return_value = {
-            "steps": [
-                {"name": "AnalyzeContent", "status": "completed"},
-                {"name": "ExtractSEOKeywords", "status": "completed"},
-                {"name": "GenerateMarketingBrief", "status": "completed"},
-            ],
-            "total_time": 45.2,
-            "success": True,
-        }
+        # Setup mock agents
+        mock_orchestrator = AsyncMock()
+        mock_orchestrator.run_async = AsyncMock(
+            return_value={
+                "status": "completed",
+                "content_type": "blog_post",
+                "processed": True,
+            }
+        )
+
+        mock_transcripts_agent.return_value = AsyncMock()
+        mock_blog_agent.return_value = AsyncMock()
+        mock_releasenotes_agent.return_value = AsyncMock()
+        mock_orchestrator_agent.return_value = mock_orchestrator
 
         response = client.post("/pipeline", json=pipeline_request.dict())
 
@@ -107,15 +123,41 @@ class TestPipelineEndpoint:
         assert data["success"] is True
         assert data["content_id"] == "test_content_1"
         assert "result" in data
-        assert len(data["result"]["steps"]) == 3
+        assert "processed_content" in data["result"]
+        assert "stats" in data["result"]
 
-    @patch("marketing_project.api.core.run_marketing_project_pipeline")
-    def test_run_pipeline_execution_error(
-        self, mock_run_pipeline, client, pipeline_request
+        # Verify the orchestrator was called with a string prompt
+        mock_orchestrator.run_async.assert_called_once()
+        call_args = mock_orchestrator.run_async.call_args[0]
+        assert isinstance(call_args[0], str)
+        assert "test_content_1" in call_args[0]
+        assert "blogpost" in call_args[0]
+
+    @patch("marketing_project.api.core.get_marketing_orchestrator_agent")
+    @patch("marketing_project.api.core.get_releasenotes_agent")
+    @patch("marketing_project.api.core.get_blog_agent")
+    @patch("marketing_project.api.core.get_transcripts_agent")
+    @pytest.mark.asyncio
+    async def test_run_pipeline_execution_error(
+        self,
+        mock_transcripts_agent,
+        mock_blog_agent,
+        mock_releasenotes_agent,
+        mock_orchestrator_agent,
+        client,
+        pipeline_request,
     ):
         """Test pipeline execution error."""
-        # Setup mocks
-        mock_run_pipeline.side_effect = Exception("Pipeline execution failed")
+        # Setup mock agents
+        mock_orchestrator = AsyncMock()
+        mock_orchestrator.run_async = AsyncMock(
+            side_effect=Exception("Pipeline execution failed")
+        )
+
+        mock_transcripts_agent.return_value = AsyncMock()
+        mock_blog_agent.return_value = AsyncMock()
+        mock_releasenotes_agent.return_value = AsyncMock()
+        mock_orchestrator_agent.return_value = mock_orchestrator
 
         response = client.post("/pipeline", json=pipeline_request.dict())
 

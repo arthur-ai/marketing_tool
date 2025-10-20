@@ -112,8 +112,8 @@ content_sources:
       type: "file"
       enabled: true
       config:
-        file_paths: ["content/", "data/"]
-        file_patterns: ["content/**/*.md", "content/**/*.json", "data/**/*.txt"]
+        file_paths: ["content/"]
+        file_patterns: ["content/**/*.md", "content/**/*.json", "content/**/*.txt"]
         watch_directory: true
         supported_formats: [".md", ".json", ".txt", ".yaml", ".yml"]
 

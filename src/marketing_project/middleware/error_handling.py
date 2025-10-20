@@ -68,7 +68,9 @@ class ErrorHandlingMiddleware(BaseHTTPMiddleware):
             },
         )
 
-        return JSONResponse(status_code=exc.status_code, content=error_response.dict())
+        return JSONResponse(
+            status_code=exc.status_code, content=error_response.model_dump(mode="json")
+        )
 
     async def _handle_validation_error(
         self, request: Request, exc: RequestValidationError, request_id: str
@@ -107,7 +109,7 @@ class ErrorHandlingMiddleware(BaseHTTPMiddleware):
 
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            content=error_response.dict(),
+            content=error_response.model_dump(mode="json"),
         )
 
     async def _handle_starlette_http_exception(
@@ -132,7 +134,9 @@ class ErrorHandlingMiddleware(BaseHTTPMiddleware):
             },
         )
 
-        return JSONResponse(status_code=exc.status_code, content=error_response.dict())
+        return JSONResponse(
+            status_code=exc.status_code, content=error_response.model_dump(mode="json")
+        )
 
     async def _handle_generic_exception(
         self, request: Request, exc: Exception, request_id: str
@@ -177,7 +181,7 @@ class ErrorHandlingMiddleware(BaseHTTPMiddleware):
 
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            content=error_response.dict(),
+            content=error_response.model_dump(mode="json"),
         )
 
 
@@ -202,4 +206,6 @@ def create_error_response(
     if request_id:
         error_response.error_details["request_id"] = request_id
 
-    return JSONResponse(status_code=status_code, content=error_response.dict())
+    return JSONResponse(
+        status_code=status_code, content=error_response.model_dump(mode="json")
+    )

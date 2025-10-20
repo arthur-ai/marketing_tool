@@ -1,9 +1,9 @@
 services:
-  # Marketing Project API - Main service
+  # Marketing Project API - Development service with hot reload
   api:
     build:
       context: ../..
-      dockerfile: deploy/docker/Dockerfile
+      dockerfile: deploy/docker/Dockerfile.dev
     ports:
       - "8000:8000"
     environment:
@@ -12,6 +12,7 @@ services:
       - PORT=8000
       - LOG_LEVEL=DEBUG
       - TEMPLATE_VERSION=v1
+      - PYTHONPATH=/app/src
       - CORS_ORIGINS=http://localhost:3000,http://localhost:8000
       - CORS_ALLOW_CREDENTIALS=true
       # Use SQLite for development (no external dependencies)
@@ -21,9 +22,23 @@ services:
       # - MONGODB_URL=mongodb://mongodb:27017/marketing_project
       # - REDIS_URL=redis://redis:6379
     volumes:
+      # Mount source code for hot-reload (changes reflect immediately)
+      - ../../src:/app/src
+      # Mount configuration files
+      - ../../requirements.txt:/app/requirements.txt
+      - ../../setup.py:/app/setup.py
+      - ../../pyproject.toml:/app/pyproject.toml
+      # Mount data directories
       - ./logs:/app/logs
       - ./uploads:/app/uploads
       - ./content:/app/content
+    command: >
+      uvicorn src.marketing_project.server:app
+      --host 0.0.0.0
+      --port 8000
+      --reload
+      --reload-dir /app/src
+      --log-level debug
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]

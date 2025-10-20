@@ -29,6 +29,10 @@ from fastapi.responses import JSONResponse
 
 # Import API endpoints
 from .api import api_router
+from .api.content import initialize_content_sources
+
+# Load config from centralized settings (MUST be before API imports to avoid circular dependency)
+from .config.settings import PIPELINE_SPEC, PROMPTS_DIR, TEMPLATE_VERSION
 
 # Import middleware
 from .middleware.cors import setup_cors
@@ -39,14 +43,6 @@ from .scheduler import Scheduler
 
 # Initialize logger
 logger = logging.getLogger("marketing_project.server")
-
-# Load config once
-BASE = os.path.dirname(__file__)
-SPEC_PATH = os.path.abspath(os.path.join(BASE, "config", "pipeline.yml"))
-with open(SPEC_PATH) as f:
-    PIPELINE_SPEC = yaml.safe_load(f)
-TEMPLATE_VERSION = os.getenv("TEMPLATE_VERSION", "v1")
-PROMPTS_DIR = os.path.abspath(os.path.join(BASE, "prompts", TEMPLATE_VERSION))
 
 # Instantiate shared services
 scheduler = Scheduler()
@@ -120,6 +116,10 @@ async def startup_event():
     logger.info(f"API version: 1.0.0")
     logger.info(f"Template version: {TEMPLATE_VERSION}")
     logger.info(f"Prompts directory: {PROMPTS_DIR}")
+
+    # Initialize content sources from configuration
+    await initialize_content_sources()
+
     logger.info("Startup completed successfully")
 
 

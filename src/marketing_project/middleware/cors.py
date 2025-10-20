@@ -37,9 +37,11 @@ def setup_cors(
     if allowed_origins is None:
         allowed_origins = [
             "http://localhost:3000",  # React dev server
+            "http://localhost:3001",  # Alternative React dev server
             "http://localhost:8080",  # Vue dev server
             "http://localhost:4200",  # Angular dev server
             "http://127.0.0.1:3000",
+            "http://127.0.0.1:3001",
             "http://127.0.0.1:8080",
             "http://127.0.0.1:4200",
         ]
