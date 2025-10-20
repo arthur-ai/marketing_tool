@@ -29,6 +29,7 @@ from fastapi.responses import JSONResponse
 
 # Import API endpoints
 from .api import api_router
+from .api.content import initialize_content_sources
 
 # Import middleware
 from .middleware.cors import setup_cors
@@ -120,6 +121,10 @@ async def startup_event():
     logger.info(f"API version: 1.0.0")
     logger.info(f"Template version: {TEMPLATE_VERSION}")
     logger.info(f"Prompts directory: {PROMPTS_DIR}")
+
+    # Initialize content sources from configuration
+    await initialize_content_sources()
+
     logger.info("Startup completed successfully")
 
 

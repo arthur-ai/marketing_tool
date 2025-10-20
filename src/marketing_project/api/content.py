@@ -26,6 +26,42 @@ content_manager = ContentSourceManager()
 config_loader = ContentSourceConfigLoader()
 
 
+async def initialize_content_sources():
+    """
+    Initialize content sources from configuration.
+
+    This should be called during application startup to load all configured
+    content sources from the pipeline.yml configuration file.
+    """
+    try:
+        logger.info("Initializing content sources...")
+
+        # Load source configurations from pipeline.yml
+        source_configs = config_loader.create_source_configs()
+
+        if not source_configs:
+            logger.warning("No content sources found in configuration")
+            return
+
+        # Add all sources to the manager
+        results = await content_manager.add_multiple_sources(source_configs)
+
+        # Log results
+        successful = [name for name, success in results.items() if success]
+        failed = [name for name, success in results.items() if not success]
+
+        logger.info(
+            f"Successfully initialized {len(successful)} content sources: {successful}"
+        )
+        if failed:
+            logger.warning(
+                f"Failed to initialize {len(failed)} content sources: {failed}"
+            )
+
+    except Exception as e:
+        logger.error(f"Failed to initialize content sources: {e}", exc_info=True)
+
+
 @router.get("/content-sources", response_model=ContentSourceListResponse)
 async def list_content_sources():
     """
