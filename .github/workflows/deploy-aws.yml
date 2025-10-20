@@ -1,0 +1,206 @@
+name: Deploy to AWS
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        type: choice
+        options:
+          - development
+          - staging
+          - production
+        default: 'production'
+      region:
+        description: 'AWS region'
+        required: false
+        default: 'us-east-1'
+  push:
+    tags:
+      - 'v*.*.*'
+
+env:
+  AWS_REGION: ${{ github.event.inputs.region || 'us-east-1' }}
+  ENVIRONMENT: ${{ github.event.inputs.environment || 'production' }}
+  PROJECT_NAME: marketing-tool
+
+jobs:
+  deploy:
+    name: Deploy to AWS
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # Required for OIDC authentication
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.login-ecr.outputs.registry }}/${{ env.PROJECT_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+
+      - name: Deploy to AWS using CloudFormation
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          API_KEY: ${{ secrets.API_KEY }}
+          DATABASE_PASSWORD: ${{ secrets.DATABASE_PASSWORD }}
+          MONGODB_PASSWORD: ${{ secrets.MONGODB_PASSWORD }}
+          DOMAIN_NAME: ${{ secrets.DOMAIN_NAME }}
+          CERTIFICATE_ARN: ${{ secrets.CERTIFICATE_ARN }}
+        run: |
+          cd deploy/aws
+          chmod +x deploy.sh
+
+          # Build deployment command
+          DEPLOY_CMD="./deploy.sh -e ${{ env.ENVIRONMENT }} -r ${{ env.AWS_REGION }} -n ${{ env.PROJECT_NAME }}"
+
+          # Add optional parameters if they exist
+          if [ -n "$DOMAIN_NAME" ]; then
+            DEPLOY_CMD="$DEPLOY_CMD -d $DOMAIN_NAME"
+          fi
+
+          if [ -n "$CERTIFICATE_ARN" ]; then
+            DEPLOY_CMD="$DEPLOY_CMD -c $CERTIFICATE_ARN"
+          fi
+
+          # Execute deployment
+          eval $DEPLOY_CMD
+
+      - name: Update ECS service
+        run: |
+          CLUSTER_NAME="${{ env.PROJECT_NAME }}-${{ env.ENVIRONMENT }}-cluster"
+          SERVICE_NAME="${{ env.PROJECT_NAME }}-${{ env.ENVIRONMENT }}-service"
+
+          echo "Updating ECS service: $SERVICE_NAME in cluster: $CLUSTER_NAME"
+          aws ecs update-service \
+            --cluster $CLUSTER_NAME \
+            --service $SERVICE_NAME \
+            --force-new-deployment \
+            --region ${{ env.AWS_REGION }}
+
+          echo "Waiting for service to stabilize..."
+          aws ecs wait services-stable \
+            --cluster $CLUSTER_NAME \
+            --services $SERVICE_NAME \
+            --region ${{ env.AWS_REGION }}
+
+      - name: Get deployment info
+        id: deployment-info
+        run: |
+          STACK_NAME="${{ env.PROJECT_NAME }}-${{ env.ENVIRONMENT }}"
+
+          echo "Fetching stack outputs..."
+          ALB_URL=$(aws cloudformation describe-stacks \
+            --stack-name $STACK_NAME \
+            --query 'Stacks[0].Outputs[?OutputKey==`ALBURL`].OutputValue' \
+            --output text \
+            --region ${{ env.AWS_REGION }})
+
+          ECR_URI=$(aws cloudformation describe-stacks \
+            --stack-name $STACK_NAME \
+            --query 'Stacks[0].Outputs[?OutputKey==`ECRRepositoryURI`].OutputValue' \
+            --output text \
+            --region ${{ env.AWS_REGION }})
+
+          echo "alb_url=$ALB_URL" >> $GITHUB_OUTPUT
+          echo "ecr_uri=$ECR_URI" >> $GITHUB_OUTPUT
+
+      - name: Health check
+        run: |
+          ALB_URL="${{ steps.deployment-info.outputs.alb_url }}"
+
+          if [ -n "$ALB_URL" ]; then
+            echo "Performing health check on: $ALB_URL/api/v1/health"
+
+            # Wait for service to be ready
+            sleep 30
+
+            # Retry health check up to 10 times
+            for i in {1..10}; do
+              if curl -f -s "$ALB_URL/api/v1/health" > /dev/null; then
+                echo "✅ Health check passed!"
+                exit 0
+              else
+                echo "⏳ Attempt $i/10 failed, retrying in 10s..."
+                sleep 10
+              fi
+            done
+
+            echo "❌ Health check failed after 10 attempts"
+            exit 1
+          else
+            echo "⚠️  ALB URL not found, skipping health check"
+          fi
+
+      - name: Create deployment summary
+        if: always()
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+          ## 🚀 AWS Deployment Summary
+
+          **Environment:** ${{ env.ENVIRONMENT }}
+          **Region:** ${{ env.AWS_REGION }}
+          **Stack:** ${{ env.PROJECT_NAME }}-${{ env.ENVIRONMENT }}
+
+          ### 📦 Deployment Details
+          - **Image Tags:** \`${{ steps.meta.outputs.tags }}\`
+          - **ECR Repository:** \`${{ steps.deployment-info.outputs.ecr_uri }}\`
+          - **Application URL:** ${{ steps.deployment-info.outputs.alb_url }}
+
+          ### 🔗 Quick Links
+          - [CloudFormation Console](https://console.aws.amazon.com/cloudformation/home?region=${{ env.AWS_REGION }}#/stacks)
+          - [ECS Console](https://console.aws.amazon.com/ecs/home?region=${{ env.AWS_REGION }}#/clusters)
+          - [Application](http://${{ steps.deployment-info.outputs.alb_url }})
+          EOF
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "❌ Deployment failed!"
+          echo "Check the logs above for details."
+          echo "Stack: ${{ env.PROJECT_NAME }}-${{ env.ENVIRONMENT }}"
+          echo "Region: ${{ env.AWS_REGION }}"
