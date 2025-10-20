@@ -248,8 +248,6 @@ async def process_uploaded_file(
         # Process based on file type
         if file_ext == ".json":
             # Validate JSON structure
-            import json
-
             try:
                 json_data = json.loads(content_data)
                 # Ensure required fields for content

@@ -1,10 +1,9 @@
-version: '3.8'
-
 services:
   # Marketing Project API - Main service
   api:
     build:
-      context: .
+      context: ../..
+      dockerfile: DockerFile
     ports:
       - "8000:8000"
     environment:

@@ -8,6 +8,7 @@ info:
     - Content analysis and quality assessment
     - Complete marketing pipeline processing
     - Content source management
+    - File upload and processing
     - System health monitoring
 
     ## Content Types
@@ -15,6 +16,10 @@ info:
     - **Blog Posts**: Marketing blog content
     - **Transcripts**: Audio/video transcripts
     - **Release Notes**: Software release documentation
+
+    ## File Upload
+    The API supports uploading files in multiple formats (JSON, Markdown, YAML, Word, PDF, CSV, RTF)
+    with automatic conversion to standardized JSON for pipeline processing.
 
   version: 1.0.0
   contact:
@@ -281,6 +286,98 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/upload:
+    post:
+      tags:
+        - File Upload
+      summary: Upload File
+      description: |
+        Upload a file and process it for the marketing pipeline.
+
+        This endpoint accepts various file formats and converts them to a standardized JSON format
+        for processing through the marketing pipeline.
+
+        **Supported file formats:**
+        - JSON (.json)
+        - Markdown (.md)
+        - Text (.txt)
+        - YAML (.yaml, .yml)
+        - Word Documents (.docx, .doc)
+        - PDF (.pdf)
+        - CSV (.csv)
+        - RTF (.rtf)
+
+        **File size limit:** 25MB
+      operationId: uploadFile
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: The file to upload
+                content_type:
+                  type: string
+                  enum: [blog_post, transcript, release_notes]
+                  default: blog_post
+                  description: Type of content being uploaded
+      responses:
+        '200':
+          description: File uploaded and processed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileUploadResponse'
+        '400':
+          description: Bad request - Invalid file type or size
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/upload/status/{file_id}:
+    get:
+      tags:
+        - File Upload
+      summary: Get Upload Status
+      description: |
+        Get the processing status of an uploaded file.
+      operationId: getUploadStatus
+      parameters:
+        - name: file_id
+          in: path
+          required: true
+          description: Unique identifier of the uploaded file
+          schema:
+            type: string
+            format: uuid
+            example: "550e8400-e29b-41d4-a716-446655440000"
+      responses:
+        '200':
+          description: Upload status retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileUploadStatusResponse'
         '500':
           description: Internal server error
           content:
@@ -675,6 +772,62 @@ components:
               type: string
               description: Error message if failed
 
+    FileUploadResponse:
+      type: object
+      required:
+        - success
+        - message
+        - file_id
+        - filename
+        - size
+        - content_type
+      properties:
+        success:
+          type: boolean
+          description: Whether the upload was successful
+        message:
+          type: string
+          description: Response message
+        file_id:
+          type: string
+          format: uuid
+          description: Unique identifier for the uploaded file
+        filename:
+          type: string
+          description: Original filename
+        size:
+          type: integer
+          description: File size in bytes
+        content_type:
+          type: string
+          enum: [blog_post, transcript, release_notes]
+          description: Type of content
+        upload_path:
+          type: string
+          description: Path where the file was uploaded
+        processed_path:
+          type: string
+          description: Path to the processed file
+
+    FileUploadStatusResponse:
+      type: object
+      required:
+        - file_id
+        - status
+        - message
+      properties:
+        file_id:
+          type: string
+          format: uuid
+          description: Unique identifier of the uploaded file
+        status:
+          type: string
+          enum: [pending, processing, processed, failed]
+          description: Current processing status
+        message:
+          type: string
+          description: Status message
+
 
 tags:
   - name: Health
@@ -685,3 +838,5 @@ tags:
     description: Core content processing endpoints
   - name: Content Sources
     description: Content source management endpoints
+  - name: File Upload
+    description: File upload and processing endpoints
