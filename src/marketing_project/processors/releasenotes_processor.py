@@ -30,7 +30,11 @@ def _json_serializer(obj: Any) -> Any:
     raise TypeError(f"Type {type(obj)} not serializable")
 
 
-async def process_release_notes(content_data: str, job_id: Optional[str] = None) -> str:
+async def process_release_notes(
+    content_data: str,
+    job_id: Optional[str] = None,
+    output_content_type: Optional[str] = None,
+) -> str:
     """
     Process release notes content through the AI function pipeline.
 
@@ -42,6 +46,7 @@ async def process_release_notes(content_data: str, job_id: Optional[str] = None)
     Args:
         content_data: JSON string containing release notes data
         job_id: Optional job ID for tracking (generated if not provided)
+        output_content_type: Optional output content type (blog_post, press_release, case_study)
 
     Returns:
         JSON string with processing results
@@ -74,21 +79,26 @@ async def process_release_notes(content_data: str, job_id: Optional[str] = None)
                 }
             )
 
-        # Get output_content_type from job metadata if available
-        output_content_type = "blog_post"
-        try:
-            from marketing_project.services.job_manager import get_job_manager
+        # Get output_content_type from parameter, job metadata, or default
+        if output_content_type is None:
+            output_content_type = "blog_post"
+            try:
+                from marketing_project.services.job_manager import get_job_manager
 
-            job_manager = get_job_manager()
-            job = await job_manager.get_job(job_id)
-            if job and job.metadata.get("output_content_type"):
-                output_content_type = job.metadata.get("output_content_type")
-                logger.info(
-                    f"Release Notes Processor: Using output_content_type={output_content_type} from job metadata"
+                job_manager = get_job_manager()
+                job = await job_manager.get_job(job_id)
+                if job and job.metadata.get("output_content_type"):
+                    output_content_type = job.metadata.get("output_content_type")
+                    logger.info(
+                        f"Release Notes Processor: Using output_content_type={output_content_type} from job metadata"
+                    )
+            except Exception as e:
+                logger.warning(
+                    f"Release Notes Processor: Could not get output_content_type from job metadata: {e}"
                 )
-        except Exception as e:
-            logger.warning(
-                f"Release Notes Processor: Could not get output_content_type from job metadata: {e}"
+        else:
+            logger.info(
+                f"Release Notes Processor: Using output_content_type={output_content_type} from parameter"
             )
 
         # Step 2: Run through AI function pipeline

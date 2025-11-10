@@ -93,25 +93,34 @@ async def run_pipeline(request: PipelineRequest, background_tasks: BackgroundTas
         # Route to appropriate deterministic processor based on content type
         content_json = request.content.model_dump_json()
 
+        # Get output_content_type from request, defaulting to "blog_post" if not provided
+        output_content_type = request.output_content_type or "blog_post"
+
         if isinstance(request.content, BlogPostContext):
             logger.info(
-                f"Routing to blog processor for content ID: {request.content.id}"
+                f"Routing to blog processor for content ID: {request.content.id} with output_content_type: {output_content_type}"
             )
-            result_json = await process_blog_post(content_json)
+            result_json = await process_blog_post(
+                content_json, output_content_type=output_content_type
+            )
             content_type = "blog_post"
 
         elif isinstance(request.content, ReleaseNotesContext):
             logger.info(
-                f"Routing to release notes processor for content ID: {request.content.id}"
+                f"Routing to release notes processor for content ID: {request.content.id} with output_content_type: {output_content_type}"
             )
-            result_json = await process_release_notes(content_json)
+            result_json = await process_release_notes(
+                content_json, output_content_type=output_content_type
+            )
             content_type = "release_notes"
 
         elif isinstance(request.content, TranscriptContext):
             logger.info(
-                f"Routing to transcript processor for content ID: {request.content.id}"
+                f"Routing to transcript processor for content ID: {request.content.id} with output_content_type: {output_content_type}"
             )
-            result_json = await process_transcript(content_json)
+            result_json = await process_transcript(
+                content_json, output_content_type=output_content_type
+            )
             content_type = "transcript"
 
         else:

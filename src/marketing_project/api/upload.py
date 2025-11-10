@@ -275,7 +275,7 @@ async def process_uploaded_file(
                     "title": Path(filename).stem,
                     "content": content_data,
                     "type": content_type,
-                    "created_at": str(uuid.uuid4()),  # Placeholder for timestamp
+                    "created_at": datetime.utcnow().isoformat() + "Z",
                 }
                 with open(processed_path, "w", encoding="utf-8") as f:
                     json.dump(json_data, f, indent=2, ensure_ascii=False)
@@ -298,7 +298,7 @@ async def process_uploaded_file(
                 "content": content_data,
                 "type": content_type,
                 "original_format": file_ext,
-                "created_at": str(uuid.uuid4()),  # Placeholder for timestamp
+                "created_at": datetime.utcnow().isoformat() + "Z",
             }
 
             # Save as JSON for consistency
