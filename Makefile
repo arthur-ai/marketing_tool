@@ -1,22 +1,45 @@
 # Marketing Project Makefile
-.PHONY: help install install-dev test test-unit test-integration lint format clean build run serve docker-build docker-run deploy-staging deploy-production
+.PHONY: help install install-dev test test-unit test-integration lint format clean build run serve docker-build docker-run deploy-staging deploy-production dev-up dev-down dev-restart dev-logs dev-build prod-up prod-down prod-restart prod-logs prod-build docker-clean
 
 # Default target
 help:
 	@echo "Available targets:"
+	@echo ""
+	@echo "Development:"
+	@echo "  dev-up           Start development environment (hot-reload enabled)"
+	@echo "  dev-down         Stop development environment"
+	@echo "  dev-restart      Restart development containers"
+	@echo "  dev-logs         View development logs (follow mode)"
+	@echo "  dev-build        Rebuild development containers"
+	@echo "  dev-shell        Open shell in development container"
+	@echo ""
+	@echo "Production:"
+	@echo "  prod-up          Start production environment"
+	@echo "  prod-down        Stop production environment"
+	@echo "  prod-restart     Restart production containers"
+	@echo "  prod-logs        View production logs (follow mode)"
+	@echo "  prod-build       Rebuild production containers"
+	@echo ""
+	@echo "Local Development:"
 	@echo "  install          Install production dependencies"
 	@echo "  install-dev      Install development dependencies"
+	@echo "  run              Run the application locally"
+	@echo "  serve            Start the FastAPI server locally"
+	@echo ""
+	@echo "Testing & Quality:"
 	@echo "  test             Run all tests"
 	@echo "  test-unit        Run unit tests only"
 	@echo "  test-integration Run integration tests only"
 	@echo "  lint             Run all linting checks"
 	@echo "  format           Format code with black and isort"
+	@echo "  security         Run security checks"
+	@echo ""
+	@echo "Utilities:"
 	@echo "  clean            Clean up temporary files"
+	@echo "  docker-clean     Clean up Docker resources"
 	@echo "  build            Build the package"
-	@echo "  run              Run the application"
-	@echo "  serve            Start the FastAPI server"
-	@echo "  docker-build     Build Docker image"
-	@echo "  docker-run       Run Docker container"
+	@echo ""
+	@echo "Deployment:"
 	@echo "  deploy-staging   Deploy to staging environment"
 	@echo "  deploy-production Deploy to production environment"
 
@@ -79,12 +102,74 @@ run:
 serve:
 	marketing-project serve
 
-# Docker operations
+# Docker Development operations
+dev-up:
+	@echo "Starting development environment with hot-reload..."
+	docker-compose -f deploy/docker/docker-compose.dev.yml up -d
+	@echo "Development environment started! Code changes will reload automatically."
+	@echo "API available at: http://localhost:8000"
+	@echo "View logs: make dev-logs"
+
+dev-down:
+	@echo "Stopping development environment..."
+	docker-compose -f deploy/docker/docker-compose.dev.yml down
+
+dev-restart:
+	@echo "Restarting development containers..."
+	docker-compose -f deploy/docker/docker-compose.dev.yml restart
+
+dev-logs:
+	@echo "Following development logs (Ctrl+C to exit)..."
+	docker-compose -f deploy/docker/docker-compose.dev.yml logs -f api
+
+dev-build:
+	@echo "Building development containers..."
+	docker-compose -f deploy/docker/docker-compose.dev.yml build --no-cache
+	docker-compose -f deploy/docker/docker-compose.dev.yml up -d
+
+dev-shell:
+	@echo "Opening shell in development container..."
+	docker-compose -f deploy/docker/docker-compose.dev.yml exec api /bin/bash
+
+# Docker Production operations
+prod-up:
+	@echo "Starting production environment..."
+	docker-compose -f deploy/docker/docker-compose.yml up -d
+	@echo "Production environment started!"
+	@echo "API available at: http://localhost:8000"
+
+prod-down:
+	@echo "Stopping production environment..."
+	docker-compose -f deploy/docker/docker-compose.yml down
+
+prod-restart:
+	@echo "Restarting production containers..."
+	docker-compose -f deploy/docker/docker-compose.yml restart
+
+prod-logs:
+	@echo "Following production logs (Ctrl+C to exit)..."
+	docker-compose -f deploy/docker/docker-compose.yml logs -f api
+
+prod-build:
+	@echo "Building production containers..."
+	docker-compose -f deploy/docker/docker-compose.yml build --no-cache
+	docker-compose -f deploy/docker/docker-compose.yml up -d
+
+# Legacy Docker operations (for backwards compatibility)
 docker-build:
-	docker build -t marketing-project:latest .
+	docker build -f deploy/docker/Dockerfile -t marketing-project:latest .
 
 docker-run:
 	docker run -p 8000:8000 --env-file .env marketing-project:latest
+
+# Docker cleanup
+docker-clean:
+	@echo "Cleaning up Docker resources..."
+	docker-compose -f deploy/docker/docker-compose.dev.yml down -v
+	docker-compose -f deploy/docker/docker-compose.yml down -v
+	@echo "Removing dangling images..."
+	docker image prune -f
+	@echo "Docker cleanup complete!"
 
 # Deployment (requires kubectl and proper context)
 deploy-staging:

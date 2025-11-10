@@ -1,14 +1,17 @@
 # Marketing Project Test Suite
 
-This folder contains comprehensive tests for all agents, plugins, integrations, and the main CLI of the Marketing Project.
+This folder contains comprehensive tests for the function-based pipeline, processors, plugins, and integrations of the Marketing Project.
 
 ## Structure
 
-- `agents/` - Tests for each agent factory (async, covers prompt loading/config)
-- `plugins/` - Comprehensive tests for all plugins (unit tests, integration tests, edge cases)
-- `integrations/` - Integration tests for full pipeline runs
-- `test_main.py` - CLI/entrypoint coverage
-- `conftest.py` - Global test fixtures and LLM mocking
+- `api/` - Tests for API endpoints (health, system, content, processors, core)
+- `processors/` - Tests for content processors (blog, transcript, release notes)
+- `plugins/` - Tests for pipeline step plugins (SEO keywords, marketing brief, article generation, etc.)
+- `services/` - Tests for service layer (function pipeline, job manager, Redis manager)
+- `worker/` - Tests for ARQ worker functions
+- `integrations/` - End-to-end integration tests for complete pipeline flows
+- `integration/` - Integration tests for Redis and other external services
+- `conftest.py` - Global test fixtures and mocks
 - `requirements-test.txt` - All requirements to run these tests
 
 ## Running the Tests
@@ -25,26 +28,43 @@ python -m pytest tests/
 
 ### Run Specific Test Categories
 
+**Processor Tests:**
+```bash
+# All processor tests
+python -m pytest tests/processors/
+
+# Specific processor
+python -m pytest tests/processors/test_blog_processor.py
+```
+
 **Plugin Tests:**
 ```bash
 # All plugin tests
 python -m pytest tests/plugins/
 
 # Specific plugin
-python -m pytest tests/plugins/test_article_generation.py
+python -m pytest tests/plugins/test_seo_keywords_plugin.py
 
 # Pattern matching
 python -m pytest tests/plugins/ -k "seo"
 ```
 
-**Agent Tests:**
+**Service Tests:**
 ```bash
-python -m pytest tests/agents/
+# All service tests
+python -m pytest tests/services/
+
+# Function pipeline tests
+python -m pytest tests/services/test_function_pipeline.py
 ```
 
 **Integration Tests:**
 ```bash
+# End-to-end tests
 python -m pytest tests/integrations/
+
+# Redis integration tests
+python -m pytest tests/integration/
 ```
 
 ### Advanced Options
@@ -70,26 +90,35 @@ python -m pytest tests/ -v
 python -m pytest tests/ --pdb
 ```
 
-## Plugin Test Coverage
+## Test Coverage
 
-The plugin tests provide comprehensive coverage for all 10 plugins:
+### Processors
+- **Blog Processor** - Blog post processing through function pipeline
+- **Transcript Processor** - Transcript processing through function pipeline
+- **Release Notes Processor** - Release notes processing through function pipeline
 
-- **Article Generation** - Content creation and optimization
-- **Blog Posts** - Blog post processing and routing
+### Plugins (Pipeline Steps)
+- **SEO Keywords Plugin** - Keyword extraction and analysis
+- **Marketing Brief Plugin** - Marketing brief generation
+- **Article Generation Plugin** - Article content generation
+- **SEO Optimization Plugin** - SEO optimization
+- **Suggested Links Plugin** - Internal link suggestions
+- **Content Formatting Plugin** - Final content formatting
 - **Content Analysis** - Content type analysis and metadata extraction
-- **Content Formatting** - Formatting rules and visual elements
-- **Internal Docs** - Internal documentation processing
-- **Marketing Brief** - Marketing brief analysis and processing
-- **Release Notes** - Release notes processing and routing
-- **SEO Keywords** - Keyword extraction and optimization
-- **SEO Optimization** - SEO analysis and recommendations
-- **Transcripts** - Transcript processing and routing
 
-Each plugin includes:
-- ✅ Unit tests for all functions
-- ✅ Integration tests between plugins
-- ✅ Edge case and error handling tests
-- ✅ Performance and memory efficiency tests
+### Services
+- **Function Pipeline** - Complete pipeline execution and orchestration
+- **Job Manager** - Background job tracking and ARQ integration
+- **Redis Manager** - Redis connection management and resilience
+
+### Workers
+- **ARQ Worker Functions** - Background job processing (blog, transcript, release notes)
+
+Each test suite includes:
+- ✅ Unit tests for core functionality
+- ✅ Error handling and edge cases
+- ✅ Integration tests for complete workflows
+- ✅ Mocking for external dependencies
 
 ## Test Categories
 

@@ -1,24 +1,9 @@
 """
-Article Generation plugin for Marketing Project.
+Article generation plugin for Marketing Project.
 
-This plugin provides functionality to generate high-quality articles
-based on marketing briefs, SEO keywords, and content strategy.
+This plugin provides functionality for generating articles from content.
 """
 
-from .tasks import (
-    add_call_to_actions,
-    add_supporting_elements,
-    generate_article_structure,
-    optimize_article_flow,
-    review_article_quality,
-    write_article_content,
-)
+from .tasks import ArticleGenerationPlugin
 
-__all__ = [
-    "generate_article_structure",
-    "write_article_content",
-    "add_supporting_elements",
-    "review_article_quality",
-    "optimize_article_flow",
-    "add_call_to_actions",
-]
+__all__ = ["ArticleGenerationPlugin"]

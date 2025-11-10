@@ -1,10 +1,7 @@
 """
-Release notes processing plugin for Marketing Project.
+Release notes plugin for Marketing Project.
 
-This plugin handles analysis, processing, and routing of release notes content
-including software releases, product updates, and version announcements.
+This plugin provides functionality for processing release notes.
 """
 
-from . import tasks
-
-__all__ = ["tasks"]
+__all__ = []

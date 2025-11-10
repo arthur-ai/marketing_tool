@@ -52,42 +52,93 @@ class FileContentSource(ContentSource):
     async def initialize(self) -> bool:
         """Initialize the file source."""
         try:
+            logger.info(f"Initializing file source '{self.config.name}'")
+            logger.info(f"  Current working directory: {os.getcwd()}")
+            logger.info(f"  Configured file_paths: {self.config.file_paths}")
+            logger.info(f"  Configured file_patterns: {self.config.file_patterns}")
+
             # Validate file paths and patterns
             valid_paths = []
 
             # Check individual file paths
+            logger.info(f"Checking {len(self.config.file_paths)} file paths...")
             for file_path in self.config.file_paths:
-                if os.path.exists(file_path):
-                    valid_paths.append(file_path)
+                abs_path = os.path.abspath(file_path)
+                exists = os.path.exists(file_path)
+
+                logger.info(f"  Path: '{file_path}'")
+                logger.info(f"    Absolute: '{abs_path}'")
+                logger.info(f"    Exists: {exists}")
+
+                if exists:
+                    if os.path.isfile(file_path):
+                        valid_paths.append(file_path)
+                        logger.info(f"    Type: file ✓")
+                    elif os.path.isdir(file_path):
+                        logger.info(f"    Type: directory (will check patterns)")
+                    else:
+                        logger.info(f"    Type: other")
                 else:
-                    logger.warning(f"File not found: {file_path}")
+                    logger.warning(f"    Path not found: {file_path}")
 
             # Check file patterns
+            logger.info(f"Checking {len(self.config.file_patterns)} file patterns...")
             for pattern in self.config.file_patterns:
+                logger.info(f"  Pattern: '{pattern}'")
                 matches = glob.glob(pattern, recursive=True)
+                logger.info(f"    Found {len(matches)} matches")
+
+                if matches:
+                    for match in matches[:5]:  # Log first 5 matches
+                        logger.info(f"      - {match}")
+                    if len(matches) > 5:
+                        logger.info(f"      ... and {len(matches) - 5} more")
+
                 valid_paths.extend(matches)
 
+            # Remove duplicates
+            valid_paths = list(set(valid_paths))
+
             if not valid_paths:
-                logger.error("No valid files found for file source")
+                logger.error(
+                    f"No valid files found for file source '{self.config.name}'"
+                )
+                logger.error(f"  Searched in: {os.getcwd()}")
+                logger.error(f"  File paths checked: {self.config.file_paths}")
+                logger.error(f"  Patterns checked: {self.config.file_patterns}")
                 return False
 
             # Don't cache files during initialization - let fetch handle caching
             # This ensures files are processed on first fetch
 
             self.status = ContentSourceStatus.ACTIVE
-            logger.info(f"File source initialized with {len(valid_paths)} files")
+            logger.info(
+                f"✓ File source '{self.config.name}' initialized successfully with {len(valid_paths)} files"
+            )
             return True
 
         except Exception as e:
-            logger.error(f"Failed to initialize file source: {e}")
+            logger.error(
+                f"Failed to initialize file source '{self.config.name}': {e}",
+                exc_info=True,
+            )
             self.status = ContentSourceStatus.ERROR
             return False
 
-    async def fetch_content(self, limit: Optional[int] = None) -> ContentSourceResult:
-        """Fetch content from files."""
+    async def fetch_content(
+        self, limit: Optional[int] = None, include_cached: bool = True
+    ) -> ContentSourceResult:
+        """Fetch content from files.
+
+        Args:
+            limit: Maximum number of files to fetch
+            include_cached: If True, returns all files. If False, only returns new/modified files.
+        """
         try:
             content_items = []
             processed_count = 0
+            new_files_count = 0
+            cached_files_count = 0
 
             # Get all file paths
             all_paths = []
@@ -113,15 +164,24 @@ class FileContentSource(ContentSource):
                     # Check if file has been modified
                     current_mtime = datetime.fromtimestamp(os.path.getmtime(file_path))
                     cached_mtime = self.file_cache.get(file_path)
+                    is_new_or_modified = (
+                        not cached_mtime or current_mtime > cached_mtime
+                    )
 
-                    if cached_mtime and current_mtime <= cached_mtime:
-                        continue  # File hasn't changed
+                    # Skip cached files if include_cached is False
+                    if not include_cached and not is_new_or_modified:
+                        cached_files_count += 1
+                        continue
 
                     # Read file content
                     content_item = await self._read_file(file_path)
                     if content_item:
                         content_items.append(content_item)
                         processed_count += 1
+                        if is_new_or_modified:
+                            new_files_count += 1
+                        else:
+                            cached_files_count += 1
 
                     # Update cache
                     self.file_cache[file_path] = current_mtime
@@ -135,7 +195,11 @@ class FileContentSource(ContentSource):
                 content_items=content_items,
                 total_count=processed_count,
                 success=True,
-                metadata={"files_processed": processed_count},
+                metadata={
+                    "files_processed": processed_count,
+                    "new_files": new_files_count,
+                    "cached_files": cached_files_count,
+                },
             )
 
         except Exception as e:

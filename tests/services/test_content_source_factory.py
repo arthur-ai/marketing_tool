@@ -119,6 +119,7 @@ class TestContentSourceManager:
             name="test_source",
             source_type=ContentSourceType.FILE,
             file_paths=[str(test_dir)],
+            file_patterns=[str(test_dir / "*.json")],  # Add pattern to find the file
         )
 
         success = await manager.add_source_from_config(config)

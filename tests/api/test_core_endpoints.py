@@ -59,7 +59,7 @@ class TestAnalyzeEndpoint:
             "recommendations": ["Add more keywords", "Improve structure"],
         }
 
-        response = client.post("/analyze", json=analyze_request.dict())
+        response = client.post("/analyze", json=analyze_request.model_dump(mode="json"))
 
         assert response.status_code == 200
         data = response.json()
@@ -76,7 +76,7 @@ class TestAnalyzeEndpoint:
         # Setup mocks
         mock_analyze.side_effect = Exception("Analysis failed")
 
-        response = client.post("/analyze", json=analyze_request.dict())
+        response = client.post("/analyze", json=analyze_request.model_dump(mode="json"))
 
         assert response.status_code == 500
         data = response.json()
@@ -86,38 +86,107 @@ class TestAnalyzeEndpoint:
 class TestPipelineEndpoint:
     """Test the /pipeline endpoint."""
 
-    @patch("marketing_project.api.core.run_marketing_project_pipeline")
-    def test_run_pipeline_success(self, mock_run_pipeline, client, pipeline_request):
-        """Test successful pipeline execution."""
-        # Setup mocks
-        mock_run_pipeline.return_value = {
-            "steps": [
-                {"name": "AnalyzeContent", "status": "completed"},
-                {"name": "ExtractSEOKeywords", "status": "completed"},
-                {"name": "GenerateMarketingBrief", "status": "completed"},
-            ],
-            "total_time": 45.2,
-            "success": True,
-        }
+    @patch("marketing_project.api.core.process_blog_post")
+    @pytest.mark.asyncio
+    async def test_run_pipeline_success_blog(
+        self,
+        mock_process_blog,
+        client,
+        pipeline_request,
+    ):
+        """Test successful pipeline execution for blog posts.
 
-        response = client.post("/pipeline", json=pipeline_request.dict())
+        The pipeline now routes directly to deterministic processors based on content type.
+        """
+        import json
+
+        # Setup mock processor response
+        mock_process_blog.return_value = json.dumps(
+            {
+                "status": "success",
+                "content_type": "blog_post",
+                "blog_type": "tutorial",
+                "metadata": {
+                    "author": "Test Author",
+                    "category": "tutorial",
+                    "word_count": 100,
+                },
+                "pipeline_result": {
+                    "seo_keywords": ["test", "marketing"],
+                    "formatted_content": "Formatted content",
+                },
+                "validation": "passed",
+                "processing_steps_completed": [
+                    "validation",
+                    "metadata_extraction",
+                    "pipeline",
+                ],
+                "message": "Blog post processed successfully",
+            }
+        )
+
+        response = client.post(
+            "/pipeline", json=pipeline_request.model_dump(mode="json")
+        )
 
         assert response.status_code == 200
         data = response.json()
         assert data["success"] is True
         assert data["content_id"] == "test_content_1"
         assert "result" in data
-        assert len(data["result"]["steps"]) == 3
+        assert data["result"]["content_type"] == "blog_post"
+        assert "metadata" in data["result"]
+        assert "pipeline_result" in data["result"]
 
-    @patch("marketing_project.api.core.run_marketing_project_pipeline")
-    def test_run_pipeline_execution_error(
-        self, mock_run_pipeline, client, pipeline_request
+        # Verify the processor was called
+        mock_process_blog.assert_called_once()
+
+    @patch("marketing_project.api.core.process_blog_post")
+    @pytest.mark.asyncio
+    async def test_run_pipeline_processor_error(
+        self,
+        mock_process_blog,
+        client,
+        pipeline_request,
     ):
-        """Test pipeline execution error."""
-        # Setup mocks
-        mock_run_pipeline.side_effect = Exception("Pipeline execution failed")
+        """Test pipeline execution error from processor.
 
-        response = client.post("/pipeline", json=pipeline_request.dict())
+        The pipeline now routes directly to deterministic processors based on content type.
+        """
+        import json
+
+        # Setup mock processor to return error
+        mock_process_blog.return_value = json.dumps(
+            {
+                "status": "error",
+                "error": "validation_failed",
+                "message": "Content validation failed",
+            }
+        )
+
+        response = client.post(
+            "/pipeline", json=pipeline_request.model_dump(mode="json")
+        )
+
+        assert response.status_code == 400
+        data = response.json()
+        assert "Content validation failed" in data["detail"]
+
+    @patch("marketing_project.api.core.process_blog_post")
+    @pytest.mark.asyncio
+    async def test_run_pipeline_execution_error(
+        self,
+        mock_process_blog,
+        client,
+        pipeline_request,
+    ):
+        """Test pipeline execution error when processor raises exception."""
+        # Setup mock processor to raise exception
+        mock_process_blog.side_effect = Exception("Pipeline execution failed")
+
+        response = client.post(
+            "/pipeline", json=pipeline_request.model_dump(mode="json")
+        )
 
         assert response.status_code == 500
         data = response.json()

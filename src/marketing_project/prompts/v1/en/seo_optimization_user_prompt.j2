@@ -1,0 +1,95 @@
+Perform comprehensive SEO optimization workflow with validation and generation:
+
+ARTICLE CONTENT (FULL):
+Title: {{ article_result.article_title }}
+Content: {{ article_result.article_content }}
+
+FROM STEP 1 (SEO Keywords):
+- Main Keyword: {{ seo_result.main_keyword }}
+- Primary Keywords: {{ seo_result.primary_keywords | join(', ') }}
+- Secondary Keywords: {{ seo_result.secondary_keywords | join(', ') if seo_result.secondary_keywords else 'None' }}
+- Long-tail Keywords: {{ seo_result.long_tail_keywords | join(', ') if seo_result.long_tail_keywords else 'None' }}
+- Search Intent: {{ seo_result.search_intent }}
+{% if seo_result.keyword_difficulty %}
+- Keyword Difficulty Scores: Available for {{ seo_result.keyword_difficulty | length }} keywords (focus on difficulty 20-70 range)
+{% endif %}
+{% if seo_result.keyword_density_analysis %}
+- Keyword Density Analysis: Available for {{ seo_result.keyword_density_analysis | length }} keywords
+{% endif %}
+{% if seo_result.optimization_recommendations %}
+- Optimization Recommendations: {{ seo_result.optimization_recommendations | join('; ') }}
+{% endif %}
+
+FROM STEP 2 (Marketing Brief):
+- Target Audience: {{ brief_result.target_audience | join(', ') }}
+- Tone and Voice: {{ brief_result.tone_and_voice or 'Professional and engaging' }}
+- Content Strategy: {{ brief_result.content_strategy }}
+- Competitive Angle: {{ brief_result.competitive_angle or 'Not specified' }}
+- Key Messages: {{ brief_result.key_messages | join(', ') }}
+
+FROM STEP 3 (Article Generation):
+- Article Title: {{ article_result.article_title }}
+- Article Outline: {{ article_result.outline | join(', ') }}
+- Key Takeaways: {{ article_result.key_takeaways | join(', ') if article_result.key_takeaways else 'None' }}
+
+SEO OPTIMIZATION WORKFLOW:
+
+1. PARSE CONTENT:
+   - Analyze structure and detect title, headings (H1-H3), and section layout
+   - Identify H1-H3 hierarchy and note any missing or duplicate elements
+
+2. KEYWORD MAPPING:
+   - Identify and confirm the primary keyword ({{ seo_result.main_keyword }}) and 3-5 semantically related terms
+   - Ensure related keywords align with the post topic and search intent ({{ seo_result.search_intent }})
+   - Incorporate long-tail keywords naturally where appropriate for better targeting
+   - Use keyword difficulty scores to prioritize which keywords to emphasize (focus on difficulty 20-70 range)
+   - Follow optimization recommendations from keyword analysis
+   {% if seo_result.keyword_density_analysis %}
+   - Reference keyword density analysis to ensure optimal keyword distribution
+   - Use placement locations from density analysis to guide keyword placement
+   {% endif %}
+
+3. TITLE OPTIMIZATION/GENERATION:
+   - Validate existing title includes primary keyword, is under 60 characters, and is compelling
+   - If missing or weak: generate a new SEO title that includes the primary keyword and uses action-oriented language
+
+4. META DESCRIPTION GENERATION:
+   - If meta description exists: verify it's between 140-160 characters, includes the keyword once, and has a clear CTA or value
+   - If missing: generate a new one following the same rules, incorporating key messages from the marketing brief
+
+5. URL SLUG GENERATION:
+   - If slug exists: check that it's short (3-5 words), lowercase, hyphen-separated, and contains the keyword
+   - If missing: generate one automatically from the keyword or title
+
+6. HEADER STRUCTURE OPTIMIZATION:
+   - Ensure only one H1 exists
+   - Validate that H2s represent logical sections and include relevant keywords
+   - Adjust or generate sub-headings for clarity and SEO structure
+
+7. KEYWORD PLACEMENT OPTIMIZATION:
+   - Validate that the primary keyword appears naturally in the title, introduction, at least one H2, and near the conclusion
+   - Check secondary keyword distribution and adjust if density is too low or too high
+   - Ensure natural readability (avoid keyword stuffing)
+
+8. READABILITY OPTIMIZATION:
+   - Evaluate sentence length, transitions, and clarity
+   - Aim for Grade 8-9 reading level
+   - Rewrite for active voice and scan-friendly formatting (short paragraphs, bullet points, clear transitions)
+
+9. SCHEMA GENERATION:
+   - Create or validate a JSON-LD "BlogPosting" schema block
+   - Include title, description, author (if available), date, and keywords
+   - Output schema as a valid JSON-LD string
+
+OUTPUT:
+- SEO-optimized content version (full content, not truncated)
+- Meta title (50-60 chars)
+- Meta description (140-160 chars)
+- URL slug
+- Alt text suggestions for images
+- Schema markup (JSON-LD as string)
+- Open Graph tags for social sharing
+- Header structure analysis (H1-H3 hierarchy with validation)
+- Keyword map (primary + related keywords with placement locations)
+- Readability optimization analysis (score, grade level, active voice percentage)
+- Modification report (list of changes made, e.g., "Meta description regenerated", "H2 hierarchy corrected", "Keyword placement optimized")

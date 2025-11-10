@@ -1,0 +1,85 @@
+Analyze this article and suggest specific places to add internal links.
+
+ARTICLE TO ANALYZE:
+Title: {{ article_result.article_title }}
+Full Content: {{ seo_opt_result.optimized_content }}
+
+ARTICLE STRUCTURE:
+- Outline: {{ article_result.outline | join(', ') }}
+- Key Takeaways: {{ article_result.key_takeaways | join(', ') if article_result.key_takeaways else 'None' }}
+- Header Structure: {{ seo_opt_result.header_structure | string if seo_opt_result.header_structure else 'Not available' }}
+
+KEYWORDS FOR MATCHING:
+- Main Keyword: {{ seo_result.main_keyword }}
+- Primary Keywords: {{ seo_result.primary_keywords | join(', ') }}
+- Secondary Keywords: {{ seo_result.secondary_keywords | join(', ') if seo_result.secondary_keywords else 'None' }}
+- Long-tail Keywords: {{ seo_result.long_tail_keywords | join(', ') if seo_result.long_tail_keywords else 'None' }}
+- Search Intent: {{ seo_result.search_intent }}
+
+{% if relevant_documents %}
+RELEVANT INTERNAL DOCUMENTS (from database, matched by keywords):
+{% for doc in relevant_documents %}
+- **{{ doc.title }}** ({{ doc.url }})
+  - Summary: {{ doc.metadata.content_summary[:150] if doc.metadata.content_summary else 'No summary' }}...
+  - Topics: {{ doc.metadata.topics | join(', ') if doc.metadata.topics else 'None' }}
+  - Categories: {{ doc.metadata.categories | join(', ') if doc.metadata.categories else 'None' }}
+  - Keywords: {{ doc.metadata.extracted_keywords[:5] | join(', ') if doc.metadata.extracted_keywords else 'None' }}
+{% endfor %}
+{% endif %}
+
+{% if internal_docs_config %}
+ADDITIONAL INTERNAL DOCUMENTATION CONFIG:
+{% if internal_docs_config.scanned_documents %}
+Scanned Documents ({{ internal_docs_config.scanned_documents | length }}):
+{% for doc in internal_docs_config.scanned_documents %}
+- {{ doc.title }} ({{ doc.url }})
+{% endfor %}
+{% endif %}
+
+{% if internal_docs_config.commonly_referenced_pages %}
+Commonly Referenced Pages:
+{% for page in internal_docs_config.commonly_referenced_pages %}
+- {{ page }}
+{% endfor %}
+{% endif %}
+
+{% if internal_docs_config.commonly_referenced_categories %}
+Commonly Referenced Categories:
+{% for category in internal_docs_config.commonly_referenced_categories %}
+- {{ category }}
+{% endfor %}
+{% endif %}
+
+{% if internal_docs_config.anchor_phrasing_patterns %}
+Anchor Text Patterns to Follow:
+{% for pattern in internal_docs_config.anchor_phrasing_patterns %}
+- {{ pattern }}
+{% endfor %}
+{% endif %}
+{% elif not relevant_documents %}
+NOTE: No InternalDocsConfig or relevant documents found. You can still suggest links, but you won't have a reference list of available pages.
+{% endif %}
+
+TASK:
+Suggest specific internal links to add to this article. For each suggestion, provide:
+1. **Anchor Text**: Natural, keyword-optimized anchor text that follows the anchor phrasing patterns (if provided)
+2. **Target URL**: A specific page from the available internal documentation (if config provided) or a logical URL path
+3. **Placement Context**: Where in the article this link should be placed (include a snippet of surrounding text or section name)
+4. **Section**: Which article section this belongs to (from the outline)
+5. **Relevance Score**: How relevant this link is (0.0-1.0)
+6. **Reasoning**: Brief explanation of why this link is suggested
+
+LINKING STRATEGY:
+- Match article content and keywords to available pages/categories from InternalDocsConfig
+- Use anchor text patterns from the config when suggesting anchor text
+- Place links contextually where they add value (not just at the end)
+- Focus on high-relevance matches (relevance > 0.6)
+- Suggest 3-8 links total, prioritizing the most relevant connections
+- Use keywords to find semantic matches between article content and available pages
+- Consider search intent when matching content
+
+IMPORTANT:
+- Only suggest links to pages that exist in the InternalDocsConfig (if provided)
+- Use the anchor phrasing patterns as guidance for anchor text style
+- Provide specific placement context so links can be inserted accurately
+- Prioritize links that enhance user experience and content discoverability

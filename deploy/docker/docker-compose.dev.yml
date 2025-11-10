@@ -1,0 +1,186 @@
+name: marketing-project-dev
+
+services:
+  # Marketing Project API - Development service with hot reload
+  api:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.dev
+    ports:
+      - "8000:8000"
+    env_file:
+      - ../../.env
+    environment:
+      - DEBUG=true
+      - HOST=0.0.0.0
+      - PORT=8000
+      - LOG_LEVEL=DEBUG
+      - TEMPLATE_VERSION=v1
+      - PYTHONPATH=/app/src
+      - CORS_ORIGINS=http://localhost:3000,http://localhost:8000
+      - CORS_ALLOW_CREDENTIALS=true
+      # Use SQLite for development (no external dependencies)
+      - CONTENT_DATABASE_URL=sqlite:///./content.db
+      # Redis (required for ARQ job queue and centralized RedisManager)
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DATABASE=0
+      # Optional: Customize RedisManager behavior (defaults work fine for dev)
+      # - REDIS_MAX_CONNECTIONS=50
+      # - REDIS_SOCKET_TIMEOUT=5.0
+      # - REDIS_CONNECT_TIMEOUT=5.0
+      # - REDIS_RETRY_ATTEMPTS=3
+      # - REDIS_CIRCUIT_FAILURE_THRESHOLD=5
+      # - REDIS_CIRCUIT_RECOVERY_TIMEOUT=60
+      # - ENABLE_CLOUDWATCH_METRICS=false
+      # Database connection (uses DATABASE_URL from .env if provided, otherwise uses postgres service)
+      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:password@postgres:5432/marketing_project}
+      # Optional MongoDB URL (uncomment if you need it)
+      # - MONGODB_URL=mongodb://mongodb:27017/marketing_project
+    volumes:
+      # Mount source code for hot-reload (changes reflect immediately)
+      - ../../src:/app/src
+      # Mount configuration files
+      - ../../requirements.txt:/app/requirements.txt
+      - ../../setup.py:/app/setup.py
+      - ../../pyproject.toml:/app/pyproject.toml
+      # Mount data directories (no logs - they go to Docker logs)
+      - ./uploads:/app/uploads
+      - ../../content:/app/content
+    command: >
+      uvicorn src.marketing_project.server:app
+      --host 0.0.0.0
+      --port 8000
+      --reload
+      --reload-dir /app/src
+      --log-level debug
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # PostgreSQL - Required for configuration persistence
+  # If DATABASE_URL is provided in .env file pointing to external database, this service won't be used
+  # Otherwise, this service will be used for storing configurations
+  postgres:
+    image: postgres:15-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=marketing_project
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Optional: MongoDB (uncomment if needed)
+  # mongodb:
+  #   image: mongo:7
+  #   ports:
+  #     - "27017:27017"
+  #   environment:
+  #     - MONGO_INITDB_ROOT_USERNAME=admin
+  #     - MONGO_INITDB_ROOT_PASSWORD=password
+  #     - MONGO_INITDB_DATABASE=marketing_project
+  #   volumes:
+  #     - mongodb_data:/data/db
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+
+  # Redis - Required for ARQ job queue
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ARQ Worker - Processes background jobs
+  worker:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.dev
+    env_file:
+      - ../../.env
+    environment:
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+      - TEMPLATE_VERSION=v1
+      - PYTHONPATH=/app/src
+      # Redis connection for ARQ (overrides .env for Docker networking)
+      # ARQ uses its own connection pool but shares the same env vars
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DATABASE=${REDIS_DATABASE:-0}
+      # Optional: SSL not needed for local Redis
+      # - REDIS_SSL=false
+      # Database connection (uses DATABASE_URL from .env if provided, otherwise uses postgres service)
+      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:password@postgres:5432/marketing_project}
+      # ARQ worker settings (from .env)
+      - ARQ_MAX_JOBS=${ARQ_MAX_JOBS:-10}
+      - ARQ_JOB_TIMEOUT=${ARQ_JOB_TIMEOUT:-600}
+    volumes:
+      # Mount source code for hot-reload
+      - ../../src:/app/src
+      - ../../requirements.txt:/app/requirements.txt
+      - ./uploads:/app/uploads
+      - ../../content:/app/content
+    command: >
+      arq marketing_project.worker.WorkerSettings
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    deploy:
+      replicas: ${ARQ_WORKER_COUNT:-2}  # Number of worker instances (from .env)
+
+  # Optional: MongoDB (uncomment if needed)
+  # mongodb:
+  #   image: mongo:7
+  #   ports:
+  #     - "27017:27017"
+  #   environment:
+  #     - MONGO_INITDB_ROOT_USERNAME=admin
+  #     - MONGO_INITDB_ROOT_PASSWORD=password
+  #     - MONGO_INITDB_DATABASE=marketing_project
+  #   volumes:
+  #     - mongodb_data:/data/db
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+
+# Volumes for data persistence
+volumes:
+  redis_data:
+  postgres_data:
+  # Uncomment if you enable MongoDB
+  # mongodb_data:

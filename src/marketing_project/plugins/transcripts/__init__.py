@@ -1,10 +1,7 @@
 """
-Transcript processing plugin for Marketing Project.
+Transcripts plugin for Marketing Project.
 
-This plugin handles analysis, processing, and routing of transcript content
-including podcasts, videos, meetings, and interviews.
+This plugin provides functionality for processing transcripts from videos, podcasts, and meetings.
 """
 
-from . import tasks
-
-__all__ = ["tasks"]
+__all__ = []

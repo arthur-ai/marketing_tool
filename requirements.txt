@@ -1,5 +1,5 @@
 # Core dependencies
-any-agent[langchain]==0.21.1
+any-agent[langchain]==1.11.0
 langchain==0.3.27
 openai==2.3.0
 jinja2==3.1.6
@@ -25,6 +25,13 @@ asyncpg>=0.29.0
 aiosqlite>=0.19.0
 redis>=5.0.0
 motor>=3.3.0
+sqlalchemy[asyncio]>=2.0.0
+
+# Job Queue dependencies
+arq>=0.25.0
+
+# Redis resilience dependencies
+tenacity>=8.2.0
 
 # Scheduler dependencies
 apscheduler>=3.10.0

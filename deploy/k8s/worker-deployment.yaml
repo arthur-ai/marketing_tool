@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: marketing-project-worker
+  namespace: marketing-project
+  labels:
+    app: marketing-project-worker
+    version: v1
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: marketing-project-worker
+  template:
+    metadata:
+      labels:
+        app: marketing-project-worker
+        version: v1
+    spec:
+      containers:
+      - name: worker
+        image: marketing-project-api:latest
+        command:
+        - arq
+        - marketing_project.worker.WorkerSettings
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        envFrom:
+        - configMapRef:
+            name: marketing-project-config
+        - secretRef:
+            name: marketing-project-secrets
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        volumeMounts:
+        - name: logs
+          mountPath: /app/logs
+        - name: secrets
+          mountPath: /secrets
+          readOnly: true
+      volumes:
+      - name: logs
+        emptyDir: {}
+      - name: secrets
+        secret:
+          secretName: marketing-project-secrets
+      restartPolicy: Always

@@ -1,27 +1,29 @@
+"""
+Marketing Project CLI
+
+Updated to use the new simplified function-based pipeline.
+"""
+
 import asyncio
 import logging
 import os
 
 import click
-import yaml
 from dotenv import find_dotenv, load_dotenv
 
 # Activate logging setup before any other imports that use logging
 import marketing_project.logging_config
 
 # Initialize logger
-logger = logging.getLogger("marketing_project.runner")
+logger = logging.getLogger("marketing_project.main")
 
-from marketing_project.runner import (
-    run_marketing_project_pipeline,
-    run_marketing_project_server,
-)
+from marketing_project.runner import run_function_pipeline, run_server
 from marketing_project.services.content_source_config_loader import (
     ContentSourceConfigLoader,
 )
 from marketing_project.services.content_source_factory import ContentSourceManager
 
-# # Load .env variables
+# Load .env variables
 dotenv_path = find_dotenv()
 
 # Force override of any existing env vars
@@ -30,47 +32,24 @@ load_dotenv(dotenv_path=dotenv_path, override=True, verbose=True)
 
 @click.group()
 def cli():
-    """Marketing Project CLI"""
+    """Marketing Project CLI - Function Pipeline Edition"""
     pass
 
 
 @cli.command("run")
-@click.option("--lang", default="en", help="Prompt language (default: en)")
-@click.option("--prompts-dir", default=None, help="Prompt templates directory")
-def run_pipeline(lang, prompts_dir):
-    """Run the marketing project content processing pipeline asynchronously."""
-    asyncio.run(_run_pipeline_async(lang, prompts_dir))
-
-
-async def _run_pipeline_async(lang, prompts_dir):
-    # Default prompts_dir logic
-    if not prompts_dir:
-        base = os.path.dirname(__file__)
-        prompts_dir = os.path.abspath(
-            os.path.join(base, "prompts", os.getenv("TEMPLATE_VERSION", "v1"))
-        )
-    await run_marketing_project_pipeline(prompts_dir=prompts_dir, lang=lang)
+def run_pipeline():
+    """Run the function-based content processing pipeline."""
+    logger.info("Starting function pipeline...")
+    asyncio.run(run_function_pipeline())
 
 
 @cli.command("serve")
-@click.option("--host", default="0.0.0.0")
-@click.option("--port", default=8000)
-@click.option("--lang", default="en", help="Prompt language (default: en)")
-@click.option("--prompts-dir", default=None, help="Prompt templates directory")
-def serve_server(host, port, lang, prompts_dir):
-    """Serve the marketing project content processing API as an async HTTP (FastAPI) server."""
-    asyncio.run(_run_server_async(host, port, lang, prompts_dir))
-
-
-async def _run_server_async(host, port, lang, prompts_dir):
-    if not prompts_dir:
-        base = os.path.dirname(__file__)
-        prompts_dir = os.path.abspath(
-            os.path.join(base, "prompts", os.getenv("TEMPLATE_VERSION", "v1"))
-        )
-    await run_marketing_project_server(
-        host=host, port=port, prompts_dir=prompts_dir, lang=lang
-    )
+@click.option("--host", default="0.0.0.0", help="Server host (default: 0.0.0.0)")
+@click.option("--port", default=8080, help="Server port (default: 8080)")
+def serve_server(host, port):
+    """Start the FastAPI HTTP server."""
+    logger.info(f"Starting server on {host}:{port}...")
+    asyncio.run(run_server(host=host, port=port))
 
 
 @cli.command("content-sources")
@@ -84,31 +63,17 @@ async def _run_server_async(host, port, lang, prompts_dir):
 @click.option(
     "--fetch", "fetch_content", is_flag=True, help="Fetch content from all sources"
 )
-@click.option("--lang", default="en", help="Prompt language (default: en)")
-@click.option("--prompts-dir", default=None, help="Prompt templates directory")
-def content_sources_cmd(
-    list_sources, check_status, test_sources, fetch_content, lang, prompts_dir
-):
-    """Manage content sources"""
+def content_sources_cmd(list_sources, check_status, test_sources, fetch_content):
+    """Manage content sources."""
     asyncio.run(
-        _content_sources_async(
-            list_sources, check_status, test_sources, fetch_content, lang, prompts_dir
-        )
+        _content_sources_async(list_sources, check_status, test_sources, fetch_content)
     )
 
 
 async def _content_sources_async(
-    list_sources, check_status, test_sources, fetch_content, lang, prompts_dir
+    list_sources, check_status, test_sources, fetch_content
 ):
     """Handle content sources commands asynchronously."""
-
-    # Default prompts_dir logic
-    if not prompts_dir:
-        base = os.path.dirname(__file__)
-        prompts_dir = os.path.abspath(
-            os.path.join(base, "prompts", os.getenv("TEMPLATE_VERSION", "v1"))
-        )
-
     # Load configurations
     config_loader = ContentSourceConfigLoader()
     source_configs = config_loader.create_source_configs()

@@ -8,28 +8,39 @@ import os
 from setuptools import find_packages, setup
 
 
-# Read the README file
+# Read the README file (optional for Docker builds)
 def read_readme():
-    with open("README.md", "r", encoding="utf-8") as fh:
-        return fh.read()
+    try:
+        with open("README.md", "r", encoding="utf-8") as fh:
+            return fh.read()
+    except FileNotFoundError:
+        return "Marketing Project - A production-ready marketing agentic project"
 
 
-# Read requirements
+# Read requirements (optional for Docker builds)
 def read_requirements():
-    with open("requirements.txt", "r", encoding="utf-8") as fh:
-        return [
-            line.strip() for line in fh if line.strip() and not line.startswith("#")
-        ]
+    try:
+        with open("requirements.txt", "r", encoding="utf-8") as fh:
+            return [
+                line.strip() for line in fh if line.strip() and not line.startswith("#")
+            ]
+    except FileNotFoundError:
+        return []
 
 
-# Read dev requirements
+# Read dev requirements (optional for Docker builds)
 def read_dev_requirements():
-    with open("requirements-dev.txt", "r", encoding="utf-8") as fh:
-        return [
-            line.strip()
-            for line in fh
-            if line.strip() and not line.startswith("#") and not line.startswith("-r")
-        ]
+    try:
+        with open("requirements-dev.txt", "r", encoding="utf-8") as fh:
+            return [
+                line.strip()
+                for line in fh
+                if line.strip()
+                and not line.startswith("#")
+                and not line.startswith("-r")
+            ]
+    except FileNotFoundError:
+        return []
 
 
 setup(

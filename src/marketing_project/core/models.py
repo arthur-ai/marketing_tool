@@ -1,5 +1,5 @@
 """
-Pydantic models for MailMaestro application context.
+Pydantic models for Marketing Project application context.
 
 This module defines data models for representing various content types and application context using Pydantic BaseModel classes.
 
@@ -104,7 +104,7 @@ ContentContext = Union[TranscriptContext, BlogPostContext, ReleaseNotesContext]
 
 class AppContext(BaseModel):
     """
-    Model representing the application context for MailMaestro.
+    Model representing the application context for Marketing Project.
 
     Attributes:
         content (ContentContext): The content context object (transcript, blog post, or release notes).

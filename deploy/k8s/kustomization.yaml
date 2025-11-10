@@ -7,7 +7,9 @@ resources:
   - namespace.yaml
   - configmap.yaml
   - secret.yaml
+  - redis-deployment.yaml    # Phase 2: Redis is now required
   - deployment.yaml
+  - worker-deployment.yaml   # Phase 2: ARQ workers for background jobs
   - service.yaml
   - ingress.yaml
   - hpa.yaml

@@ -7,9 +7,8 @@ pipelines:
     - GenerateMarketingBrief
     - GenerateArticle
     - OptimizeSEO
-    - SuggestInternalDocs
+    - suggested_links
     - FormatContent
-    - ApplyDesignKit
 
 # Context passing configuration for better data flow
 context_passing:
@@ -37,19 +36,15 @@ context_passing:
     output: "seo_optimized_result"
     next_input: "seo_optimized_result"
     data_structure: "Dict[str, Any]"
-  SuggestInternalDocs:
+  suggested_links:
     input: "seo_optimized_result"
-    output: "internal_docs_result"
-    next_input: "internal_docs_result"
+    output: "suggested_links"
+    next_input: "suggested_links"
     data_structure: "Dict[str, Any]"
   FormatContent:
-    input: "internal_docs_result"
+    input: "seo_optimized_result"
     output: "formatted_content_result"
     next_input: "formatted_content_result"
-    data_structure: "Dict[str, Any]"
-  ApplyDesignKit:
-    input: "formatted_content_result"
-    output: "final_content_result"
     data_structure: "Dict[str, Any]"
 
 sub_pipelines:
@@ -112,8 +107,8 @@ content_sources:
       type: "file"
       enabled: true
       config:
-        file_paths: ["content/", "data/"]
-        file_patterns: ["content/**/*.md", "content/**/*.json", "data/**/*.txt"]
+        file_paths: ["content/"]
+        file_patterns: ["content/**/*.md", "content/**/*.json", "content/**/*.txt"]
         watch_directory: true
         supported_formats: [".md", ".json", ".txt", ".yaml", ".yml"]
 

@@ -319,65 +319,92 @@ def sample_style_guide():
 
 
 @pytest.fixture
-def sample_available_agents():
-    """Sample available agents for testing - only includes actual agents from the codebase."""
+def sample_available_processors():
+    """Sample available processors for testing.
+
+    Note: The system now uses deterministic processors instead of agents.
+    """
     return {
-        "article_generation_agent": {
-            "name": "Article Generation Agent",
-            "capabilities": ["article_generation", "content_creation"],
-            "priority": "high",
-        },
-        "blog_agent": {
-            "name": "Blog Agent",
+        "blog_processor": {
+            "name": "Blog Processor",
             "capabilities": ["blog_post", "article"],
-            "priority": "high",
+            "type": "processor",
         },
-        "content_formatting_agent": {
-            "name": "Content Formatting Agent",
-            "capabilities": ["content_formatting", "formatting"],
-            "priority": "high",
-        },
-        "content_pipeline_agent": {
-            "name": "Content Pipeline Agent",
-            "capabilities": ["content_pipeline", "workflow"],
-            "priority": "high",
-        },
-        "internal_docs_agent": {
-            "name": "Internal Docs Agent",
-            "capabilities": ["internal_docs", "documentation"],
-            "priority": "high",
-        },
-        "marketing_agent": {
-            "name": "Marketing Agent",
-            "capabilities": ["marketing", "promotion"],
-            "priority": "high",
-        },
-        "marketing_brief_agent": {
-            "name": "Marketing Brief Agent",
-            "capabilities": ["marketing_brief", "brief_creation"],
-            "priority": "high",
-        },
-        "releasenotes_agent": {
-            "name": "Release Notes Agent",
-            "capabilities": ["release_notes", "changelog"],
-            "priority": "high",
-        },
-        "seo_keywords_agent": {
-            "name": "SEO Keywords Agent",
-            "capabilities": ["seo_keywords", "keyword_research"],
-            "priority": "high",
-        },
-        "seo_optimization_agent": {
-            "name": "SEO Optimization Agent",
-            "capabilities": ["seo_optimization", "seo"],
-            "priority": "high",
-        },
-        "transcripts_agent": {
-            "name": "Transcripts Agent",
+        "transcript_processor": {
+            "name": "Transcript Processor",
             "capabilities": ["transcripts", "transcript_processing"],
-            "priority": "high",
+            "type": "processor",
+        },
+        "releasenotes_processor": {
+            "name": "Release Notes Processor",
+            "capabilities": ["release_notes", "changelog"],
+            "type": "processor",
         },
     }
+
+
+@pytest.fixture
+def function_pipeline():
+    """Create a FunctionPipeline instance for testing."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from marketing_project.services.function_pipeline import FunctionPipeline
+
+    pipeline = FunctionPipeline(model="gpt-4o-mini", temperature=0.7, lang="en")
+
+    # Mock the OpenAI client to avoid real API calls
+    mock_client = AsyncMock()
+    mock_response = MagicMock()
+    mock_response.choices = [MagicMock()]
+    mock_response.choices[0].message.tool_calls = []
+    mock_response.choices[0].message.content = '{"status": "success"}'
+    mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
+    pipeline.client = mock_client
+
+    return pipeline
+
+
+@pytest.fixture
+async def job_manager():
+    """Create a JobManager instance for testing."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from marketing_project.services.job_manager import JobManager
+
+    manager = JobManager()
+
+    # Mock Redis manager
+    mock_redis = AsyncMock()
+    mock_redis.get = AsyncMock(return_value=None)
+    mock_redis.set = AsyncMock(return_value=True)
+    mock_redis.setex = AsyncMock(return_value=True)
+    mock_redis.delete = AsyncMock(return_value=1)
+    mock_redis.sadd = AsyncMock(return_value=1)
+    mock_redis.smembers = AsyncMock(return_value=set())
+
+    with patch.object(manager, "get_redis", return_value=mock_redis):
+        yield manager
+
+
+@pytest.fixture
+def plugin_registry():
+    """Create a PluginRegistry instance for testing."""
+    from marketing_project.plugins.registry import PluginRegistry
+
+    registry = PluginRegistry()
+    return registry
+
+
+@pytest.fixture
+def mock_plugin_registry():
+    """Create a mocked PluginRegistry for testing."""
+    from unittest.mock import MagicMock
+
+    from marketing_project.plugins.registry import PluginRegistry
+
+    registry = PluginRegistry()
+    # Don't auto-discover, just return empty registry for testing
+    return registry
 
 
 # Markers for different test types

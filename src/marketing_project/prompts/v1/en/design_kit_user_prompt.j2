@@ -1,0 +1,89 @@
+Recommend comprehensive design elements for this content:
+
+CONTENT INFORMATION:
+Title: {{ article_result.article_title }}
+Content Type: {{ content_type }}
+Brand Context: {{ content.category | default('N/A') }}
+
+FROM STEP 1 (SEO Keywords):
+- Main Keyword: {{ seo_result.main_keyword }}
+- Primary Keywords: {{ seo_result.primary_keywords | join(', ') }}
+{% if seo_result.long_tail_keywords %}
+- Long-tail Keywords: {{ seo_result.long_tail_keywords | join(', ') }}
+{% endif %}
+{% if seo_result.keyword_clusters %}
+- Keyword Clusters: {{ seo_result.keyword_clusters | map(attribute='cluster_name') | join(', ') }}
+{% endif %}
+
+FROM STEP 2 (Marketing Brief):
+- Target Audience: {{ brief_result.target_audience | join(', ') }}
+- Tone and Voice: {{ brief_result.tone_and_voice }}
+
+FROM STEP 3 (Article Generation):
+- Article Outline: {{ article_result.outline | join(', ') }}
+- Key Takeaways: {{ article_result.key_takeaways | join(', ') if article_result.key_takeaways else 'None' }}
+
+FROM STEP 4 (SEO Optimization):
+- Header Structure: {{ seo_opt_result.header_structure | string if seo_opt_result.header_structure else 'Not available' }}
+- Readability Optimization: {{ seo_opt_result.readability_optimization | string if seo_opt_result.readability_optimization else 'Not available' }}
+- Meta Title: {{ seo_opt_result.meta_title }}
+- Meta Description: {{ seo_opt_result.meta_description }}
+- Alt Texts: {{ seo_opt_result.alt_texts | string if seo_opt_result.alt_texts else 'Not available' }}
+
+DESIGN RECOMMENDATIONS:
+
+1. VISUAL HIERARCHY (Using Header Structure):
+   - Use header_structure to determine H1 size, H2 spacing, H3 indentation
+   - Create visual hierarchy that matches content structure
+   - Ensure headings are visually distinct based on header_structure hierarchy
+   - Use spacing and typography to reflect content organization
+
+2. TYPOGRAPHY (Using Readability Optimization):
+   - Use readability_optimization data for font size decisions
+   - Adjust line heights based on readability grade level
+   - Choose font sizes that support optimal reading experience
+   - Ensure typography maintains readability score from optimization
+
+3. ALT TEXT ENHANCEMENT (Using Keywords):
+   - Build upon existing alt_texts from Step 4
+   - Enhance alt text suggestions with primary keywords ({{ seo_result.main_keyword }})
+   {% if seo_result.long_tail_keywords %}
+   - Consider long-tail keywords for more specific, descriptive alt text
+   {% endif %}
+   {% if seo_result.keyword_clusters %}
+   - Use keyword cluster themes to create contextually relevant alt text
+   {% endif %}
+   - Ensure all images have keyword-optimized, descriptive alt text
+   - Improve accessibility while maintaining SEO benefits
+
+4. DESIGN CHOICES (Using Target Audience):
+   - Incorporate target audience preferences ({{ brief_result.target_audience | join(', ') }}) for color choices
+   - Select layout style based on audience demographics and preferences
+   - Choose visual elements that resonate with target audience
+   - Ensure design aligns with audience expectations and consumption patterns
+
+5. VISUAL EMPHASIS (Using Key Takeaways):
+   - Use key takeaways to suggest callout boxes and highlights
+   - Create visual emphasis for important takeaways
+   - Design visual elements that draw attention to key messages
+   - Use design to reinforce key takeaways visually
+
+6. LAYOUT SUGGESTIONS (Using Article Outline):
+   - Use article outline for section spacing recommendations
+   - Suggest visual breaks at section boundaries
+   - Create layout that reflects content structure
+   - Ensure spacing matches content organization
+
+7. SOCIAL SHARING DESIGN (Using Meta Data):
+   - Consider meta_title and meta_description for social sharing card design
+   - Suggest optimal image sizes for social previews
+   - Ensure design works well for social media sharing
+   - Create visual elements that enhance social sharing
+
+Suggest:
+- Visual components (images, charts, infographics) with keyword-optimized alt text
+- Color scheme with hex codes (aligned with target audience preferences)
+- Typography recommendations (optimized for readability from Step 4)
+- Layout suggestions (based on article outline and header structure)
+- Hero image concept (aligned with tone, audience, and keywords)
+- Accessibility considerations (building upon existing alt texts and readability optimization)

@@ -23,10 +23,10 @@ def client():
 class TestSystemInfo:
     """Test the /system/info endpoint."""
 
-    @patch("marketing_project.server.PIPELINE_SPEC", {"test": "spec"})
-    @patch("marketing_project.server.PROMPTS_DIR", "/test/prompts")
-    @patch("os.path.exists")
-    @patch("os.getenv")
+    @patch("marketing_project.api.system.PIPELINE_SPEC", {"test": "spec"})
+    @patch("marketing_project.api.system.PROMPTS_DIR", "/test/prompts")
+    @patch("marketing_project.api.system.os.path.exists")
+    @patch("marketing_project.api.system.os.getenv")
     def test_get_system_info_success(self, mock_getenv, mock_exists, client):
         """Test successful system info retrieval."""
         # Setup mocks
@@ -47,10 +47,10 @@ class TestSystemInfo:
         assert data["configuration"]["pipeline_loaded"] is True
         assert data["configuration"]["prompts_dir_exists"] is True
 
-    @patch("marketing_project.server.PIPELINE_SPEC", None)
-    @patch("marketing_project.server.PROMPTS_DIR", "/nonexistent/prompts")
-    @patch("os.path.exists")
-    @patch("os.getenv")
+    @patch("marketing_project.api.system.PIPELINE_SPEC", None)
+    @patch("marketing_project.api.system.PROMPTS_DIR", "/nonexistent/prompts")
+    @patch("marketing_project.api.system.os.path.exists")
+    @patch("marketing_project.api.system.os.getenv")
     def test_get_system_info_with_missing_config(
         self, mock_getenv, mock_exists, client
     ):
@@ -71,10 +71,10 @@ class TestSystemInfo:
         assert data["configuration"]["pipeline_loaded"] is False
         assert data["configuration"]["prompts_dir_exists"] is False
 
-    @patch("marketing_project.server.PIPELINE_SPEC", {"test": "spec"})
-    @patch("marketing_project.server.PROMPTS_DIR", "/test/prompts")
-    @patch("os.path.exists")
-    @patch("os.getenv")
+    @patch("marketing_project.api.system.PIPELINE_SPEC", {"test": "spec"})
+    @patch("marketing_project.api.system.PROMPTS_DIR", "/test/prompts")
+    @patch("marketing_project.api.system.os.path.exists")
+    @patch("marketing_project.api.system.os.getenv")
     def test_get_system_info_error(self, mock_getenv, mock_exists, client):
         """Test system info with error."""
         # Setup mocks

@@ -2,7 +2,7 @@
 Tests for content source API endpoints.
 """
 
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -36,13 +36,15 @@ def mock_content_source():
 class TestListContentSources:
     """Test the /content-sources endpoint."""
 
-    @patch("marketing_project.api.content.content_manager")
+    @patch("marketing_project.api.content.get_content_manager")
     def test_list_content_sources_success(
-        self, mock_manager, client, mock_content_source
+        self, mock_get_manager, client, mock_content_source
     ):
         """Test successful listing of content sources."""
         # Setup mocks
+        mock_manager = MagicMock()
         mock_manager.get_all_sources.return_value = [mock_content_source]
+        mock_get_manager.return_value = mock_manager
 
         response = client.get("/content-sources")
 
@@ -54,9 +56,11 @@ class TestListContentSources:
         assert data["sources"][0]["status"] == "healthy"
         assert data["sources"][0]["healthy"] is True
 
-    @patch("marketing_project.api.content.content_manager")
-    def test_list_content_sources_with_error(self, mock_manager, client):
+    @patch("marketing_project.api.content.get_content_manager")
+    def test_list_content_sources_with_error(self, mock_get_manager, client):
         """Test listing content sources with health check error."""
+        mock_manager = MagicMock()
+        mock_get_manager.return_value = mock_manager
         # Setup mocks
         source = Mock()
         source.config.name = "error_source"
@@ -75,11 +79,13 @@ class TestListContentSources:
         assert data["sources"][0]["status"] == "error"
         assert "error" in data["sources"][0]["metadata"]
 
-    @patch("marketing_project.api.content.content_manager")
-    def test_list_content_sources_manager_error(self, mock_manager, client):
+    @patch("marketing_project.api.content.get_content_manager")
+    def test_list_content_sources_manager_error(self, mock_get_manager, client):
         """Test listing content sources when manager fails."""
         # Setup mocks
+        mock_manager = MagicMock()
         mock_manager.get_all_sources.side_effect = Exception("Manager error")
+        mock_get_manager.return_value = mock_manager
 
         response = client.get("/content-sources")
 
@@ -91,11 +97,15 @@ class TestListContentSources:
 class TestGetSourceStatus:
     """Test the /content-sources/{source_name}/status endpoint."""
 
-    @patch("marketing_project.api.content.content_manager")
-    def test_get_source_status_success(self, mock_manager, client, mock_content_source):
+    @patch("marketing_project.api.content.get_content_manager")
+    def test_get_source_status_success(
+        self, mock_get_manager, client, mock_content_source
+    ):
         """Test successful source status retrieval."""
         # Setup mocks
+        mock_manager = MagicMock()
         mock_manager.get_source.return_value = mock_content_source
+        mock_get_manager.return_value = mock_manager
 
         response = client.get("/content-sources/test_source/status")
 
@@ -105,11 +115,13 @@ class TestGetSourceStatus:
         assert data["source"]["name"] == "test_source"
         assert data["source"]["status"] == "healthy"
 
-    @patch("marketing_project.api.content.content_manager")
-    def test_get_source_status_not_found(self, mock_manager, client):
+    @patch("marketing_project.api.content.get_content_manager")
+    def test_get_source_status_not_found(self, mock_get_manager, client):
         """Test source status when source not found."""
         # Setup mocks
+        mock_manager = MagicMock()
         mock_manager.get_source.return_value = None
+        mock_get_manager.return_value = mock_manager
 
         response = client.get("/content-sources/nonexistent/status")
 
@@ -117,12 +129,16 @@ class TestGetSourceStatus:
         data = response.json()
         assert "not found" in data["detail"]
 
-    @patch("marketing_project.api.content.content_manager")
-    def test_get_source_status_error(self, mock_manager, client, mock_content_source):
+    @patch("marketing_project.api.content.get_content_manager")
+    def test_get_source_status_error(
+        self, mock_get_manager, client, mock_content_source
+    ):
         """Test source status when health check fails."""
         # Setup mocks
+        mock_manager = MagicMock()
         mock_content_source.health_check = AsyncMock(return_value=False)
         mock_manager.get_source.return_value = mock_content_source
+        mock_get_manager.return_value = mock_manager
 
         response = client.get("/content-sources/test_source/status")
 
@@ -135,12 +151,15 @@ class TestGetSourceStatus:
 class TestFetchFromSource:
     """Test the /content-sources/{source_name}/fetch endpoint."""
 
-    @patch("marketing_project.api.content.content_manager")
-    def test_fetch_from_source_success(self, mock_manager, client, mock_content_source):
+    @patch("marketing_project.api.content.get_content_manager")
+    def test_fetch_from_source_success(
+        self, mock_get_manager, client, mock_content_source
+    ):
         """Test successful content fetching."""
         from marketing_project.core.content_sources import ContentSourceResult
 
         # Setup mocks
+        mock_manager = MagicMock()
         fetch_result = ContentSourceResult(
             success=True,
             content_items=[
@@ -152,6 +171,7 @@ class TestFetchFromSource:
         )
         mock_content_source.fetch_content = AsyncMock(return_value=fetch_result)
         mock_manager.get_source.return_value = mock_content_source
+        mock_get_manager.return_value = mock_manager
 
         response = client.post("/content-sources/test_source/fetch?limit=10")
 
@@ -161,11 +181,13 @@ class TestFetchFromSource:
         assert data["total_count"] == 2
         assert len(data["content_items"]) == 2
 
-    @patch("marketing_project.api.content.content_manager")
-    def test_fetch_from_source_not_found(self, mock_manager, client):
+    @patch("marketing_project.api.content.get_content_manager")
+    def test_fetch_from_source_not_found(self, mock_get_manager, client):
         """Test fetching from non-existent source."""
         # Setup mocks
+        mock_manager = MagicMock()
         mock_manager.get_source.return_value = None
+        mock_get_manager.return_value = mock_manager
 
         response = client.post("/content-sources/nonexistent/fetch")
 
@@ -173,14 +195,18 @@ class TestFetchFromSource:
         data = response.json()
         assert "not found" in data["detail"]
 
-    @patch("marketing_project.api.content.content_manager")
-    def test_fetch_from_source_error(self, mock_manager, client, mock_content_source):
+    @patch("marketing_project.api.content.get_content_manager")
+    def test_fetch_from_source_error(
+        self, mock_get_manager, client, mock_content_source
+    ):
         """Test fetching when source fails."""
         # Setup mocks
+        mock_manager = MagicMock()
         mock_content_source.fetch_content = AsyncMock(
             side_effect=Exception("Fetch failed")
         )
         mock_manager.get_source.return_value = mock_content_source
+        mock_get_manager.return_value = mock_manager
 
         response = client.post("/content-sources/test_source/fetch")
 

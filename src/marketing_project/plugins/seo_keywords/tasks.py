@@ -1,1029 +1,689 @@
 """
-SEO Keywords processing plugin tasks for Marketing Project.
+SEO Keywords plugin tasks for Marketing Project.
 
-This module provides functions to extract, analyze, and optimize SEO keywords
-from content for better search engine visibility and content strategy.
-
-Functions:
-    extract_primary_keywords: Extracts main SEO keywords from content
-    extract_secondary_keywords: Extracts supporting keywords and LSI terms
-    analyze_keyword_density: Analyzes keyword density and distribution
-    generate_keyword_suggestions: Generates additional keyword suggestions
-    optimize_keyword_placement: Optimizes keyword placement in content
-    calculate_keyword_scores: Calculates keyword relevance and difficulty scores
-    extract_keywords_with_kwx: Extracts keywords using kwx library with advanced NLP
-    extract_keywords_advanced: Combines multiple extraction methods for better results
+This plugin handles SEO keyword extraction and analysis.
 """
 
 import logging
 import re
-from collections import Counter
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 
-from marketing_project.core.models import (
-    AppContext,
-    BlogPostContext,
-    ContentContext,
-    ReleaseNotesContext,
-    TranscriptContext,
-)
-from marketing_project.core.utils import (
-    create_standard_task_result,
-    ensure_content_context,
-    extract_content_metadata_for_pipeline,
-    validate_content_for_processing,
-)
-
-try:
-    from keybert import KeyBERT
-
-    KEYBERT_AVAILABLE = True
-except ImportError:
-    KEYBERT_AVAILABLE = False
+from marketing_project.models.pipeline_steps import SEOKeywordsResult
+from marketing_project.plugins.base import PipelineStepPlugin
 
 logger = logging.getLogger("marketing_project.plugins.seo_keywords")
 
 
-def extract_primary_keywords(
-    content: Union[ContentContext, Dict[str, Any]], max_keywords: int = 5
-) -> Dict[str, Any]:
-    """
-    Extracts primary SEO keywords from content based on frequency and relevance.
+class SEOKeywordsPlugin(PipelineStepPlugin):
+    """Plugin for SEO Keywords extraction step."""
 
-    Args:
-        content: Content context object or dictionary
-        max_keywords: Maximum number of primary keywords to extract
+    @property
+    def step_name(self) -> str:
+        return "seo_keywords"
 
-    Returns:
-        Dict[str, Any]: Standardized task result with primary keywords
-    """
-    try:
-        # Ensure content is a ContentContext object
-        content_obj = ensure_content_context(content)
+    @property
+    def step_number(self) -> int:
+        return 1
 
-        # Handle empty content gracefully (but not completely invalid content)
-        if not content_obj.content and content_obj.title:
-            # Content is empty but title exists - return empty results
-            return create_standard_task_result(
-                success=True,
-                data={
-                    "primary_keywords": [],
-                    "total_keywords_found": 0,
-                    "filtered_words_count": 0,
-                },
-                task_name="extract_primary_keywords",
-                metadata=extract_content_metadata_for_pipeline(content_obj),
-            )
+    @property
+    def response_model(self) -> type[SEOKeywordsResult]:
+        return SEOKeywordsResult
 
-        # Validate content
-        validation = validate_content_for_processing(content_obj)
-        if not validation["is_valid"]:
-            return create_standard_task_result(
-                success=False,
-                error=f"Content validation failed: {', '.join(validation['issues'])}",
-                task_name="extract_primary_keywords",
-            )
+    def get_required_context_keys(self) -> list[str]:
+        return ["input_content"]
 
-        text = f"{content_obj.title} {content_obj.content}".lower()
+    def _build_prompt_context(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Build prompt context for SEO keywords step.
 
-        # Remove common stop words
-        stop_words = {
-            "the",
-            "a",
-            "an",
-            "and",
-            "or",
-            "but",
-            "in",
-            "on",
-            "at",
-            "to",
-            "for",
-            "of",
-            "with",
-            "by",
-            "is",
-            "are",
-            "was",
-            "were",
-            "be",
-            "been",
-            "being",
-            "have",
-            "has",
-            "had",
-            "do",
-            "does",
-            "did",
-            "will",
-            "would",
-            "could",
-            "should",
-            "may",
-            "might",
-            "must",
-            "can",
-            "this",
-            "that",
-            "these",
-            "those",
-            "i",
-            "you",
-            "he",
-            "she",
-            "it",
-            "we",
-            "they",
-            "me",
-            "him",
-            "her",
-            "us",
-            "them",
+        Handles content analysis and provides enhanced context for keyword extraction.
+        """
+        prompt_context = super()._build_prompt_context(context)
+
+        # Handle content analysis for seo_keywords step
+        if "content" in prompt_context:
+            content = prompt_context.get("content", {})
+            if isinstance(content, dict):
+                content_str = content.get("content", "")
+                # Increase truncation limit from 2000 to 8000 characters
+                prompt_context["content_content_preview"] = (
+                    content_str[:8000] if content_str else ""
+                )
+
+                # Add content structure analysis
+                prompt_context["content_structure"] = self._analyze_content_structure(
+                    content_str
+                )
+
+                # Extract key sections
+                prompt_context["key_sections"] = self._extract_key_sections(content_str)
+
+                # Add word count
+                prompt_context["word_count"] = (
+                    len(content_str.split()) if content_str else 0
+                )
+            else:
+                prompt_context["content_content_preview"] = ""
+                prompt_context["content_structure"] = {}
+                prompt_context["key_sections"] = {}
+                prompt_context["word_count"] = 0
+
+        # Add content type
+        prompt_context["content_type"] = context.get("content_type", "blog_post")
+
+        return prompt_context
+
+    def _analyze_content_structure(self, content: str) -> Dict[str, Any]:
+        """
+        Extract content structure for better keyword analysis.
+
+        Args:
+            content: Full content text
+
+        Returns:
+            Dict with structure analysis (headings, paragraphs, topics)
+        """
+        if not content:
+            return {}
+
+        # Extract headings
+        h1_pattern = r"<h1[^>]*>(.*?)</h1>|^#\s+(.+)$"
+        h2_pattern = r"<h2[^>]*>(.*?)</h2>|^##\s+(.+)$"
+        h3_pattern = r"<h3[^>]*>(.*?)</h3>|^###\s+(.+)$"
+
+        h1_matches = re.findall(h1_pattern, content, re.MULTILINE | re.IGNORECASE)
+        h2_matches = re.findall(h2_pattern, content, re.MULTILINE | re.IGNORECASE)
+        h3_matches = re.findall(h3_pattern, content, re.MULTILINE | re.IGNORECASE)
+
+        # Clean heading text (handle tuple results from regex)
+        h1_headings = [h[0] or h[1] for h in h1_matches if h[0] or h[1]]
+        h2_headings = [h[0] or h[1] for h in h2_matches if h[0] or h[1]]
+        h3_headings = [h[0] or h[1] for h in h3_matches if h[0] or h[1]]
+
+        # Count paragraphs (approximate)
+        paragraphs = [p.strip() for p in content.split("\n\n") if p.strip()]
+
+        return {
+            "h1_count": len(h1_headings),
+            "h2_count": len(h2_headings),
+            "h3_count": len(h3_headings),
+            "h1_headings": h1_headings[:5],  # Limit to first 5
+            "h2_headings": h2_headings[:10],  # Limit to first 10
+            "h3_headings": h3_headings[:15],  # Limit to first 15
+            "paragraph_count": len(paragraphs),
+            "main_topics": (
+                h2_headings[:5] if h2_headings else h1_headings[:3]
+            ),  # Use H2s as main topics, fallback to H1s
         }
 
-        # Extract words and filter
-        words = re.findall(r"\b[a-zA-Z]{3,}\b", text)
-        filtered_words = [word for word in words if word not in stop_words]
+    def _extract_key_sections(self, content: str) -> Dict[str, str]:
+        """
+        Extract key content sections for targeted keyword placement.
 
-        # Count word frequency
-        word_counts = Counter(filtered_words)
+        Args:
+            content: Full content text
 
-        # Calculate keyword scores based on frequency and position
-        keywords = []
-        for word, count in word_counts.most_common(max_keywords * 2):
-            # Calculate position score (words in title get higher score)
-            title_words = content_obj.title.lower().split() if content_obj.title else []
-            position_score = 2.0 if word in title_words else 1.0
+        Returns:
+            Dict with introduction, body_topics, and conclusion
+        """
+        if not content:
+            return {}
 
-            # Calculate final score
-            score = count * position_score
+        # Split content into logical sections
+        paragraphs = [p.strip() for p in content.split("\n\n") if p.strip()]
 
-            keywords.append(
-                {
-                    "keyword": word,
-                    "frequency": count,
-                    "score": score,
-                    "in_title": word in title_words,
-                    "density": count / len(filtered_words) * 100,
-                }
-            )
+        # Introduction: first 2-3 paragraphs or first 500 chars
+        intro_paragraphs = paragraphs[:3] if len(paragraphs) >= 3 else paragraphs[:2]
+        introduction = " ".join(intro_paragraphs)[:500]
 
-        # Sort by score and return top keywords
-        keywords.sort(key=lambda x: x["score"], reverse=True)
-        result_keywords = keywords[:max_keywords]
-
-        return create_standard_task_result(
-            success=True,
-            data={
-                "primary_keywords": result_keywords,
-                "total_keywords_found": len(keywords),
-                "filtered_words_count": len(filtered_words),
-            },
-            task_name="extract_primary_keywords",
-            metadata=extract_content_metadata_for_pipeline(content_obj),
+        # Body topics: extract from middle section (skip first 20% and last 20%)
+        body_start = max(1, len(paragraphs) // 5)
+        body_end = max(body_start + 1, len(paragraphs) - (len(paragraphs) // 5))
+        body_paragraphs = (
+            paragraphs[body_start:body_end]
+            if body_end > body_start
+            else paragraphs[1:-1]
         )
+        body_text = " ".join(body_paragraphs[:5])[:1000] if body_paragraphs else ""
 
-    except Exception as e:
-        logger.error(f"Error in extract_primary_keywords: {str(e)}")
-        return create_standard_task_result(
-            success=False,
-            error=f"Keyword extraction failed: {str(e)}",
-            task_name="extract_primary_keywords",
+        # Extract topic keywords from body (simple approach: use first few significant words)
+        body_words = re.findall(r"\b[a-zA-Z]{4,}\b", body_text.lower())
+        body_topics = list(set(body_words))[:10]  # Unique significant words
+
+        # Conclusion: last 1-2 paragraphs or last 300 chars
+        conclusion_paragraphs = (
+            paragraphs[-2:] if len(paragraphs) >= 2 else paragraphs[-1:]
         )
+        conclusion = " ".join(conclusion_paragraphs)[:300]
 
-
-def extract_secondary_keywords(
-    content: Union[ContentContext, Dict[str, Any]],
-    primary_keywords: List[str],
-    max_keywords: int = 10,
-) -> Dict[str, Any]:
-    """
-    Extracts secondary keywords and LSI (Latent Semantic Indexing) terms.
-
-    Args:
-        content: Content context object or dictionary
-        primary_keywords: List of primary keywords to find related terms for
-        max_keywords: Maximum number of secondary keywords to extract
-
-    Returns:
-        Dict[str, Any]: Standardized task result with secondary keywords
-    """
-    try:
-        # Ensure content is a ContentContext object
-        content_obj = ensure_content_context(content)
-
-        # Validate content
-        validation = validate_content_for_processing(content_obj)
-        if not validation["is_valid"]:
-            return create_standard_task_result(
-                success=False,
-                error=f"Content validation failed: {', '.join(validation['issues'])}",
-                task_name="extract_secondary_keywords",
-            )
-
-        text = content_obj.content.lower()
-
-        # Find 2-3 word phrases that contain primary keywords
-        secondary_keywords = []
-
-        for primary in primary_keywords:
-            # Find phrases containing the primary keyword
-            pattern = rf"\b\w*\s*{re.escape(primary)}\s*\w*\b"
-            phrases = re.findall(pattern, text)
-
-            for phrase in phrases:
-                if len(phrase.split()) <= 3 and phrase != primary:
-                    secondary_keywords.append(
-                        {
-                            "keyword": phrase.strip(),
-                            "related_to": primary,
-                            "type": "phrase",
-                            "frequency": text.count(phrase),
-                        }
-                    )
-
-        # Find synonyms and related terms (simplified approach)
-        synonym_patterns = {
-            "best": ["top", "greatest", "excellent", "superior"],
-            "guide": ["tutorial", "how-to", "instructions", "manual"],
-            "review": ["analysis", "evaluation", "assessment", "critique"],
-            "tips": ["advice", "recommendations", "suggestions", "hints"],
-            "learn": ["understand", "discover", "explore", "study"],
+        return {
+            "introduction": introduction,
+            "body_topics": body_topics,
+            "conclusion": conclusion,
         }
 
-        for word in text.split():
-            if word in synonym_patterns:
-                for synonym in synonym_patterns[word]:
-                    if synonym in text:
-                        secondary_keywords.append(
-                            {
-                                "keyword": synonym,
-                                "related_to": word,
-                                "type": "synonym",
-                                "frequency": text.count(synonym),
-                            }
-                        )
+    def _post_process_keywords(
+        self, result: SEOKeywordsResult, context: Dict[str, Any]
+    ) -> SEOKeywordsResult:
+        """
+        Post-process keywords to improve quality.
 
-        # Remove duplicates and sort by frequency
-        seen = set()
-        unique_keywords = []
-        for kw in secondary_keywords:
-            if kw["keyword"] not in seen:
-                seen.add(kw["keyword"])
-                unique_keywords.append(kw)
+        Args:
+            result: SEOKeywordsResult from LLM
+            context: Execution context
 
-        unique_keywords.sort(key=lambda x: x["frequency"], reverse=True)
-        result_keywords = unique_keywords[:max_keywords]
+        Returns:
+            Post-processed SEOKeywordsResult
+        """
+        # Ensure main_keyword is in primary_keywords
+        if result.main_keyword not in result.primary_keywords:
+            result.primary_keywords.insert(0, result.main_keyword)
 
-        return create_standard_task_result(
-            success=True,
-            data={
-                "secondary_keywords": result_keywords,
-                "total_secondary_found": len(unique_keywords),
-                "primary_keywords_used": primary_keywords,
-            },
-            task_name="extract_secondary_keywords",
-            metadata=extract_content_metadata_for_pipeline(content_obj),
-        )
+        # Deduplicate keywords across categories
+        result = self._deduplicate_keywords(result)
 
-    except Exception as e:
-        logger.error(f"Error in extract_secondary_keywords: {str(e)}")
-        return create_standard_task_result(
-            success=False,
-            error=f"Secondary keyword extraction failed: {str(e)}",
-            task_name="extract_secondary_keywords",
-        )
+        # Normalize keyword formatting
+        result = self._normalize_keywords(result)
 
+        # Validate keyword counts
+        result = self._validate_keyword_counts(result)
 
-def analyze_keyword_density(
-    content: Union[ContentContext, Dict[str, Any]], keywords: List[str]
-) -> Dict[str, Any]:
-    """
-    Analyzes keyword density and distribution in content.
+        return result
 
-    Args:
-        content: Content context object or dictionary
-        keywords: List of keywords to analyze
-
-    Returns:
-        Dict[str, Any]: Standardized task result with density analysis
-    """
-    try:
-        # Ensure content is a ContentContext object
-        content_obj = ensure_content_context(content)
-
-        # Validate content
-        validation = validate_content_for_processing(content_obj)
-        if not validation["is_valid"]:
-            return create_standard_task_result(
-                success=False,
-                error=f"Content validation failed: {', '.join(validation['issues'])}",
-                task_name="analyze_keyword_density",
-            )
-
-        text = content_obj.content.lower()
-        word_count = len(text.split())
-
-        density_analysis = {
-            "total_words": word_count,
-            "keyword_densities": {},
-            "keyword_positions": {},
-            "recommendations": [],
+    def _deduplicate_keywords(self, result: SEOKeywordsResult) -> SEOKeywordsResult:
+        """Remove duplicate keywords across categories."""
+        # Normalize all keywords for comparison
+        primary_normalized = {
+            self._normalize_keyword(kw): kw for kw in result.primary_keywords
         }
+        secondary_normalized = {}
+        lsi_normalized = {}
+        long_tail_normalized = {}
 
-        for keyword in keywords:
-            keyword_lower = keyword.lower()
-            frequency = text.count(keyword_lower)
-            density = (frequency / word_count) * 100 if word_count > 0 else 0
-
-            density_analysis["keyword_densities"][keyword] = {
-                "frequency": frequency,
-                "density": density,
-                "status": "optimal" if 1 <= density <= 3 else "needs_optimization",
+        if result.secondary_keywords:
+            secondary_normalized = {
+                self._normalize_keyword(kw): kw for kw in result.secondary_keywords
             }
 
-            # Find keyword positions
-            positions = []
-            start = 0
-            while True:
-                pos = text.find(keyword_lower, start)
-                if pos == -1:
-                    break
-                positions.append(pos)
-                start = pos + 1
+        if result.lsi_keywords:
+            lsi_normalized = {
+                self._normalize_keyword(kw): kw for kw in result.lsi_keywords
+            }
 
-            density_analysis["keyword_positions"][keyword] = positions
+        if result.long_tail_keywords:
+            long_tail_normalized = {
+                self._normalize_keyword(kw): kw for kw in result.long_tail_keywords
+            }
 
-            # Generate recommendations
-            if density < 1:
-                density_analysis["recommendations"].append(
-                    f"Increase '{keyword}' density (currently {density:.2f}%)"
-                )
-            elif density > 3:
-                density_analysis["recommendations"].append(
-                    f"Reduce '{keyword}' density (currently {density:.2f}%)"
-                )
-
-        return create_standard_task_result(
-            success=True,
-            data=density_analysis,
-            task_name="analyze_keyword_density",
-            metadata=extract_content_metadata_for_pipeline(content_obj),
-        )
-
-    except Exception as e:
-        logger.error(f"Error in analyze_keyword_density: {str(e)}")
-        return create_standard_task_result(
-            success=False,
-            error=f"Keyword density analysis failed: {str(e)}",
-            task_name="analyze_keyword_density",
-        )
-
-
-def generate_keyword_suggestions(
-    content: Union[ContentContext, Dict[str, Any]],
-    industry: str = None,
-    target_audience: str = None,
-) -> Dict[str, Any]:
-    """
-    Generates additional keyword suggestions based on content analysis.
-
-    Args:
-        content: Content context object or dictionary
-        industry: Industry context for keyword suggestions
-        target_audience: Target audience for keyword suggestions
-
-    Returns:
-        Dict[str, Any]: Standardized task result with keyword suggestions
-    """
-    try:
-        # Ensure content is a ContentContext object
-        content_obj = ensure_content_context(content)
-
-        # Validate content
-        validation = validate_content_for_processing(content_obj)
-        if not validation["is_valid"]:
-            return create_standard_task_result(
-                success=False,
-                error=f"Content validation failed: {', '.join(validation['issues'])}",
-                task_name="generate_keyword_suggestions",
-            )
-
-        suggestions = []
-
-        # Extract key topics from content
-        text = content_obj.content.lower()
-        title = content_obj.title.lower() if content_obj.title else ""
-
-        # Industry-specific keyword suggestions
-        industry_keywords = {
-            "technology": [
-                "innovation",
-                "digital",
-                "automation",
-                "software",
-                "platform",
-            ],
-            "marketing": ["strategy", "campaign", "brand", "engagement", "conversion"],
-            "finance": ["investment", "portfolio", "revenue", "profit", "growth"],
-            "healthcare": ["treatment", "patient", "medical", "health", "wellness"],
-            "education": ["learning", "training", "course", "skill", "knowledge"],
-        }
-
-        if industry and industry.lower() in industry_keywords:
-            for keyword in industry_keywords[industry.lower()]:
-                if keyword not in text:
-                    suggestions.append(
-                        {
-                            "keyword": keyword,
-                            "type": "industry",
-                            "relevance_score": 0.8,
-                            "suggestion_reason": f"Industry-specific keyword for {industry}",
-                        }
-                    )
-        elif industry and industry.lower() not in industry_keywords:
-            # For unknown industry, generate general suggestions based on content
-            general_keywords = [
-                "strategy",
-                "solution",
-                "approach",
-                "method",
-                "technique",
-                "process",
-                "system",
-                "platform",
-                "tool",
-                "service",
+        # Remove duplicates from secondary that are in primary
+        if result.secondary_keywords:
+            result.secondary_keywords = [
+                kw
+                for kw in result.secondary_keywords
+                if self._normalize_keyword(kw) not in primary_normalized
             ]
-            for keyword in general_keywords:
-                if keyword not in text:
-                    suggestions.append(
-                        {
-                            "keyword": keyword,
-                            "type": "general",
-                            "relevance_score": 0.5,
-                            "suggestion_reason": f"General keyword suggestion for {industry}",
-                        }
-                    )
 
-        # Audience-specific keyword suggestions
-        audience_keywords = {
-            "beginners": [
-                "introduction",
-                "basics",
-                "getting started",
-                "tutorial",
-                "guide",
-            ],
-            "professionals": [
-                "advanced",
-                "expert",
-                "enterprise",
-                "optimization",
-                "strategy",
-            ],
-            "developers": ["code", "implementation", "technical", "api", "integration"],
-            "managers": [
-                "management",
-                "leadership",
-                "strategy",
-                "planning",
-                "decision",
-            ],
-        }
+        # Remove duplicates from LSI that are in primary or secondary
+        if result.lsi_keywords:
+            all_primary_secondary = set(primary_normalized.keys()) | set(
+                secondary_normalized.keys()
+            )
+            result.lsi_keywords = [
+                kw
+                for kw in result.lsi_keywords
+                if self._normalize_keyword(kw) not in all_primary_secondary
+            ]
 
-        if target_audience and target_audience.lower() in audience_keywords:
-            for keyword in audience_keywords[target_audience.lower()]:
-                if keyword not in text:
-                    suggestions.append(
-                        {
-                            "keyword": keyword,
-                            "type": "audience",
-                            "relevance_score": 0.7,
-                            "suggestion_reason": f"Audience-specific keyword for {target_audience}",
-                        }
-                    )
+        # Remove duplicates from long_tail that are in other categories
+        if result.long_tail_keywords:
+            all_other = (
+                set(primary_normalized.keys())
+                | set(secondary_normalized.keys())
+                | set(lsi_normalized.keys())
+            )
+            result.long_tail_keywords = [
+                kw
+                for kw in result.long_tail_keywords
+                if self._normalize_keyword(kw) not in all_other
+            ]
 
-        # Long-tail keyword suggestions based on content
-        words = text.split()
-        bigrams = [f"{words[i]} {words[i+1]}" for i in range(len(words) - 1)]
-        trigrams = [
-            f"{words[i]} {words[i+1]} {words[i+2]}" for i in range(len(words) - 2)
+        return result
+
+    def _normalize_keyword(self, keyword: str) -> str:
+        """Normalize keyword for comparison (lowercase, trimmed)."""
+        return keyword.strip().lower()
+
+    def _normalize_keywords(self, result: SEOKeywordsResult) -> SEOKeywordsResult:
+        """Standardize keyword formatting (trim whitespace)."""
+        result.main_keyword = result.main_keyword.strip()
+        result.primary_keywords = [
+            kw.strip() for kw in result.primary_keywords if kw.strip()
         ]
 
-        # Find common phrases that could be keywords
-        phrase_counts = Counter(bigrams + trigrams)
-        for phrase, count in phrase_counts.most_common(5):
-            if count >= 1 and len(phrase.split()) >= 2:
-                suggestions.append(
-                    {
-                        "keyword": phrase,
-                        "type": "long_tail",
-                        "relevance_score": min(count / 10, 1.0),
-                        "suggestion_reason": "Frequently used phrase in content",
-                    }
+        if result.secondary_keywords:
+            result.secondary_keywords = [
+                kw.strip() for kw in result.secondary_keywords if kw.strip()
+            ]
+
+        if result.lsi_keywords:
+            result.lsi_keywords = [
+                kw.strip() for kw in result.lsi_keywords if kw.strip()
+            ]
+
+        if result.long_tail_keywords:
+            result.long_tail_keywords = [
+                kw.strip() for kw in result.long_tail_keywords if kw.strip()
+            ]
+
+        return result
+
+    def _validate_keyword_counts(self, result: SEOKeywordsResult) -> SEOKeywordsResult:
+        """Ensure keyword counts meet requirements."""
+        # Primary keywords: 3-5
+        if len(result.primary_keywords) < 3:
+            logger.warning(
+                f"Only {len(result.primary_keywords)} primary keywords, minimum is 3"
+            )
+        elif len(result.primary_keywords) > 5:
+            # Keep main_keyword + top 4
+            result.primary_keywords = [result.main_keyword] + [
+                kw for kw in result.primary_keywords if kw != result.main_keyword
+            ][:4]
+
+        # Secondary keywords: 5-10
+        if result.secondary_keywords:
+            if len(result.secondary_keywords) < 5:
+                logger.warning(
+                    f"Only {len(result.secondary_keywords)} secondary keywords, minimum is 5"
                 )
+            elif len(result.secondary_keywords) > 10:
+                result.secondary_keywords = result.secondary_keywords[:10]
 
-        # Sort by relevance score
-        suggestions.sort(key=lambda x: x["relevance_score"], reverse=True)
-        result_suggestions = suggestions[:10]
-
-        return create_standard_task_result(
-            success=True,
-            data={
-                "suggestions": result_suggestions,
-                "total_suggestions": len(suggestions),
-                "industry": industry,
-                "target_audience": target_audience,
-            },
-            task_name="generate_keyword_suggestions",
-            metadata=extract_content_metadata_for_pipeline(content_obj),
-        )
-
-    except Exception as e:
-        logger.error(f"Error in generate_keyword_suggestions: {str(e)}")
-        return create_standard_task_result(
-            success=False,
-            error=f"Keyword suggestion generation failed: {str(e)}",
-            task_name="generate_keyword_suggestions",
-        )
-
-
-def optimize_keyword_placement(
-    content: Union[ContentContext, Dict[str, Any]], keywords: List[str]
-) -> Dict[str, Any]:
-    """
-    Provides recommendations for optimizing keyword placement in content.
-
-    Args:
-        content: Content context object or dictionary
-        keywords: List of keywords to optimize placement for
-
-    Returns:
-        Dict[str, Any]: Standardized task result with placement optimization
-    """
-    try:
-        # Ensure content is a ContentContext object
-        content_obj = ensure_content_context(content)
-
-        # Validate content
-        validation = validate_content_for_processing(content_obj)
-        if not validation["is_valid"]:
-            return create_standard_task_result(
-                success=False,
-                error=f"Content validation failed: {', '.join(validation['issues'])}",
-                task_name="optimize_keyword_placement",
+        # LSI keywords: minimum 5
+        if not result.lsi_keywords or len(result.lsi_keywords) < 5:
+            logger.warning(
+                f"Only {len(result.lsi_keywords) if result.lsi_keywords else 0} LSI keywords, minimum is 5"
             )
 
-        text = content_obj.content
-        title = content_obj.title or ""
+        return result
 
-        optimization = {
-            "title_optimization": {},
-            "heading_optimization": {},
-            "content_optimization": {},
-            "meta_optimization": {},
-            "recommendations": [],
-        }
+    def _validate_and_fix(
+        self, result: SEOKeywordsResult, context: Dict[str, Any]
+    ) -> SEOKeywordsResult:
+        """
+        Validate result and fix common issues.
+
+        Args:
+            result: SEOKeywordsResult to validate
+            context: Execution context
+
+        Returns:
+            Fixed SEOKeywordsResult
+        """
+        # Ensure primary_keywords has 3-5 keywords
+        if len(result.primary_keywords) < 3:
+            # Try to promote from secondary
+            needed = 3 - len(result.primary_keywords)
+            if result.secondary_keywords and len(result.secondary_keywords) >= needed:
+                promoted = result.secondary_keywords[:needed]
+                result.primary_keywords.extend(promoted)
+                result.secondary_keywords = result.secondary_keywords[needed:]
+                logger.info(f"Promoted {needed} keywords from secondary to primary")
+
+        if len(result.primary_keywords) > 5:
+            # Keep main_keyword + top 4 by relevance
+            result.primary_keywords = [result.main_keyword] + [
+                kw for kw in result.primary_keywords if kw != result.main_keyword
+            ][:4]
+
+        # Ensure secondary_keywords has 5-10
+        if result.secondary_keywords:
+            if len(result.secondary_keywords) < 5:
+                # Try to generate more or promote from LSI
+                if result.lsi_keywords and len(result.lsi_keywords) >= (
+                    5 - len(result.secondary_keywords)
+                ):
+                    needed = 5 - len(result.secondary_keywords)
+                    promoted = result.lsi_keywords[:needed]
+                    result.secondary_keywords.extend(promoted)
+                    result.lsi_keywords = result.lsi_keywords[needed:]
+            elif len(result.secondary_keywords) > 10:
+                result.secondary_keywords = result.secondary_keywords[:10]
+        else:
+            # Initialize if missing
+            result.secondary_keywords = []
+
+        # Ensure LSI keywords exist (minimum 5)
+        if not result.lsi_keywords or len(result.lsi_keywords) < 5:
+            result.lsi_keywords = self._generate_lsi_keywords(result, context)
+
+        return result
+
+    def _generate_lsi_keywords(
+        self, result: SEOKeywordsResult, context: Dict[str, Any]
+    ) -> List[str]:
+        """
+        Generate LSI keywords as fallback if missing.
+
+        Args:
+            result: Current SEOKeywordsResult
+            context: Execution context
+
+        Returns:
+            List of LSI keywords
+        """
+        # Simple fallback: extract related terms from primary keywords
+        lsi_keywords = []
+
+        # Use primary keywords to generate variations
+        for keyword in result.primary_keywords[:3]:  # Use top 3 primary
+            words = keyword.split()
+            if len(words) > 1:
+                # Add individual words as LSI
+                lsi_keywords.extend([w for w in words if len(w) > 3])
+
+            # Add common variations
+            if " " in keyword:
+                # Add without spaces, with hyphens
+                lsi_keywords.append(keyword.replace(" ", "-"))
+                lsi_keywords.append(keyword.replace(" ", ""))
+
+        # Add from secondary if available
+        if result.secondary_keywords:
+            lsi_keywords.extend(result.secondary_keywords[:3])
+
+        # Deduplicate and limit
+        seen = set()
+        unique_lsi = []
+        for kw in lsi_keywords:
+            normalized = self._normalize_keyword(kw)
+            if normalized not in seen and normalized not in [
+                self._normalize_keyword(k) for k in result.primary_keywords
+            ]:
+                seen.add(normalized)
+                unique_lsi.append(kw)
+
+        # Ensure we have at least 5
+        while len(unique_lsi) < 5:
+            unique_lsi.append(f"related term {len(unique_lsi) + 1}")
+
+        return unique_lsi[:10]  # Max 10
+
+    def _calculate_derived_metrics(
+        self, result: SEOKeywordsResult, context: Dict[str, Any]
+    ) -> SEOKeywordsResult:
+        """
+        Calculate metrics that weren't provided by LLM.
+
+        Args:
+            result: SEOKeywordsResult
+            context: Execution context
+
+        Returns:
+            SEOKeywordsResult with calculated metrics
+        """
+        # Get content for density calculation
+        content = context.get("input_content", {})
+        content_str = content.get("content", "") if isinstance(content, dict) else ""
+
+        # Calculate keyword density if missing
+        if not result.keyword_density_analysis and content_str:
+            result.keyword_density_analysis = self._calculate_keyword_density(
+                content_str, result.primary_keywords + (result.secondary_keywords or [])
+            )
+
+        # Also populate legacy keyword_density for backward compatibility
+        if not result.keyword_density and result.keyword_density_analysis:
+            result.keyword_density = {
+                analysis.keyword: analysis.current_density
+                for analysis in result.keyword_density_analysis
+            }
+
+        # Calculate relevance scores if missing
+        if not result.relevance_score:
+            result.relevance_score = self._calculate_overall_relevance(
+                result, content_str
+            )
+
+        # Convert keyword_difficulty from string to Dict if needed
+        if isinstance(result.keyword_difficulty, str):
+            result.keyword_difficulty = self._convert_difficulty_to_scores(
+                result.keyword_difficulty, result.primary_keywords
+            )
+
+        return result
+
+    def _calculate_keyword_density(self, content: str, keywords: List[str]) -> List:
+        """
+        Calculate keyword density from content.
+
+        Args:
+            content: Content text
+            keywords: Keywords to analyze
+
+        Returns:
+            List of KeywordDensityAnalysis objects
+        """
+        from marketing_project.models.pipeline_steps import KeywordDensityAnalysis
+
+        if not content or not keywords:
+            return []
+
+        content_lower = content.lower()
+        total_words = len(content.split())
+        density_analyses = []
 
         for keyword in keywords:
             keyword_lower = keyword.lower()
+            # Count occurrences
+            occurrences = content_lower.count(keyword_lower)
 
-            # Title optimization
-            title_contains = keyword_lower in title.lower()
-            optimization["title_optimization"][keyword] = {
-                "in_title": title_contains,
-                "recommendation": (
-                    "Add to title" if not title_contains else "Already in title"
-                ),
-            }
-
-            # Heading optimization (simplified - would need proper heading detection)
-            headings = re.findall(r"^#+\s+(.+)$", text, re.MULTILINE)
-            heading_contains = any(
-                keyword_lower in heading.lower() for heading in headings
+            # Calculate density
+            keyword_word_count = len(keyword.split())
+            current_density = (
+                (occurrences * keyword_word_count / total_words * 100)
+                if total_words > 0
+                else 0.0
             )
-            optimization["heading_optimization"][keyword] = {
-                "in_headings": heading_contains,
-                "recommendation": (
-                    "Add to headings" if not heading_contains else "Already in headings"
-                ),
-            }
 
-            # Content optimization
-            first_paragraph = text.split("\n")[0] if text else ""
-            first_100_words = " ".join(text.split()[:100])
+            # Optimal density: 1-3% for primary, 0.5-1% for secondary
+            optimal_density = 2.0 if keyword in keywords[:5] else 0.75
 
-            optimization["content_optimization"][keyword] = {
-                "in_first_paragraph": keyword_lower in first_paragraph.lower(),
-                "in_first_100_words": keyword_lower in first_100_words.lower(),
-                "recommendation": (
-                    "Add to first paragraph"
-                    if keyword_lower not in first_100_words.lower()
-                    else "Good placement"
-                ),
-            }
+            # Find placement locations
+            placement_locations = []
+            if keyword_lower in content_lower[:200]:  # First 200 chars (likely intro)
+                placement_locations.append("introduction")
 
-            # Generate overall recommendations
-            if not title_contains:
-                optimization["recommendations"].append(
-                    f"Consider adding '{keyword}' to the title"
+            # Check for headings
+            if re.search(rf"<h[1-3][^>]*>{re.escape(keyword)}", content, re.IGNORECASE):
+                placement_locations.append("heading")
+
+            if not placement_locations:
+                placement_locations.append("body")
+
+            density_analyses.append(
+                KeywordDensityAnalysis(
+                    keyword=keyword,
+                    current_density=round(current_density, 2),
+                    optimal_density=optimal_density,
+                    occurrences=occurrences,
+                    placement_locations=placement_locations,
                 )
-            if not heading_contains:
-                optimization["recommendations"].append(
-                    f"Consider adding '{keyword}' to a heading"
+            )
+
+        return density_analyses
+
+    def _calculate_overall_relevance(
+        self, result: SEOKeywordsResult, content: str
+    ) -> float:
+        """
+        Calculate overall relevance score from keyword quality.
+
+        Args:
+            result: SEOKeywordsResult
+            content: Content text
+
+        Returns:
+            Relevance score (0-100)
+        """
+        if not content:
+            return 50.0  # Default if no content
+
+        score = 0.0
+        max_score = 100.0
+
+        # Check if main keyword appears in content (40 points)
+        if result.main_keyword.lower() in content.lower():
+            score += 40.0
+
+        # Check primary keywords coverage (30 points)
+        primary_in_content = sum(
+            1 for kw in result.primary_keywords if kw.lower() in content.lower()
+        )
+        score += (primary_in_content / len(result.primary_keywords)) * 30.0
+
+        # Check secondary keywords coverage (20 points)
+        if result.secondary_keywords:
+            secondary_in_content = sum(
+                1 for kw in result.secondary_keywords if kw.lower() in content.lower()
+            )
+            score += (secondary_in_content / len(result.secondary_keywords)) * 20.0
+
+        # Check LSI keywords coverage (10 points)
+        if result.lsi_keywords:
+            lsi_in_content = sum(
+                1 for kw in result.lsi_keywords if kw.lower() in content.lower()
+            )
+            score += min((lsi_in_content / len(result.lsi_keywords)) * 10.0, 10.0)
+
+        return round(score, 1)
+
+    def _convert_difficulty_to_scores(
+        self, difficulty_str: str, keywords: List[str]
+    ) -> Dict[str, float]:
+        """
+        Convert string difficulty to numeric scores per keyword.
+
+        Args:
+            difficulty_str: String like "easy", "medium", "hard"
+            keywords: List of keywords
+
+        Returns:
+            Dict mapping keywords to difficulty scores
+        """
+        # Map string to numeric range
+        difficulty_map = {"easy": 30.0, "medium": 50.0, "hard": 75.0}
+
+        base_score = difficulty_map.get(difficulty_str.lower(), 50.0)
+
+        # Create scores for each keyword (slight variation)
+        scores = {}
+        for i, keyword in enumerate(keywords):
+            # Add slight variation based on keyword position
+            variation = (i % 3) * 5.0  # 0, 5, or 10 point variation
+            scores[keyword] = min(100.0, max(0.0, base_score + variation - 5.0))
+
+        return scores
+
+    def _validate_result(self, result: SEOKeywordsResult) -> Tuple[bool, List[str]]:
+        """
+        Validate SEO keywords result and return (is_valid, errors).
+
+        Args:
+            result: SEOKeywordsResult to validate
+
+        Returns:
+            Tuple of (is_valid, list of error messages)
+        """
+        errors = []
+
+        # 1. Main keyword validation
+        if not result.main_keyword or len(result.main_keyword.strip()) < 2:
+            errors.append("Main keyword is required and must be at least 2 characters")
+
+        # 2. Primary keywords validation
+        if len(result.primary_keywords) < 3:
+            errors.append(
+                f"Need at least 3 primary keywords, got {len(result.primary_keywords)}"
+            )
+        if len(result.primary_keywords) > 5:
+            errors.append(
+                f"Should have max 5 primary keywords, got {len(result.primary_keywords)}"
+            )
+        if result.main_keyword not in result.primary_keywords:
+            errors.append("Main keyword must be included in primary_keywords list")
+
+        # 3. Secondary keywords validation
+        if result.secondary_keywords:
+            if len(result.secondary_keywords) < 5:
+                errors.append(
+                    f"Should have at least 5 secondary keywords, got {len(result.secondary_keywords)}"
                 )
-            if keyword_lower not in first_100_words.lower():
-                optimization["recommendations"].append(
-                    f"Consider adding '{keyword}' to the first paragraph"
+            if len(result.secondary_keywords) > 10:
+                errors.append(
+                    f"Should have max 10 secondary keywords, got {len(result.secondary_keywords)}"
                 )
 
-        return create_standard_task_result(
-            success=True,
-            data=optimization,
-            task_name="optimize_keyword_placement",
-            metadata=extract_content_metadata_for_pipeline(content_obj),
-        )
-
-    except Exception as e:
-        logger.error(f"Error in optimize_keyword_placement: {str(e)}")
-        return create_standard_task_result(
-            success=False,
-            error=f"Keyword placement optimization failed: {str(e)}",
-            task_name="optimize_keyword_placement",
-        )
-
-
-def calculate_keyword_scores(
-    keywords: List[Dict[str, Any]], content: Union[ContentContext, Dict[str, Any]]
-) -> Dict[str, Any]:
-    """
-    Calculates comprehensive keyword scores including relevance and difficulty.
-
-    Args:
-        keywords: List of keyword dictionaries
-        content: Content context object or dictionary
-
-    Returns:
-        Dict[str, Any]: Standardized task result with scored keywords
-    """
-    try:
-        # Ensure content is a ContentContext object
-        content_obj = ensure_content_context(content)
-
-        # Validate content
-        validation = validate_content_for_processing(content_obj)
-        if not validation["is_valid"]:
-            return create_standard_task_result(
-                success=False,
-                error=f"Content validation failed: {', '.join(validation['issues'])}",
-                task_name="calculate_keyword_scores",
+        # 4. LSI keywords validation
+        if not result.lsi_keywords or len(result.lsi_keywords) < 5:
+            errors.append(
+                f"Should have at least 5 LSI keywords, got {len(result.lsi_keywords) if result.lsi_keywords else 0}"
             )
 
-        scored_keywords = []
-
-        for keyword_data in keywords:
-            keyword = keyword_data["keyword"]
-
-            # Calculate relevance score (0-1)
-            frequency = keyword_data.get("frequency", 0)
-            in_title = keyword_data.get("in_title", False)
-            density = keyword_data.get("density", 0)
-
-            relevance_score = min(frequency / 10, 1.0)  # Normalize frequency
-            if in_title:
-                relevance_score += 0.2
-            if 1 <= density <= 3:
-                relevance_score += 0.1
-
-            # Calculate difficulty score (0-1, where 1 is most difficult)
-            word_length = len(keyword.split())
-            difficulty_score = min(word_length / 5, 1.0)  # Longer phrases are harder
-
-            # Calculate overall score
-            overall_score = (relevance_score * 0.7) + ((1 - difficulty_score) * 0.3)
-
-            scored_keyword = keyword_data.copy()
-            scored_keyword.update(
-                {
-                    "relevance_score": relevance_score,
-                    "difficulty_score": difficulty_score,
-                    "overall_score": overall_score,
-                    "priority": (
-                        "high"
-                        if overall_score > 0.7
-                        else "medium" if overall_score > 0.4 else "low"
-                    ),
-                }
+        # 5. Search intent validation
+        valid_intents = ["informational", "transactional", "navigational", "commercial"]
+        if result.search_intent not in valid_intents:
+            errors.append(
+                f"Search intent must be one of {valid_intents}, got '{result.search_intent}'"
             )
 
-            scored_keywords.append(scored_keyword)
-
-        # Sort by overall score
-        scored_keywords.sort(key=lambda x: x["overall_score"], reverse=True)
-
-        return create_standard_task_result(
-            success=True,
-            data={
-                "scored_keywords": scored_keywords,
-                "high_priority_count": sum(
-                    1 for kw in scored_keywords if kw["priority"] == "high"
-                ),
-                "medium_priority_count": sum(
-                    1 for kw in scored_keywords if kw["priority"] == "medium"
-                ),
-                "low_priority_count": sum(
-                    1 for kw in scored_keywords if kw["priority"] == "low"
-                ),
-            },
-            task_name="calculate_keyword_scores",
-            metadata=extract_content_metadata_for_pipeline(content_obj),
-        )
-
-    except Exception as e:
-        logger.error(f"Error in calculate_keyword_scores: {str(e)}")
-        return create_standard_task_result(
-            success=False,
-            error=f"Keyword scoring failed: {str(e)}",
-            task_name="calculate_keyword_scores",
-        )
-
-
-def extract_keywords_with_keybert(
-    content: Union[ContentContext, Dict[str, Any]],
-    max_keywords: int = 10,
-    method: str = "mmr",
-    ngram_range: Tuple[int, int] = (1, 3),
-    language: str = "english",
-) -> Dict[str, Any]:
-    """
-    Extracts keywords using the KeyBERT library with advanced NLP techniques.
-
-    Args:
-        content: Content context object or dictionary
-        max_keywords: Maximum number of keywords to extract
-        method: Extraction method ('mmr', 'maxsum', 'maximal_marginal_relevance')
-        ngram_range: Range of n-grams to consider (min, max)
-        language: Language for processing ('english', 'spanish', 'french', etc.)
-
-    Returns:
-        Dict[str, Any]: Standardized task result with KeyBERT-extracted keywords
-    """
-    try:
-        if not KEYBERT_AVAILABLE:
-            return create_standard_task_result(
-                success=False,
-                error="KeyBERT library not available. Please install with: pip install keybert",
-                task_name="extract_keywords_with_keybert",
+        # 6. Quality score validation
+        if result.relevance_score and result.relevance_score < 60:
+            errors.append(
+                f"Relevance score is low ({result.relevance_score}), should be >= 60"
             )
 
-        # Ensure content is a ContentContext object
-        content_obj = ensure_content_context(content)
-
-        # Handle empty content gracefully
-        if not content_obj.content and content_obj.title:
-            return create_standard_task_result(
-                success=True,
-                data={
-                    "keywords": [],
-                    "total_keywords_found": 0,
-                    "method": method,
-                    "ngram_range": ngram_range,
-                    "language": language,
-                },
-                task_name="extract_keywords_with_keybert",
-                metadata=extract_content_metadata_for_pipeline(content_obj),
-            )
-
-        # Validate content
-        validation = validate_content_for_processing(content_obj)
-        if not validation["is_valid"]:
-            return create_standard_task_result(
-                success=False,
-                error=f"Content validation failed: {', '.join(validation['issues'])}",
-                task_name="extract_keywords_with_keybert",
-            )
-
-        # Prepare text for processing
-        text = f"{content_obj.title} {content_obj.content}".strip()
-
-        if not text:
-            return create_standard_task_result(
-                success=False,
-                error="No text content available for keyword extraction",
-                task_name="extract_keywords_with_keybert",
-            )
-
-        # Map method names to KeyBERT method names
-        method_mapping = {
-            "mmr": "mmr",
-            "maxsum": "maxsum",
-            "maximal_marginal_relevance": "mmr",
-        }
-
-        keybert_method = method_mapping.get(method, "mmr")
-
-        # Extract keywords using KeyBERT
-        try:
-            # Initialize KeyBERT model
-            kw_model = KeyBERT()
-
-            # Extract keywords
-            keywords_result = kw_model.extract_keywords(
-                text,
-                keyphrase_ngram_range=ngram_range,
-                stop_words=language,
-                use_mmr=True if keybert_method == "mmr" else False,
-                use_maxsum=True if keybert_method == "maxsum" else False,
-                diversity=0.5 if keybert_method == "mmr" else 0.0,
-                top_n=max_keywords,
-            )
-
-            # Convert KeyBERT result to our format
-            if keywords_result:
-                keywords = [(kw, score) for kw, score in keywords_result]
-            else:
-                keywords = []
-        except Exception as e:
-            logger.error(
-                f"KeyBERT extraction failed with method {keybert_method}: {str(e)}"
-            )
-            return create_standard_task_result(
-                success=False,
-                error=f"KeyBERT keyword extraction failed: {str(e)}",
-                task_name="extract_keywords_with_keybert",
-            )
-
-        # Format keywords for consistency with other functions
-        formatted_keywords = []
-        for i, (keyword, score) in enumerate(keywords):
-            formatted_keywords.append(
-                {
-                    "keyword": keyword,
-                    "score": float(score) if isinstance(score, (int, float)) else 0.0,
-                    "rank": i + 1,
-                    "method": method,
-                    "ngram_length": len(keyword.split()),
-                    "in_title": keyword.lower() in (content_obj.title or "").lower(),
-                }
-            )
-
-        return create_standard_task_result(
-            success=True,
-            data={
-                "keywords": formatted_keywords,
-                "total_keywords_found": len(formatted_keywords),
-                "method": method,
-                "ngram_range": ngram_range,
-                "language": language,
-                "extraction_library": "keybert",
-            },
-            task_name="extract_keywords_with_keybert",
-            metadata=extract_content_metadata_for_pipeline(content_obj),
-        )
-
-    except Exception as e:
-        logger.error(f"Error in extract_keywords_with_keybert: {str(e)}")
-        return create_standard_task_result(
-            success=False,
-            error=f"KeyBERT keyword extraction failed: {str(e)}",
-            task_name="extract_keywords_with_keybert",
-        )
-
-
-def extract_keywords_advanced(
-    content: Union[ContentContext, Dict[str, Any]],
-    max_keywords: int = 10,
-    methods: List[str] = None,
-    combine_results: bool = True,
-) -> Dict[str, Any]:
-    """
-    Extracts keywords using multiple methods and optionally combines results.
-
-    Args:
-        content: Content context object or dictionary
-        max_keywords: Maximum number of keywords to extract per method
-        methods: List of methods to use ['mmr', 'maxsum', 'maximal_marginal_relevance']
-        combine_results: Whether to combine and deduplicate results from all methods
-
-    Returns:
-        Dict[str, Any]: Standardized task result with advanced keyword extraction
-    """
-    try:
-        if not KEYBERT_AVAILABLE:
-            return create_standard_task_result(
-                success=False,
-                error="KeyBERT library not available. Please install with: pip install keybert",
-                task_name="extract_keywords_advanced",
-            )
-
-        # Default methods if none specified
-        if methods is None:
-            methods = ["mmr", "maxsum"]
-
-        # Ensure content is a ContentContext object
-        content_obj = ensure_content_context(content)
-
-        # Handle empty content gracefully
-        if not content_obj.content and content_obj.title:
-            return create_standard_task_result(
-                success=True,
-                data={
-                    "keywords": [],
-                    "methods_used": methods,
-                    "combined_results": combine_results,
-                    "total_keywords_found": 0,
-                },
-                task_name="extract_keywords_advanced",
-                metadata=extract_content_metadata_for_pipeline(content_obj),
-            )
-
-        # Validate content
-        validation = validate_content_for_processing(content_obj)
-        if not validation["is_valid"]:
-            return create_standard_task_result(
-                success=False,
-                error=f"Content validation failed: {', '.join(validation['issues'])}",
-                task_name="extract_keywords_advanced",
-            )
-
-        all_keywords = {}
-        method_results = {}
-
-        # Extract keywords using each method
-        for method in methods:
-            try:
-                result = extract_keywords_with_keybert(
-                    content_obj, max_keywords, method
+        # 7. Keyword overlap validation
+        if result.secondary_keywords:
+            overlap = set(result.primary_keywords) & set(result.secondary_keywords)
+            if overlap:
+                errors.append(
+                    f"Keywords appear in both primary and secondary: {overlap}"
                 )
-                if result["success"]:
-                    method_results[method] = result["data"]["keywords"]
-                    # Add to combined results
-                    for kw in result["data"]["keywords"]:
-                        keyword = kw["keyword"]
-                        if keyword not in all_keywords:
-                            all_keywords[keyword] = {
-                                "keyword": keyword,
-                                "scores": {},
-                                "methods": [],
-                                "total_score": 0.0,
-                                "ngram_length": kw["ngram_length"],
-                                "in_title": kw["in_title"],
-                            }
-                        all_keywords[keyword]["scores"][method] = kw["score"]
-                        all_keywords[keyword]["methods"].append(method)
-                else:
-                    logger.warning(f"Method {method} failed: {result['error']}")
-            except Exception as e:
-                logger.warning(f"Method {method} failed with exception: {str(e)}")
 
-        if not all_keywords:
-            return create_standard_task_result(
-                success=True,
-                data={
-                    "keywords": [],
-                    "methods_used": methods,
-                    "method_results": method_results,
-                    "combined_results": combine_results,
-                    "total_keywords_found": 0,
-                    "extraction_library": "keybert",
-                },
-                task_name="extract_keywords_advanced",
-                metadata=extract_content_metadata_for_pipeline(content_obj),
-            )
+        return len(errors) == 0, errors
 
-        # Calculate combined scores if requested
-        if combine_results:
-            for keyword_data in all_keywords.values():
-                scores = list(keyword_data["scores"].values())
-                keyword_data["total_score"] = sum(scores) / len(scores)  # Average score
-                keyword_data["confidence"] = len(keyword_data["methods"]) / len(
-                    methods
-                )  # Method coverage
+    async def execute(
+        self, context: Dict[str, Any], pipeline: Any, job_id: Optional[str] = None
+    ) -> SEOKeywordsResult:
+        """
+        Execute SEO keywords extraction step with post-processing and validation.
 
-        # Sort by total score and return top keywords
-        sorted_keywords = sorted(
-            all_keywords.values(), key=lambda x: x["total_score"], reverse=True
-        )[:max_keywords]
+        Args:
+            context: Context containing input_content
+            pipeline: FunctionPipeline instance
+            job_id: Optional job ID for tracking
 
-        return create_standard_task_result(
-            success=True,
-            data={
-                "keywords": sorted_keywords,
-                "methods_used": methods,
-                "method_results": method_results,
-                "combined_results": combine_results,
-                "total_keywords_found": len(sorted_keywords),
-                "extraction_library": "keybert",
-            },
-            task_name="extract_keywords_advanced",
-            metadata=extract_content_metadata_for_pipeline(content_obj),
-        )
+        Returns:
+            SEOKeywordsResult with extracted keywords
+        """
+        # Step 1: Get base result from LLM
+        result = await self._execute_step(context, pipeline, job_id)
 
-    except Exception as e:
-        logger.error(f"Error in extract_keywords_advanced: {str(e)}")
-        return create_standard_task_result(
-            success=False,
-            error=f"Advanced keyword extraction failed: {str(e)}",
-            task_name="extract_keywords_advanced",
-        )
+        # Step 2: Post-process keywords
+        result = self._post_process_keywords(result, context)
+
+        # Step 3: Validate and fix issues
+        result = self._validate_and_fix(result, context)
+
+        # Step 4: Calculate derived metrics
+        result = self._calculate_derived_metrics(result, context)
+
+        # Step 5: Validate final result
+        is_valid, errors = self._validate_result(result)
+        if not is_valid:
+            logger.warning(f"SEO keywords validation issues: {errors}")
+            # Try to fix errors automatically
+            result = self._validate_and_fix(result, context)
+
+        return result
