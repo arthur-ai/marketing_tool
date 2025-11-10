@@ -320,16 +320,16 @@ def sample_style_guide():
 
 @pytest.fixture
 def sample_available_agents():
-    """Sample available agents for testing - only includes actual agents from the codebase."""
+    """Sample available agents for testing - only includes actual agents from the codebase.
+
+    Note: blog_agent, transcripts_agent, and releasenotes_agent have been replaced
+    by deterministic processors (blog_processor, transcript_processor, releasenotes_processor)
+    which don't follow the agent pattern.
+    """
     return {
         "article_generation_agent": {
             "name": "Article Generation Agent",
             "capabilities": ["article_generation", "content_creation"],
-            "priority": "high",
-        },
-        "blog_agent": {
-            "name": "Blog Agent",
-            "capabilities": ["blog_post", "article"],
             "priority": "high",
         },
         "content_formatting_agent": {
@@ -347,19 +347,14 @@ def sample_available_agents():
             "capabilities": ["internal_docs", "documentation"],
             "priority": "high",
         },
-        "marketing_agent": {
-            "name": "Marketing Agent",
-            "capabilities": ["marketing", "promotion"],
-            "priority": "high",
+        "marketing_orchestrator_agent": {
+            "name": "Marketing Orchestrator Agent",
+            "capabilities": ["content_routing", "orchestration"],
+            "priority": "critical",
         },
         "marketing_brief_agent": {
             "name": "Marketing Brief Agent",
             "capabilities": ["marketing_brief", "brief_creation"],
-            "priority": "high",
-        },
-        "releasenotes_agent": {
-            "name": "Release Notes Agent",
-            "capabilities": ["release_notes", "changelog"],
             "priority": "high",
         },
         "seo_keywords_agent": {
@@ -372,10 +367,24 @@ def sample_available_agents():
             "capabilities": ["seo_optimization", "seo"],
             "priority": "high",
         },
-        "transcripts_agent": {
-            "name": "Transcripts Agent",
+        # Deterministic processors (not agents)
+        "blog_processor": {
+            "name": "Blog Processor",
+            "capabilities": ["blog_post", "article"],
+            "priority": "high",
+            "type": "processor",
+        },
+        "transcript_processor": {
+            "name": "Transcript Processor",
             "capabilities": ["transcripts", "transcript_processing"],
             "priority": "high",
+            "type": "processor",
+        },
+        "releasenotes_processor": {
+            "name": "Release Notes Processor",
+            "capabilities": ["release_notes", "changelog"],
+            "priority": "high",
+            "type": "processor",
         },
     }
 

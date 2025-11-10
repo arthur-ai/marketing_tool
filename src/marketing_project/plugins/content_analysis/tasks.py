@@ -124,32 +124,6 @@ def validate_content_structure(content: ContentContext) -> bool:
     return True
 
 
-def route_to_appropriate_agent(
-    app_context: AppContext, available_agents: Dict[str, Any]
-) -> str:
-    """
-    Routes the app context to the appropriate agent based on content type.
-
-    Args:
-        app_context: Application context with content
-        available_agents: Dictionary of available agents
-
-    Returns:
-        str: Result of the routing operation
-    """
-    content_type = app_context.content_type
-    agent_name = analyze_content_type(app_context.content)
-
-    if agent_name in available_agents and available_agents[agent_name]:
-        logger.info(f"Routing {content_type} to {agent_name}")
-        return f"Successfully routed {content_type} to {agent_name}"
-    else:
-        logger.warning(
-            f"No agent available for {content_type}, using general processing"
-        )
-        return f"No specialized agent for {content_type}, using general processing"
-
-
 def analyze_content_for_pipeline(
     content: Union[ContentContext, Dict[str, Any]],
 ) -> Dict[str, Any]:

@@ -1,31 +1,23 @@
 """
 Logging configuration for Marketing Project.
 
-This module sets up PEP 282-compliant logging for the application, directing logs from different modules to separate files and not to the terminal/console.
+This module sets up PEP 282-compliant logging for the application,
+directing all logs to stdout/stderr for Docker container logging.
 
 Usage:
     Import this module at the entry point of your application (e.g., main.py or runner.py) before any other imports that use logging.
 """
 
-import datetime
 import logging
 import logging.config
 import os
+import sys
 
 from langchain_core.callbacks import CallbackManager
 from langchain_core.callbacks.base import BaseCallbackHandler
 
-# --- Directory and Log Level Setup ---
-LOG_DIR = os.getenv("MARKETING_PROJECT_LOG_DIR", "logs")
-os.makedirs(LOG_DIR, exist_ok=True)
-LOG_LEVEL = os.getenv("MARKETING_PROJECT_LOG_LEVEL", "DEBUG").upper()
-
-# --- Timestamped Log File Helper ---
-now_str = datetime.datetime.now().strftime("%Y-%m-%d")
-
-
-def log_path(filename):
-    return os.path.join(LOG_DIR, f"{filename}_{now_str}.log")
+# --- Log Level Setup ---
+LOG_LEVEL = os.getenv("MARKETING_PROJECT_LOG_LEVEL", "INFO").upper()
 
 
 # --- Logging Configuration Dictionary ---
@@ -33,92 +25,112 @@ LOGGING_CONFIG = {
     "version": 1,
     "disable_existing_loggers": False,
     "formatters": {
-        "standard": {"format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s"},
+        "standard": {
+            "format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+            "datefmt": "%Y-%m-%d %H:%M:%S",
+        },
+        "detailed": {
+            "format": "%(asctime)s [%(levelname)s] [%(name)s:%(funcName)s:%(lineno)d] %(message)s",
+            "datefmt": "%Y-%m-%d %H:%M:%S",
+        },
     },
     "handlers": {
-        "runner_file": {
+        "console": {
             "level": LOG_LEVEL,
-            "class": "logging.FileHandler",
-            "filename": log_path("runner"),
+            "class": "logging.StreamHandler",
+            "stream": sys.stdout,
             "formatter": "standard",
-            "encoding": "utf8",
         },
-        "agents_file": {
-            "level": LOG_LEVEL,
-            "class": "logging.FileHandler",
-            "filename": log_path("agents"),
-            "formatter": "standard",
-            "encoding": "utf8",
-        },
-        "core_file": {
-            "level": LOG_LEVEL,
-            "class": "logging.FileHandler",
-            "filename": log_path("core"),
-            "formatter": "standard",
-            "encoding": "utf8",
-        },
-        "plugins_file": {
-            "level": LOG_LEVEL,
-            "class": "logging.FileHandler",
-            "filename": log_path("plugins"),
-            "formatter": "standard",
-            "encoding": "utf8",
-        },
-        "services_file": {
-            "level": LOG_LEVEL,
-            "class": "logging.FileHandler",
-            "filename": log_path("services"),
-            "formatter": "standard",
-            "encoding": "utf8",
-        },
-        "langchain_file": {
-            "level": LOG_LEVEL,
-            "class": "logging.FileHandler",
-            "filename": log_path("agents"),
-            "formatter": "standard",
-            "encoding": "utf8",
+        "error_console": {
+            "level": "ERROR",
+            "class": "logging.StreamHandler",
+            "stream": sys.stderr,
+            "formatter": "detailed",
         },
     },
     "loggers": {
+        # Marketing Project modules - all use console
+        "marketing_project": {
+            "handlers": ["console", "error_console"],
+            "level": LOG_LEVEL,
+            "propagate": False,
+        },
         "marketing_project.runner": {
-            "handlers": ["runner_file"],
+            "handlers": ["console", "error_console"],
             "level": LOG_LEVEL,
             "propagate": False,
         },
         "marketing_project.agents": {
-            "handlers": ["agents_file"],
+            "handlers": ["console", "error_console"],
             "level": LOG_LEVEL,
             "propagate": False,
         },
         "marketing_project.core": {
-            "handlers": ["core_file"],
+            "handlers": ["console", "error_console"],
             "level": LOG_LEVEL,
             "propagate": False,
         },
         "marketing_project.plugins": {
-            "handlers": ["plugins_file"],
+            "handlers": ["console", "error_console"],
             "level": LOG_LEVEL,
             "propagate": False,
         },
         "marketing_project.services": {
-            "handlers": ["services_file"],
+            "handlers": ["console", "error_console"],
             "level": LOG_LEVEL,
             "propagate": False,
         },
-        "langchain": {
-            "handlers": ["langchain_file"],
+        "marketing_project.api": {
+            "handlers": ["console", "error_console"],
             "level": LOG_LEVEL,
+            "propagate": False,
+        },
+        "marketing_project.middleware": {
+            "handlers": ["console", "error_console"],
+            "level": LOG_LEVEL,
+            "propagate": False,
+        },
+        "marketing_project.processors": {
+            "handlers": ["console", "error_console"],
+            "level": LOG_LEVEL,
+            "propagate": False,
+        },
+        # LangChain - reduce noise in production
+        "langchain": {
+            "handlers": ["console"],
+            "level": "WARNING",
             "propagate": False,
         },
         "langchain_openai": {
-            "handlers": ["langchain_file"],
-            "level": LOG_LEVEL,
+            "handlers": ["console"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+        "langchain_core": {
+            "handlers": ["console"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+        # FastAPI/Uvicorn
+        "uvicorn": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "uvicorn.access": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "fastapi": {
+            "handlers": ["console"],
+            "level": "INFO",
             "propagate": False,
         },
     },
     "root": {
-        "handlers": [],  # No console handler
-        "level": "WARNING",
+        "handlers": ["console", "error_console"],
+        "level": "INFO",
     },
 }
 

@@ -25,10 +25,18 @@ class TestHealthCheck:
 
     @patch("marketing_project.api.health.os.path.exists")
     @patch("marketing_project.api.health.PIPELINE_SPEC", {"test": "config"})
-    def test_health_check_success(self, mock_exists, client):
+    @patch("marketing_project.api.health.get_redis_manager")
+    def test_health_check_success(self, mock_get_redis_manager, mock_exists, client):
         """Test successful health check."""
         # Setup mocks
         mock_exists.return_value = True
+        mock_redis_manager = Mock()
+        mock_redis_manager.get_health_status.return_value = {
+            "healthy": True,
+            "circuit_breaker_state": "closed",
+            "pool_info": {},
+        }
+        mock_get_redis_manager.return_value = mock_redis_manager
 
         response = client.get("/health")
 
@@ -39,9 +47,11 @@ class TestHealthCheck:
         assert data["version"] == "1.0.0"
         assert data["checks"]["config_loaded"] is True
         assert data["checks"]["prompts_dir_exists"] is True
+        assert data["checks"]["redis_healthy"] is True
+        assert "redis" in data
 
     @patch("marketing_project.api.health.os.path.exists")
-    @patch("marketing_project.config.settings.PIPELINE_SPEC", None)
+    @patch("marketing_project.api.health.PIPELINE_SPEC", None)
     def test_health_check_config_not_loaded(self, mock_exists, client):
         """Test health check when config is not loaded."""
         # Setup mocks
@@ -55,7 +65,7 @@ class TestHealthCheck:
         assert data["checks"]["config_loaded"] is False
 
     @patch("marketing_project.api.health.os.path.exists")
-    @patch("marketing_project.config.settings.PIPELINE_SPEC", {"test": "config"})
+    @patch("marketing_project.api.health.PIPELINE_SPEC", {"test": "config"})
     def test_health_check_prompts_dir_missing(self, mock_exists, client):
         """Test health check when prompts directory is missing."""
         # Setup mocks
@@ -69,7 +79,7 @@ class TestHealthCheck:
         assert data["checks"]["prompts_dir_exists"] is False
 
     @patch("marketing_project.api.health.os.path.exists")
-    @patch("marketing_project.config.settings.PIPELINE_SPEC", None)
+    @patch("marketing_project.api.health.PIPELINE_SPEC", None)
     def test_health_check_both_fail(self, mock_exists, client):
         """Test health check when both checks fail."""
         # Setup mocks
@@ -102,10 +112,17 @@ class TestReadinessCheck:
 
     @patch("marketing_project.api.health.os.path.exists")
     @patch("marketing_project.config.settings.PIPELINE_SPEC", {"test": "config"})
-    def test_readiness_check_success(self, mock_exists, client):
+    @patch("marketing_project.api.health.get_redis_manager")
+    def test_readiness_check_success(self, mock_get_redis_manager, mock_exists, client):
         """Test successful readiness check."""
         # Setup mocks
         mock_exists.return_value = True
+        mock_redis_manager = Mock()
+        mock_redis_manager.get_health_status.return_value = {
+            "healthy": True,
+            "circuit_breaker_state": "closed",
+        }
+        mock_get_redis_manager.return_value = mock_redis_manager
 
         response = client.get("/ready")
 
@@ -115,9 +132,11 @@ class TestReadinessCheck:
         assert data["service"] == "marketing-project"
         assert data["checks"]["config_loaded"] is True
         assert data["checks"]["prompts_dir_exists"] is True
+        assert data["checks"]["redis_ready"] is True
+        assert "redis" in data
 
     @patch("marketing_project.api.health.os.path.exists")
-    @patch("marketing_project.config.settings.PIPELINE_SPEC", None)
+    @patch("marketing_project.api.health.PIPELINE_SPEC", None)
     def test_readiness_check_config_not_loaded(self, mock_exists, client):
         """Test readiness check when config is not loaded."""
         # Setup mocks
@@ -131,7 +150,7 @@ class TestReadinessCheck:
         assert data["checks"]["config_loaded"] is False
 
     @patch("marketing_project.api.health.os.path.exists")
-    @patch("marketing_project.config.settings.PIPELINE_SPEC", {"test": "config"})
+    @patch("marketing_project.api.health.PIPELINE_SPEC", {"test": "config"})
     def test_readiness_check_prompts_dir_missing(self, mock_exists, client):
         """Test readiness check when prompts directory is missing."""
         # Setup mocks
@@ -164,9 +183,7 @@ class TestNoAuthentication:
     def test_health_check_no_auth_required(self, client):
         """Test that health check doesn't require authentication."""
         with (
-            patch(
-                "marketing_project.config.settings.PIPELINE_SPEC", {"test": "config"}
-            ),
+            patch("marketing_project.api.health.PIPELINE_SPEC", {"test": "config"}),
             patch("marketing_project.api.health.os.path.exists", return_value=True),
         ):
             response = client.get("/health")
@@ -175,9 +192,7 @@ class TestNoAuthentication:
     def test_readiness_check_no_auth_required(self, client):
         """Test that readiness check doesn't require authentication."""
         with (
-            patch(
-                "marketing_project.config.settings.PIPELINE_SPEC", {"test": "config"}
-            ),
+            patch("marketing_project.api.health.PIPELINE_SPEC", {"test": "config"}),
             patch("marketing_project.api.health.os.path.exists", return_value=True),
         ):
             response = client.get("/ready")

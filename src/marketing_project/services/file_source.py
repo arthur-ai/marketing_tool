@@ -52,34 +52,76 @@ class FileContentSource(ContentSource):
     async def initialize(self) -> bool:
         """Initialize the file source."""
         try:
+            logger.info(f"Initializing file source '{self.config.name}'")
+            logger.info(f"  Current working directory: {os.getcwd()}")
+            logger.info(f"  Configured file_paths: {self.config.file_paths}")
+            logger.info(f"  Configured file_patterns: {self.config.file_patterns}")
+
             # Validate file paths and patterns
             valid_paths = []
 
             # Check individual file paths
+            logger.info(f"Checking {len(self.config.file_paths)} file paths...")
             for file_path in self.config.file_paths:
-                if os.path.exists(file_path):
-                    valid_paths.append(file_path)
+                abs_path = os.path.abspath(file_path)
+                exists = os.path.exists(file_path)
+
+                logger.info(f"  Path: '{file_path}'")
+                logger.info(f"    Absolute: '{abs_path}'")
+                logger.info(f"    Exists: {exists}")
+
+                if exists:
+                    if os.path.isfile(file_path):
+                        valid_paths.append(file_path)
+                        logger.info(f"    Type: file ✓")
+                    elif os.path.isdir(file_path):
+                        logger.info(f"    Type: directory (will check patterns)")
+                    else:
+                        logger.info(f"    Type: other")
                 else:
-                    logger.warning(f"File not found: {file_path}")
+                    logger.warning(f"    Path not found: {file_path}")
 
             # Check file patterns
+            logger.info(f"Checking {len(self.config.file_patterns)} file patterns...")
             for pattern in self.config.file_patterns:
+                logger.info(f"  Pattern: '{pattern}'")
                 matches = glob.glob(pattern, recursive=True)
+                logger.info(f"    Found {len(matches)} matches")
+
+                if matches:
+                    for match in matches[:5]:  # Log first 5 matches
+                        logger.info(f"      - {match}")
+                    if len(matches) > 5:
+                        logger.info(f"      ... and {len(matches) - 5} more")
+
                 valid_paths.extend(matches)
 
+            # Remove duplicates
+            valid_paths = list(set(valid_paths))
+
             if not valid_paths:
-                logger.error("No valid files found for file source")
+                logger.error(
+                    f"No valid files found for file source '{self.config.name}'"
+                )
+                logger.error(f"  Searched in: {os.getcwd()}")
+                logger.error(f"  File paths checked: {self.config.file_paths}")
+                logger.error(f"  Patterns checked: {self.config.file_patterns}")
                 return False
 
             # Don't cache files during initialization - let fetch handle caching
             # This ensures files are processed on first fetch
 
             self.status = ContentSourceStatus.ACTIVE
-            logger.info(f"File source initialized with {len(valid_paths)} files")
+            logger.info(
+                f"✓ File source '{self.config.name}' initialized successfully with {len(valid_paths)} files"
+            )
             return True
 
         except Exception as e:
-            logger.error(f"Failed to initialize file source: {e}")
+            logger.error(
+                f"Failed to initialize file source '{self.config.name}': {e}",
+                exc_info=True,
+            )
             self.status = ContentSourceStatus.ERROR
             return False
 

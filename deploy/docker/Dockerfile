@@ -33,7 +33,8 @@ COPY pyproject.toml ./
 # Install the package
 RUN pip install -e .
 
-RUN mkdir -p /app/logs /app/uploads /app/cache
+# Create necessary directories (logs go to Docker logs, not files)
+RUN mkdir -p /app/uploads /app/cache
 
 # Change ownership to appuser
 RUN chown -R appuser:appuser /app
@@ -49,4 +50,4 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/api/v1/health || exit 1
 
 # Default command
-CMD ["python", "-m", "uvicorn", "src.marketing_project.server:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "-m", "uvicorn", "marketing_project.server:app", "--host", "0.0.0.0", "--port", "8000"]

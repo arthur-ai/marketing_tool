@@ -1,0 +1,39 @@
+Create a comprehensive marketing brief for a {{ content_type }} focused on the keyword: {{ seo_result.main_keyword }}
+
+Focus the marketing brief on the main keyword: {{ seo_result.main_keyword }}
+
+KEYWORD CONTEXT:
+- Main Keyword: {{ seo_result.main_keyword }}
+- Primary Keywords: {{ seo_result.primary_keywords | join(', ') }}
+- Search Intent: {{ seo_result.search_intent }}
+{% if seo_result.long_tail_keywords %}
+- Long-tail Opportunities: {{ seo_result.long_tail_keywords | join(', ') }}
+{% endif %}
+{% if seo_result.keyword_clusters %}
+- Keyword Clusters: {{ seo_result.keyword_clusters | map(attribute='cluster_name') | join(', ') }}
+{% endif %}
+{% if seo_result.primary_keywords_metadata %}
+- Keyword Metadata Available: Search volume, difficulty scores, and trends for primary keywords
+{% endif %}
+
+Define target audience personas, key messaging, content strategy, KPIs, and distribution channels that align with:
+- The search intent ({{ seo_result.search_intent }})
+- The keyword clusters and themes identified
+- Long-tail keyword opportunities for specific targeting
+
+{% if design_kit_config %}
+DESIGN KIT GUIDELINES (Follow these brand guidelines):
+- Voice & Tone: {{ design_kit_config.voice_adjectives | join(', ') if design_kit_config.voice_adjectives else 'Not specified' }}
+- Point of View: {{ design_kit_config.point_of_view }}
+- Sentence Length/Tempo: {{ design_kit_config.sentence_length_tempo }}
+- Lexical Preferences: {{ design_kit_config.lexical_preferences | join(', ') if design_kit_config.lexical_preferences else 'None' }}
+- CTA Patterns: {{ design_kit_config.cta_language | join(', ') if design_kit_config.cta_language else 'Not specified' }}
+- CTA Positions: {{ design_kit_config.cta_positions | join(', ') if design_kit_config.cta_positions else 'Not specified' }}
+- Typical Link Targets: {{ design_kit_config.typical_link_targets | join(', ') if design_kit_config.typical_link_targets else 'Not specified' }}
+
+Ensure the marketing brief aligns with:
+- Brand voice and tone guidelines above
+- CTA patterns and positioning preferences
+- Content strategy that follows brand structure patterns
+- Target audience alignment with brand voice preferences
+{% endif %}

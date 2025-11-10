@@ -38,6 +38,7 @@ See [Full Command Reference](#-command-reference) below.
 - ✅ **Volume Mounts** - Source code mounted from host
 - ✅ **Debug Logging** - Verbose output for troubleshooting
 - ✅ **Fast Iteration** - No rebuilds needed for code changes
+- ✅ **Redis + Workers** - Background job processing (Phase 2)
 
 ### Using Makefile (Recommended)
 
@@ -107,6 +108,8 @@ The following are mounted for hot-reload:
 
 **Best for testing production configuration** - Source code is copied into the image.
 
+> **⚠️ Phase 2 Requirement:** Redis and ARQ workers are now **required** for job management and background processing. The production compose file includes these by default.
+
 ### Using Makefile (Recommended)
 
 ```bash
@@ -145,6 +148,9 @@ docker-compose -f deploy/docker/docker-compose.yml down
 - ✅ No hot reload (stability)
 - ✅ Optimized for production workloads
 - ✅ Health checks enabled
+- ✅ Redis with AOF persistence (Phase 2)
+- ✅ ARQ workers for background jobs (Phase 2)
+- ✅ Job state persistence across restarts (Phase 2)
 
 ---
 
@@ -267,6 +273,8 @@ Once running, access:
 - **API Docs**: http://localhost:8000/docs
 - **Health Check**: http://localhost:8000/api/v1/health
 - **API Base**: http://localhost:8000/api/v1/
+- **Job Status**: http://localhost:8000/api/v1/jobs
+- **Redis**: localhost:6379 (if you need to connect directly)
 
 ---
 

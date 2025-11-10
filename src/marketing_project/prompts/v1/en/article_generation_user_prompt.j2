@@ -1,0 +1,124 @@
+Generate a complete article from scratch based on the marketing brief:
+
+KEYWORDS TO USE (Use ALL of these throughout the article):
+- Main Keyword: {{ all_keywords.main_keyword }}
+- Primary Keywords: {{ all_keywords.primary | join(', ') }}
+- Secondary Keywords: {{ all_keywords.secondary | join(', ') if all_keywords.secondary else 'None' }}
+- LSI Keywords: {{ all_keywords.lsi | join(', ') if all_keywords.lsi else 'None' }}
+- Long-tail Keywords: {{ all_keywords.long_tail | join(', ') if all_keywords.long_tail else 'None' }}
+{% if seo_result.keyword_clusters %}
+- Keyword Clusters: {{ seo_result.keyword_clusters | map(attribute='cluster_name') | join(', ') }}
+{% endif %}
+
+Marketing Brief:
+- Target Audience: {{ brief_result.target_audience | join(', ') }}
+- Key Messages: {{ brief_result.key_messages | join(', ') }}
+- Content Strategy: {{ brief_result.content_strategy }}
+- Tone and Voice: {{ brief_result.tone_and_voice or 'Professional and engaging' }}
+- Competitive Angle: {{ brief_result.competitive_angle or 'Not specified' }}
+- KPIs: {{ brief_result.kpis | join(', ') if brief_result.kpis else 'Not specified' }}
+- Distribution Channels: {{ brief_result.distribution_channels | join(', ') if brief_result.distribution_channels else 'Not specified' }}
+
+Generate a complete article that:
+- Is created from scratch, aligned with the marketing strategy
+- Uses ALL keywords naturally throughout the content:
+  * Main keyword: Use in title, headings, and main content focus
+  * Primary keywords: Use in headings, main sections, and key paragraphs
+  * Secondary keywords: Use as supporting content, natural variations
+  * LSI keywords: Use for semantic depth and related concepts
+  * Long-tail keywords: Use in specific sections, FAQ-style content, and detailed explanations
+{% if seo_result.keyword_clusters %}
+- Organizes content around keyword clusters for thematic depth
+{% endif %}
+- Speaks directly to the target audience personas
+- Incorporates all key messages strategically
+- Follows the recommended content strategy
+- Matches the specified tone and voice: {{ brief_result.tone_and_voice or 'Professional and engaging' }}
+- Leverages the competitive angle for differentiation
+- Is designed to achieve the specified KPIs
+- Is optimized for the recommended distribution channels
+{% if design_kit_config %}
+- STRICTLY follows all Design Kit guidelines below
+{% endif %}
+
+Create:
+- Compelling article title optimized for clicks and engagement
+- Well-structured, engaging article content (full article, not a summary)
+- Clear outline with section headers
+- Strong opening hook that captures attention
+- Key takeaways that reinforce the main messages
+- Compelling call-to-action aligned with the strategy
+
+{% if design_kit_config %}
+DESIGN KIT GUIDELINES (STRICTLY FOLLOW ALL OF THESE):
+
+VOICE & TONE:
+- Voice Adjectives: {{ design_kit_config.voice_adjectives | join(', ') if design_kit_config.voice_adjectives else 'Not specified' }}
+- Point of View: {{ design_kit_config.point_of_view }} (use this POV consistently)
+- Sentence Length/Tempo: {{ design_kit_config.sentence_length_tempo }}
+- Lexical Preferences: {{ design_kit_config.lexical_preferences | join(', ') if design_kit_config.lexical_preferences else 'None' }} (use these terms naturally)
+
+STRUCTURE:
+- Section Order: {{ design_kit_config.section_order | join(' → ') if design_kit_config.section_order else 'Not specified' }}
+- Heading Depth: Use {{ design_kit_config.heading_depth }} headings
+- List Usage: {{ design_kit_config.list_usage_preference }} (frequent/moderate/minimal)
+- Paragraph Length: {{ design_kit_config.paragraph_length_range.min }}-{{ design_kit_config.paragraph_length_range.max }} words per paragraph
+{% if design_kit_config.include_tldr %}
+- Include TL;DR section
+{% endif %}
+{% if design_kit_config.include_summary %}
+- Include summary section
+{% endif %}
+
+CTA PATTERNS:
+- CTA Language: {{ design_kit_config.cta_language | join(', ') if design_kit_config.cta_language else 'Not specified' }}
+- CTA Positions: {{ design_kit_config.cta_positions | join(', ') if design_kit_config.cta_positions else 'Not specified' }}
+- CTA Verbs: {{ design_kit_config.cta_verbs | join(', ') if design_kit_config.cta_verbs else 'Not specified' }}
+- Typical Link Targets: {{ design_kit_config.typical_link_targets | join(', ') if design_kit_config.typical_link_targets else 'Not specified' }}
+
+COMPLIANCE & BRAND:
+- Must Use Terms: {{ design_kit_config.must_use_names_terms | join(', ') if design_kit_config.must_use_names_terms else 'None' }} (MUST use these)
+- Prohibited Phrases: {{ design_kit_config.prohibited_phrases | join(', ') if design_kit_config.prohibited_phrases else 'None' }} (NEVER use these)
+{% if design_kit_config.disclaimer_boilerplate %}
+- Disclaimer: {{ design_kit_config.disclaimer_boilerplate }}
+{% endif %}
+- Date Format: {{ design_kit_config.date_format }}
+- Number Formatting: {{ design_kit_config.numbers_formatting_rules | dictsort | map('join', ': ') | join(', ') if design_kit_config.numbers_formatting_rules else 'Standard' }}
+
+INTERLINKING:
+- Commonly Referenced Pages: {{ design_kit_config.commonly_referenced_pages | join(', ') if design_kit_config.commonly_referenced_pages else 'None' }}
+- Commonly Referenced Categories: {{ design_kit_config.commonly_referenced_categories | join(', ') if design_kit_config.commonly_referenced_categories else 'None' }}
+- Anchor Phrasing Patterns: {{ design_kit_config.anchor_phrasing_patterns | join(', ') if design_kit_config.anchor_phrasing_patterns else 'Natural language' }}
+
+ATTRIBUTION:
+- Author Name Style: {{ design_kit_config.author_name_style if design_kit_config.author_name_style else 'Not specified' }}
+- Bio Length: {{ design_kit_config.bio_length_range.min }}-{{ design_kit_config.bio_length_range.max }} words
+- Sign-off Patterns: {{ design_kit_config.sign_off_patterns | join(', ') if design_kit_config.sign_off_patterns else 'Not specified' }}
+
+QUANT/TARGETS:
+- Word Count Range: {{ design_kit_config.word_count_range.min }}-{{ design_kit_config.word_count_range.max }} words
+- Heading Density: {{ design_kit_config.heading_density }}
+- Keyword Density Band: {{ design_kit_config.keyword_density_band }}
+
+REUSABLE SNIPPETS:
+{% if design_kit_config.opening_lines %}
+- Opening Lines: {{ design_kit_config.opening_lines | join(' | ') }}
+{% endif %}
+{% if design_kit_config.transition_sentences %}
+- Transition Sentences: {{ design_kit_config.transition_sentences | join(' | ') }}
+{% endif %}
+{% if design_kit_config.proof_statements %}
+- Proof Statements: {{ design_kit_config.proof_statements | join(' | ') }}
+{% endif %}
+{% if design_kit_config.conclusion_frames %}
+- Conclusion Frames: {{ design_kit_config.conclusion_frames | join(' | ') }}
+{% endif %}
+{% if design_kit_config.common_faqs %}
+- Common FAQs:
+{% for faq in design_kit_config.common_faqs %}
+  * Q: {{ faq.question }} | A: {{ faq.answer }}
+{% endfor %}
+{% endif %}
+
+CRITICAL: The generated article MUST strictly adhere to ALL of the above Design Kit guidelines. Every aspect of voice, tone, structure, CTAs, compliance, and formatting must follow these rules.
+{% endif %}

@@ -150,9 +150,18 @@ class ContentSourceManager(BaseContentSourceManager):
 
     async def add_source_from_config(self, config: SourceConfig) -> bool:
         """Add a content source from configuration."""
+        logger.info(f"Creating source '{config.name}' from configuration...")
         source = self.factory.create_source(config)
         if source:
-            return await self.add_source(source)
+            logger.info(f"  Source object created, initializing...")
+            result = await self.add_source(source)
+            if result:
+                logger.info(f"  ✓ Source '{config.name}' added successfully")
+            else:
+                logger.warning(f"  ✗ Failed to add source '{config.name}'")
+            return result
+        else:
+            logger.error(f"  ✗ Failed to create source object for '{config.name}'")
         return False
 
     async def add_multiple_sources(

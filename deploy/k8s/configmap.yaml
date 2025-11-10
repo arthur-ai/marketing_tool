@@ -3,33 +3,30 @@ kind: ConfigMap
 metadata:
   name: marketing-project-config
   namespace: marketing-project
-  labels:
-    app: marketing-project-api
 data:
-  # Application settings
-  DEBUG: "false"
+  # Server configuration
   HOST: "0.0.0.0"
   PORT: "8000"
   LOG_LEVEL: "INFO"
   TEMPLATE_VERSION: "v1"
+  PYTHONPATH: "/app/src"
 
-  # CORS settings
-  CORS_ORIGINS: "https://marketing-project.com,https://www.marketing-project.com"
-  CORS_ALLOW_CREDENTIALS: "true"
+  # Redis configuration (REQUIRED for Phase 2)
+  # Use the Kubernetes Redis service name
+  REDIS_HOST: "redis-service"
+  REDIS_PORT: "6379"
+  REDIS_DATABASE: "0"
 
-  # Database connections (for content sources)
-  CONTENT_DATABASE_URL: "sqlite:///./content.db"
-  POSTGRES_URL: "postgresql://postgres:password@postgres-service:5432/marketing_project"
-  MONGODB_URL: "mongodb://mongodb-service:27017/marketing_project"
-  REDIS_URL: "redis://redis-service:6379"
+  # ARQ Worker configuration
+  ARQ_MAX_JOBS: "10"
+  ARQ_JOB_TIMEOUT: "600"
+  ARQ_WORKER_COUNT: "2"
 
-  # Pipeline configuration
-  PIPELINE_CONFIG_PATH: "/app/src/marketing_project/config/pipeline.yml"
-  PROMPTS_DIR: "/app/src/marketing_project/prompts"
+  # Content source configuration
+  CONTENT_DIR: "content/"
+  DATA_DIR: "data/"
+  UPLOAD_DIR: "uploads/"
 
-  # Content processing settings
-  MAX_CONTENT_LENGTH: "1000000"
-  CONTENT_BATCH_SIZE: "10"
-  CONTENT_TYPES: "transcript,blog_post,release_notes"
-  DEFAULT_LANGUAGE: "en"
-  SUPPORTED_LANGUAGES: "en,es,fr,de"
+  # Feature flags
+  UPLOAD_ENABLED: "true"
+  CONTENT_POLLING_ENABLED: "true"

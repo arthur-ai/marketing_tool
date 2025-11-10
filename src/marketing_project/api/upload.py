@@ -6,12 +6,18 @@ import csv
 import json
 import logging
 import os
+import re
 import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
+from urllib.parse import urlparse
 
+import requests
+from bs4 import BeautifulSoup
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, HttpUrl
 
 # Document processing imports
 try:
@@ -321,6 +327,250 @@ async def process_uploaded_file(
     except Exception as e:
         logger.error(f"File processing failed: {e}")
         raise HTTPException(status_code=500, detail=f"File processing failed: {str(e)}")
+
+
+class URLExtractionRequest(BaseModel):
+    """Request model for URL extraction."""
+
+    url: str
+    content_type: str = "blog_post"
+
+
+def extract_blog_content_from_url(url: str) -> Dict[str, Any]:
+    """
+    Extract blog post content from a URL using web scraping.
+
+    Args:
+        url: The URL of the blog post
+
+    Returns:
+        Dict containing extracted content with title, content, author, etc.
+    """
+    try:
+        # Fetch the webpage
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        }
+        response = requests.get(url, headers=headers, timeout=30)
+        response.raise_for_status()
+
+        # Parse HTML
+        soup = BeautifulSoup(response.content, "html.parser")
+
+        # Extract title - try common selectors
+        title = None
+        for selector in ["h1", "title", ".post-title", ".entry-title", "article h1"]:
+            title_elem = soup.select_one(selector)
+            if title_elem:
+                title = title_elem.get_text(strip=True)
+                break
+
+        if not title:
+            title = (
+                soup.title.string if soup.title else urlparse(url).path.split("/")[-1]
+            )
+
+        # Extract main content - try common article selectors
+        content_text = None
+        for selector in [
+            "article",
+            ".post-content",
+            ".entry-content",
+            ".article-content",
+            ".content",
+            "main article",
+            '[role="main"]',
+        ]:
+            content_elem = soup.select_one(selector)
+            if content_elem:
+                # Remove script and style elements
+                for script in content_elem(
+                    ["script", "style", "nav", "aside", "footer", "header"]
+                ):
+                    script.decompose()
+                content_text = content_elem.get_text(separator="\n", strip=True)
+                break
+
+        # Fallback: get all paragraphs if no article content found
+        if not content_text or len(content_text) < 100:
+            paragraphs = soup.find_all("p")
+            content_text = "\n\n".join(
+                [
+                    p.get_text(strip=True)
+                    for p in paragraphs
+                    if len(p.get_text(strip=True)) > 50
+                ]
+            )
+
+        # Extract metadata
+        author = None
+        # Try to find author
+        for selector in [
+            ".author",
+            ".by-author",
+            '[rel="author"]',
+            ".post-author",
+            'meta[name="author"]',
+        ]:
+            author_elem = soup.select_one(selector)
+            if author_elem:
+                if author_elem.name == "meta":
+                    author = author_elem.get("content", "").strip()
+                else:
+                    author = author_elem.get_text(strip=True)
+                break
+
+        # Extract publish date
+        published_date = None
+        for selector in [
+            "time",
+            ".published",
+            ".post-date",
+            'meta[property="article:published_time"]',
+        ]:
+            date_elem = soup.select_one(selector)
+            if date_elem:
+                if date_elem.name == "meta":
+                    published_date = date_elem.get("content", "")
+                elif date_elem.name == "time":
+                    published_date = date_elem.get(
+                        "datetime", date_elem.get_text(strip=True)
+                    )
+                else:
+                    published_date = date_elem.get_text(strip=True)
+                break
+
+        # Extract meta description as snippet
+        snippet = None
+        meta_desc = soup.find("meta", attrs={"name": "description"})
+        if meta_desc:
+            snippet = meta_desc.get("content", "").strip()
+
+        # If no snippet, use first 200 chars of content
+        if not snippet and content_text:
+            snippet = (
+                content_text[:200].strip() + "..."
+                if len(content_text) > 200
+                else content_text.strip()
+            )
+
+        # Extract tags/categories
+        tags = []
+        for selector in [".tags a", ".tag", 'meta[property="article:tag"]']:
+            tag_elems = soup.select(selector)
+            if tag_elems:
+                for tag_elem in tag_elems:
+                    if tag_elem.name == "meta":
+                        tag_text = tag_elem.get("content", "").strip()
+                    else:
+                        tag_text = tag_elem.get_text(strip=True)
+                    if tag_text and tag_text not in tags:
+                        tags.append(tag_text)
+
+        # Calculate word count
+        word_count = len(content_text.split()) if content_text else 0
+
+        # Build the extracted data
+        extracted_data = {
+            "id": str(uuid.uuid4()),
+            "title": title or "Untitled Blog Post",
+            "content": content_text or "",
+            "snippet": snippet or "",
+            "source_url": url,
+            "author": author or "Unknown",
+            "tags": tags[:10],  # Limit to 10 tags
+            "category": "General",
+            "word_count": word_count,
+            "created_at": published_date or datetime.utcnow().isoformat() + "Z",
+            "reading_time": (
+                max(1, word_count // 200) if word_count > 0 else None
+            ),  # Rough estimate
+            "metadata": {
+                "extracted_from_url": True,
+                "extraction_date": datetime.utcnow().isoformat() + "Z",
+                "original_url": url,
+            },
+        }
+
+        return extracted_data
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Failed to fetch URL {url}: {e}")
+        raise HTTPException(status_code=400, detail=f"Failed to fetch URL: {str(e)}")
+    except Exception as e:
+        logger.error(f"Failed to extract content from URL {url}: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to extract content: {str(e)}"
+        )
+
+
+@router.post("/upload/from-url")
+async def upload_from_url(request: URLExtractionRequest):
+    """
+    Extract blog post content from a URL and process it for the marketing pipeline.
+
+    Args:
+        request: URLExtractionRequest containing URL and content type
+
+    Returns:
+        JSONResponse with extracted content
+    """
+    try:
+        logger.info(f"Extracting content from URL: {request.url}")
+
+        # Extract content from URL
+        extracted_data = extract_blog_content_from_url(request.url)
+
+        # Validate that we got meaningful content
+        if len(extracted_data["content"]) < 100:
+            raise HTTPException(
+                status_code=400,
+                detail="Could not extract sufficient content from URL. The page may be behind a paywall, require JavaScript, or have an unusual structure.",
+            )
+
+        # Save to content directory
+        content_type_dir = os.path.join(CONTENT_DIR, f"{request.content_type}s")
+        os.makedirs(content_type_dir, exist_ok=True)
+
+        # Generate filename from URL
+        parsed_url = urlparse(request.url)
+        safe_filename = re.sub(
+            r"[^a-zA-Z0-9_-]", "_", parsed_url.path.strip("/").replace("/", "_")
+        )
+        if not safe_filename:
+            safe_filename = "extracted_content"
+        safe_filename = f"{extracted_data['id']}_{safe_filename}.json"
+
+        processed_path = os.path.join(content_type_dir, safe_filename)
+
+        # Save as JSON
+        with open(processed_path, "w", encoding="utf-8") as f:
+            json.dump(extracted_data, f, indent=2, ensure_ascii=False)
+
+        logger.info(
+            f"Content extracted and saved from {request.url} to {processed_path}"
+        )
+
+        return JSONResponse(
+            status_code=200,
+            content={
+                "success": True,
+                "message": "Content extracted from URL successfully",
+                "file_id": extracted_data["id"],
+                "url": request.url,
+                "title": extracted_data["title"],
+                "word_count": extracted_data["word_count"],
+                "content_type": request.content_type,
+                "processed_path": processed_path,
+                "extracted_data": extracted_data,
+            },
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"URL extraction failed for {request.url}: {e}")
+        raise HTTPException(status_code=500, detail=f"URL extraction failed: {str(e)}")
 
 
 @router.get("/upload/status/{file_id}")

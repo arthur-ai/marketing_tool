@@ -1,5 +1,10 @@
 # Docker Compose with Redis
-# Usage: docker-compose -f docker-compose.yml -f docker-compose.redis.yml up
+#
+# ⚠️ NOTE: As of Phase 2, Redis is REQUIRED and included in the main docker-compose.yml
+# This file is kept for backwards compatibility but is NO LONGER NEEDED.
+#
+# Usage (legacy): docker-compose -f docker-compose.yml -f docker-compose.redis.yml up
+# New usage: Just use docker-compose.yml directly
 
 version: '3.8'
 

@@ -5,10 +5,12 @@ This directory contains Kubernetes manifests for deploying the Marketing Project
 ## Files Overview
 
 - `namespace.yaml` - Creates the marketing-project namespace
-- `configmap.yaml` - Configuration values for the application
+- `configmap.yaml` - Configuration values for the application (includes Redis settings)
 - `secret.yaml` - Production secrets (base64 encoded)
 - `secret-template.yaml` - Template for secrets (copy and fill with actual values)
+- `redis-deployment.yaml` - **[Phase 2 Required]** Redis deployment with persistence
 - `deployment.yaml` - Main application deployment
+- `worker-deployment.yaml` - **[Phase 2 Required]** ARQ worker deployment for background jobs
 - `service.yaml` - Service to expose the application
 - `ingress.yaml` - Ingress for external access with TLS
 - `hpa.yaml` - Horizontal Pod Autoscaler for automatic scaling
@@ -42,13 +44,34 @@ kubectl apply -k k8s/ --namespace=marketing-project-staging
    kubectl apply -f k8s/secret-custom.yaml
    ```
 
-3. **Deploy the application:**
+3. **Create ConfigMap (includes Redis configuration):**
    ```bash
    kubectl apply -f k8s/configmap.yaml
+   ```
+
+4. **Deploy Redis (REQUIRED - Phase 2):**
+   ```bash
+   kubectl apply -f k8s/redis-deployment.yaml
+
+   # Wait for Redis to be ready
+   kubectl wait --for=condition=ready pod -l app=redis -n marketing-project --timeout=120s
+   ```
+
+5. **Deploy the application:**
+   ```bash
    kubectl apply -f k8s/deployment.yaml
    kubectl apply -f k8s/service.yaml
    kubectl apply -f k8s/ingress.yaml
    kubectl apply -f k8s/hpa.yaml
+   ```
+
+6. **Deploy ARQ Workers (REQUIRED - Phase 2):**
+   ```bash
+   kubectl apply -f k8s/worker-deployment.yaml
+   ```
+
+7. **Optional: Deploy CronJob:**
+   ```bash
    kubectl apply -f k8s/cronjob.yaml
    ```
 
@@ -58,11 +81,20 @@ kubectl apply -k k8s/ --namespace=marketing-project-staging
 
 The application uses the following environment variables:
 
-- `OPENAI_API_KEY` - OpenAI API key for AI processing (optional)
-- `CONTENT_API_KEY` - External content API key (optional)
+**Required (Phase 2+):**
+- `REDIS_HOST` - Redis hostname (set to "redis-service" in ConfigMap)
+- `REDIS_PORT` - Redis port (default: 6379)
+- `REDIS_DATABASE` - Redis database number (default: 0)
+
+**Optional:**
+- `OPENAI_API_KEY` - OpenAI API key for AI processing
+- `CONTENT_API_KEY` - External content API key
 - `TEMPLATE_VERSION` - Version of prompts to use (default: v1)
 - `LOG_LEVEL` - Logging level (default: INFO)
 - `DEBUG` - Debug mode (default: false)
+- `ARQ_MAX_JOBS` - Max concurrent jobs per worker (default: 10)
+- `ARQ_JOB_TIMEOUT` - Job timeout in seconds (default: 600)
+- `ARQ_WORKER_COUNT` - Number of worker replicas (default: 2)
 
 ### Resource Requirements
 
@@ -115,7 +147,14 @@ The deployment includes:
 
 2. **View logs:**
    ```bash
+   # API logs
    kubectl logs -f deployment/marketing-project-api -n marketing-project
+
+   # Worker logs
+   kubectl logs -f deployment/marketing-project-worker -n marketing-project
+
+   # Redis logs
+   kubectl logs -f deployment/redis -n marketing-project
    ```
 
 3. **Check events:**

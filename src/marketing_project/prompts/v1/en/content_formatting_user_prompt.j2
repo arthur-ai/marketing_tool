@@ -1,0 +1,96 @@
+Format this SEO-optimized content for publication while preserving all SEO optimizations:
+
+CONTENT TO FORMAT (FULL):
+Content: {{ seo_opt_result.optimized_content }}
+
+FROM STEP 3 (Article Generation):
+- Article Outline: {{ article_result.outline | join(', ') }}
+
+FROM STEP 4 (SEO Optimization - CRITICAL TO PRESERVE):
+- Header Structure: {{ seo_opt_result.header_structure | string if seo_opt_result.header_structure else 'Not available' }}
+  IMPORTANT: Preserve this exact H1-H3 hierarchy when formatting
+- Keyword Map: {{ seo_opt_result.keyword_map | string if seo_opt_result.keyword_map else 'Not available' }}
+  IMPORTANT: Preserve keyword placement locations during formatting
+- Readability Optimization: {{ seo_opt_result.readability_optimization | string if seo_opt_result.readability_optimization else 'Not available' }}
+  IMPORTANT: Maintain grade level and active voice percentage
+- Meta Title: {{ seo_opt_result.meta_title }}
+- Meta Description: {{ seo_opt_result.meta_description }}
+- Schema Markup: {{ seo_opt_result.schema_markup if seo_opt_result.schema_markup else 'Not available' }}
+
+FORMATTING REQUIREMENTS:
+
+1. PRESERVE SEO-OPTIMIZED STRUCTURE:
+   - Maintain the exact header_structure hierarchy (H1-H3) from Step 4
+   - Do NOT modify or reorganize headings - preserve SEO-optimized structure
+   - Ensure only one H1 exists as per header_structure analysis
+   - Keep H2s and H3s in their optimized positions
+
+2. PRESERVE KEYWORD PLACEMENT:
+   - Use keyword_map to ensure keywords remain in their optimized locations
+   - Do NOT move or remove keywords from their placement locations
+   - Maintain keyword density and natural placement as per keyword_map
+
+3. MAINTAIN READABILITY OPTIMIZATION:
+   - Keep readability_optimization standards (grade level, active voice percentage)
+   - Preserve sentence length and structure optimizations
+   - Maintain scan-friendly formatting (short paragraphs, bullet points, clear transitions)
+
+4. INCLUDE SEO METADATA IN HTML:
+   - Include meta_title in HTML <head> section as <title>
+   - Include meta_description in HTML <head> section as <meta name="description">
+   - Preserve schema_markup in HTML (include as JSON-LD script tag)
+
+5. VALIDATE STRUCTURE:
+   - Compare formatted structure against article outline
+   - Ensure section organization matches outline
+   - Verify all sections from outline are present
+
+6. CREATE FORMATTED OUTPUT:
+   - Clean, semantic HTML formatting (preserving SEO structure)
+   - Markdown version (preserving SEO structure)
+   - Section structure with proper headings (using preserved header_structure)
+   - Table of contents with anchors (based on preserved header structure)
+   - Reading time estimation
+   - Formatting recommendations (ensuring SEO preservation)
+
+{% if design_kit_config %}
+7. APPLY DESIGN KIT STRUCTURE GUIDELINES:
+   - Section Order: {{ design_kit_config.section_order | join(' → ') if design_kit_config.section_order else 'Not specified' }}
+   - Heading Depth: Use {{ design_kit_config.heading_depth }} headings
+   - List Usage: {{ design_kit_config.list_usage_preference }} (frequent/moderate/minimal)
+   - Paragraph Length: {{ design_kit_config.paragraph_length_range.min }}-{{ design_kit_config.paragraph_length_range.max }} words per paragraph
+   {% if design_kit_config.include_tldr %}
+   - Include TL;DR section if not already present
+   {% endif %}
+   {% if design_kit_config.include_summary %}
+   - Include summary section if not already present
+   {% endif %}
+{% endif %}
+
+{% if suggested_links_result %}
+8. APPLY SUGGESTED INTERNAL LINKS:
+   The suggested links step has suggested specific links to add. Apply these links in the formatted content:
+   {% for link in suggested_links_result.internal_links %}
+   - **Anchor Text**: "{{ link.anchor_text }}"
+   - **Target URL**: {{ link.target_url }}
+   - **Placement**: {{ link.placement_context }}
+   - **Section**: {{ link.section if link.section else 'Not specified' }}
+   - **Relevance**: {{ "%.1f"|format(link.relevance_score * 100) if link.relevance_score else 'N/A' }}%
+   {% if link.reasoning %}
+   - **Reasoning**: {{ link.reasoning }}
+   {% endif %}
+
+   {% endfor %}
+   IMPORTANT: Insert these links at the specified placement contexts. Use the exact anchor text provided. Only include links with relevance_score > 0.6 (high confidence).
+{% elif internal_docs_config %}
+8. APPLY INTERLINKING RULES (GENERAL):
+   - Commonly Referenced Pages: {{ internal_docs_config.commonly_referenced_pages | join(', ') if internal_docs_config.commonly_referenced_pages else 'None' }}
+   - Commonly Referenced Categories: {{ internal_docs_config.commonly_referenced_categories | join(', ') if internal_docs_config.commonly_referenced_categories else 'None' }}
+   - Anchor Phrasing Patterns: {{ internal_docs_config.anchor_phrasing_patterns | join(', ') if internal_docs_config.anchor_phrasing_patterns else 'Natural language' }}
+   - Apply interlinking rules when creating internal links (no specific suggestions available)
+{% endif %}
+
+CRITICAL: Do NOT break SEO optimizations during formatting. All SEO work from Step 4 must be preserved.
+{% if design_kit_config %}
+CRITICAL: Apply Design Kit structure guidelines while preserving SEO optimizations.
+{% endif %}

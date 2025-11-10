@@ -1,10 +1,7 @@
 """
-Blog post processing plugin for Marketing Project.
+Blog posts plugin for Marketing Project.
 
-This plugin handles analysis, processing, and routing of blog post content
-including articles, tutorials, and other written content.
+This plugin provides functionality for processing blog posts.
 """
 
-from . import tasks
-
-__all__ = ["tasks"]
+__all__ = []

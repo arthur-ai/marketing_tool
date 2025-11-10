@@ -31,6 +31,10 @@ class PipelineRequest(BaseModel):
     content: Union[
         ContentContext, BlogPostContext, TranscriptContext, ReleaseNotesContext
     ] = Field(..., description="Content to process through pipeline")
+    output_content_type: Optional[str] = Field(
+        default="blog_post",
+        description="Output content type: blog_post, press_release, or case_study",
+    )
     options: Optional[Dict[str, Any]] = Field(
         default_factory=dict, description="Pipeline options"
     )

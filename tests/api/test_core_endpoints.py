@@ -59,7 +59,7 @@ class TestAnalyzeEndpoint:
             "recommendations": ["Add more keywords", "Improve structure"],
         }
 
-        response = client.post("/analyze", json=analyze_request.dict())
+        response = client.post("/analyze", json=analyze_request.model_dump(mode="json"))
 
         assert response.status_code == 200
         data = response.json()
@@ -76,7 +76,7 @@ class TestAnalyzeEndpoint:
         # Setup mocks
         mock_analyze.side_effect = Exception("Analysis failed")
 
-        response = client.post("/analyze", json=analyze_request.dict())
+        response = client.post("/analyze", json=analyze_request.model_dump(mode="json"))
 
         assert response.status_code == 500
         data = response.json()
@@ -86,80 +86,107 @@ class TestAnalyzeEndpoint:
 class TestPipelineEndpoint:
     """Test the /pipeline endpoint."""
 
-    @patch("marketing_project.api.core.get_marketing_orchestrator_agent")
-    @patch("marketing_project.api.core.get_releasenotes_agent")
-    @patch("marketing_project.api.core.get_blog_agent")
-    @patch("marketing_project.api.core.get_transcripts_agent")
+    @patch("marketing_project.api.core.process_blog_post")
     @pytest.mark.asyncio
-    async def test_run_pipeline_success(
+    async def test_run_pipeline_success_blog(
         self,
-        mock_transcripts_agent,
-        mock_blog_agent,
-        mock_releasenotes_agent,
-        mock_orchestrator_agent,
+        mock_process_blog,
         client,
         pipeline_request,
     ):
-        """Test successful pipeline execution."""
-        # Setup mock agents
-        mock_orchestrator = AsyncMock()
-        mock_orchestrator.run_async = AsyncMock(
-            return_value={
-                "status": "completed",
+        """Test successful pipeline execution for blog posts.
+
+        The pipeline now routes directly to deterministic processors based on content type.
+        """
+        import json
+
+        # Setup mock processor response
+        mock_process_blog.return_value = json.dumps(
+            {
+                "status": "success",
                 "content_type": "blog_post",
-                "processed": True,
+                "blog_type": "tutorial",
+                "metadata": {
+                    "author": "Test Author",
+                    "category": "tutorial",
+                    "word_count": 100,
+                },
+                "pipeline_result": {
+                    "seo_keywords": ["test", "marketing"],
+                    "formatted_content": "Formatted content",
+                },
+                "validation": "passed",
+                "processing_steps_completed": [
+                    "validation",
+                    "metadata_extraction",
+                    "pipeline",
+                ],
+                "message": "Blog post processed successfully",
             }
         )
 
-        mock_transcripts_agent.return_value = AsyncMock()
-        mock_blog_agent.return_value = AsyncMock()
-        mock_releasenotes_agent.return_value = AsyncMock()
-        mock_orchestrator_agent.return_value = mock_orchestrator
-
-        response = client.post("/pipeline", json=pipeline_request.dict())
+        response = client.post(
+            "/pipeline", json=pipeline_request.model_dump(mode="json")
+        )
 
         assert response.status_code == 200
         data = response.json()
         assert data["success"] is True
         assert data["content_id"] == "test_content_1"
         assert "result" in data
-        assert "processed_content" in data["result"]
-        assert "stats" in data["result"]
+        assert data["result"]["content_type"] == "blog_post"
+        assert "metadata" in data["result"]
+        assert "pipeline_result" in data["result"]
 
-        # Verify the orchestrator was called with a string prompt
-        mock_orchestrator.run_async.assert_called_once()
-        call_args = mock_orchestrator.run_async.call_args[0]
-        assert isinstance(call_args[0], str)
-        assert "test_content_1" in call_args[0]
-        assert "blogpost" in call_args[0]
+        # Verify the processor was called
+        mock_process_blog.assert_called_once()
 
-    @patch("marketing_project.api.core.get_marketing_orchestrator_agent")
-    @patch("marketing_project.api.core.get_releasenotes_agent")
-    @patch("marketing_project.api.core.get_blog_agent")
-    @patch("marketing_project.api.core.get_transcripts_agent")
+    @patch("marketing_project.api.core.process_blog_post")
     @pytest.mark.asyncio
-    async def test_run_pipeline_execution_error(
+    async def test_run_pipeline_processor_error(
         self,
-        mock_transcripts_agent,
-        mock_blog_agent,
-        mock_releasenotes_agent,
-        mock_orchestrator_agent,
+        mock_process_blog,
         client,
         pipeline_request,
     ):
-        """Test pipeline execution error."""
-        # Setup mock agents
-        mock_orchestrator = AsyncMock()
-        mock_orchestrator.run_async = AsyncMock(
-            side_effect=Exception("Pipeline execution failed")
+        """Test pipeline execution error from processor.
+
+        The pipeline now routes directly to deterministic processors based on content type.
+        """
+        import json
+
+        # Setup mock processor to return error
+        mock_process_blog.return_value = json.dumps(
+            {
+                "status": "error",
+                "error": "validation_failed",
+                "message": "Content validation failed",
+            }
         )
 
-        mock_transcripts_agent.return_value = AsyncMock()
-        mock_blog_agent.return_value = AsyncMock()
-        mock_releasenotes_agent.return_value = AsyncMock()
-        mock_orchestrator_agent.return_value = mock_orchestrator
+        response = client.post(
+            "/pipeline", json=pipeline_request.model_dump(mode="json")
+        )
 
-        response = client.post("/pipeline", json=pipeline_request.dict())
+        assert response.status_code == 400
+        data = response.json()
+        assert "Content validation failed" in data["detail"]
+
+    @patch("marketing_project.api.core.process_blog_post")
+    @pytest.mark.asyncio
+    async def test_run_pipeline_execution_error(
+        self,
+        mock_process_blog,
+        client,
+        pipeline_request,
+    ):
+        """Test pipeline execution error when processor raises exception."""
+        # Setup mock processor to raise exception
+        mock_process_blog.side_effect = Exception("Pipeline execution failed")
+
+        response = client.post(
+            "/pipeline", json=pipeline_request.model_dump(mode="json")
+        )
 
         assert response.status_code == 500
         data = response.json()

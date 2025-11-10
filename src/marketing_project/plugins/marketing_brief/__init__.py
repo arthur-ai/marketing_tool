@@ -1,24 +1,9 @@
 """
-Marketing Brief plugin for Marketing Project.
+Marketing brief plugin for Marketing Project.
 
-This plugin provides functionality to generate comprehensive marketing briefs
-based on content analysis and SEO keywords for content strategy planning.
+This plugin provides functionality for generating marketing briefs and strategies.
 """
 
-from .tasks import (
-    analyze_competitor_content,
-    create_content_strategy,
-    define_target_audience,
-    generate_brief_outline,
-    generate_content_calendar_suggestions,
-    set_content_objectives,
-)
+from .tasks import MarketingBriefPlugin
 
-__all__ = [
-    "generate_brief_outline",
-    "define_target_audience",
-    "set_content_objectives",
-    "create_content_strategy",
-    "analyze_competitor_content",
-    "generate_content_calendar_suggestions",
-]
+__all__ = ["MarketingBriefPlugin"]

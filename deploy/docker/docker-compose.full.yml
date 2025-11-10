@@ -1,4 +1,8 @@
 # Docker Compose with all services (PostgreSQL + MongoDB + Redis)
+#
+# ⚠️ NOTE: As of Phase 2, Redis is REQUIRED and included in the main docker-compose.yml
+# This file now only adds PostgreSQL and MongoDB (which are still optional).
+#
 # Usage: docker-compose -f docker-compose.yml -f docker-compose.full.yml up
 
 version: '3.8'
@@ -8,11 +12,11 @@ services:
     environment:
       - POSTGRES_URL=postgresql://postgres:password@postgres:5432/marketing_project
       - MONGODB_URL=mongodb://mongodb:27017/marketing_project
-      - REDIS_URL=redis://redis:6379
+      # REDIS_URL is already configured in main docker-compose.yml
     depends_on:
       - postgres
       - mongodb
-      - redis
+      # redis dependency is already in main docker-compose.yml
 
   postgres:
     image: postgres:15-alpine
@@ -48,20 +52,10 @@ services:
       timeout: 10s
       retries: 3
 
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+  # Redis is now in the main docker-compose.yml (Phase 2 requirement)
+  # Removed from this file to avoid duplication
 
 volumes:
   postgres_data:
   mongodb_data:
-  redis_data:
+  # redis_data is defined in main docker-compose.yml

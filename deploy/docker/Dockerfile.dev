@@ -30,7 +30,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Create necessary directories
 # Note: src/ will be mounted as a volume, so we don't install it during build
-RUN mkdir -p /app/logs /app/uploads /app/cache /app/src
+# Note: logs go to Docker logs (stdout/stderr), not files
+RUN mkdir -p /app/uploads /app/cache /app/src
 
 # Change ownership to appuser
 RUN chown -R appuser:appuser /app
