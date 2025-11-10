@@ -471,31 +471,8 @@ Resources:
         - Endpoint: !Ref NotificationEmail
           Protocol: email
 
-  # ECR Repository
-  ECRRepository:
-    Type: AWS::ECR::Repository
-    Properties:
-      RepositoryName: !Sub '${ProjectName}-${Environment}'
-      ImageScanningConfiguration:
-        ScanOnPush: true
-      LifecyclePolicy:
-        LifecyclePolicyText: |
-          {
-            "rules": [
-              {
-                "rulePriority": 1,
-                "description": "Keep last 10 images",
-                "selection": {
-                  "tagStatus": "any",
-                  "countType": "imageCountMoreThan",
-                  "countNumber": 10
-                },
-                "action": {
-                  "type": "expire"
-                }
-              }
-            ]
-          }
+  # ECR Repository is created by GitHub Actions workflow, not CloudFormation
+  # Repository name: ${ProjectName}-${Environment}
 
   # ECS Cluster
   ECSCluster:
@@ -523,7 +500,7 @@ Resources:
       TaskRoleArn: !Ref ECSTaskRole
       ContainerDefinitions:
         - Name: marketing-tool-api
-          Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ECRRepository}:latest'
+          Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ProjectName}-${Environment}:latest'
           PortMappings:
             - ContainerPort: 8000
               Protocol: tcp
@@ -1261,7 +1238,7 @@ Outputs:
 
   ECRRepositoryURI:
     Description: ECR Repository URI
-    Value: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ECRRepository}'
+    Value: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ProjectName}-${Environment}'
     Export:
       Name: !Sub '${ProjectName}-${Environment}-ECR-URI'
 
