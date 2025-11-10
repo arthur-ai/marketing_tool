@@ -108,6 +108,23 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
+      - name: Create ECR repository if it doesn't exist
+        run: |
+          REPO_NAME="${{ env.PROJECT_NAME }}-${{ env.ENVIRONMENT }}"
+          echo "Checking if ECR repository exists: $REPO_NAME"
+
+          if ! aws ecr describe-repositories --repository-names "$REPO_NAME" --region ${{ env.AWS_REGION }} 2>/dev/null; then
+            echo "Repository does not exist, creating it..."
+            aws ecr create-repository \
+              --repository-name "$REPO_NAME" \
+              --region ${{ env.AWS_REGION }} \
+              --image-scanning-configuration scanOnPush=true \
+              --encryption-configuration encryptionType=AES256 || true
+            echo "✅ Created ECR repository: $REPO_NAME"
+          else
+            echo "✅ ECR repository already exists: $REPO_NAME"
+          fi
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -115,7 +132,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ steps.login-ecr.outputs.registry }}/${{ env.PROJECT_NAME }}
+          images: ${{ steps.login-ecr.outputs.registry }}/${{ env.PROJECT_NAME }}-${{ env.ENVIRONMENT }}
           tags: |
             type=raw,value=${{ steps.version.outputs.version }}
             type=raw,value=latest
