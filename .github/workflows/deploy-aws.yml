@@ -163,6 +163,7 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           API_KEY: ${{ secrets.API_KEY }}
           DATABASE_PASSWORD: ${{ secrets.DATABASE_PASSWORD }}
+          REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
           MONGODB_PASSWORD: ${{ secrets.MONGODB_PASSWORD }}
           DOMAIN_NAME: ${{ secrets.DOMAIN_NAME }}
           CERTIFICATE_ARN: ${{ secrets.CERTIFICATE_ARN }}

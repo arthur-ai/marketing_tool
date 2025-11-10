@@ -165,13 +165,6 @@ Parameters:
     Default: ''
     Description: Route 53 Hosted Zone ID (required if using custom domain)
 
-  RedisPassword:
-    Type: String
-    NoEcho: true
-    Description: Redis authentication token (required when TransitEncryptionEnabled is true)
-    MinLength: 16
-    MaxLength: 128
-
   MinCapacity:
     Type: Number
     Default: 1

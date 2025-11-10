@@ -11,7 +11,8 @@ from marketing_project.core.models import (
 )
 from marketing_project.core.utils import (
     convert_dict_to_content_context,
-    validate_content_context,
+    ensure_content_context,
+    validate_content_for_processing,
 )
 
 
@@ -24,6 +25,7 @@ class TestConvertDictToContentContext:
             "id": "test-123",
             "title": "Test Blog",
             "content": "Test content",
+            "snippet": "Test snippet",
             "author": "Test Author",
             "category": "tech",
         }
@@ -39,6 +41,7 @@ class TestConvertDictToContentContext:
             "id": "test-123",
             "title": "Test Transcript",
             "content": "Speaker 1: Hello",
+            "snippet": "Test snippet",
             "speakers": ["Speaker 1"],
             "transcript_type": "podcast",
         }
@@ -54,6 +57,7 @@ class TestConvertDictToContentContext:
             "id": "test-123",
             "title": "Version 1.0.0",
             "content": "Release notes content",
+            "snippet": "Test snippet",
             "version": "1.0.0",
         }
 
@@ -70,38 +74,85 @@ class TestConvertDictToContentContext:
             convert_dict_to_content_context(invalid_dict)
 
 
-class TestValidateContentContext:
-    """Test validate_content_context function."""
+class TestEnsureContentContext:
+    """Test ensure_content_context function."""
+
+    def test_ensure_content_context_with_dict(self):
+        """Test ensuring content context from dict."""
+        blog_dict = {
+            "id": "test-123",
+            "title": "Test Blog",
+            "content": "Test content",
+            "snippet": "Test snippet",
+            "author": "Test Author",
+        }
+
+        result = ensure_content_context(blog_dict)
+        assert isinstance(result, BlogPostContext)
+
+    def test_ensure_content_context_with_object(self):
+        """Test ensuring content context with existing object."""
+        blog = BlogPostContext(
+            id="test-123",
+            title="Test Blog",
+            content="Test content",
+            snippet="Test snippet",
+        )
+
+        result = ensure_content_context(blog)
+        assert result is blog
+
+
+class TestValidateContentForProcessing:
+    """Test validate_content_for_processing function."""
 
     def test_validate_valid_blog_post(self):
         """Test validation of valid blog post."""
         blog = BlogPostContext(
             id="test-123",
             title="Test Blog",
-            content="Test content",
+            content="Test content with enough words " * 10,  # Make it long enough
+            snippet="Test snippet",
         )
 
-        result = validate_content_context(blog)
-        assert result is True
+        result = validate_content_for_processing(blog)
+        assert result["is_valid"] is True
+        assert len(result["issues"]) == 0
+
+    def test_validate_invalid_blog_post_missing_title(self):
+        """Test validation of blog post with missing title."""
+        blog = BlogPostContext(
+            id="test-123",
+            title="",
+            content="Test content",
+            snippet="Test snippet",
+        )
+
+        result = validate_content_for_processing(blog)
+        assert result["is_valid"] is False
+        assert len(result["issues"]) > 0
 
     def test_validate_valid_transcript(self):
         """Test validation of valid transcript."""
         transcript = TranscriptContext(
             id="test-123",
             title="Test Transcript",
-            content="Speaker 1: Hello",
+            content="Speaker 1: Hello " * 20,  # Make it long enough
+            snippet="Test snippet",
         )
 
-        result = validate_content_context(transcript)
-        assert result is True
+        result = validate_content_for_processing(transcript)
+        assert result["is_valid"] is True
 
     def test_validate_valid_release_notes(self):
         """Test validation of valid release notes."""
         release = ReleaseNotesContext(
             id="test-123",
             title="Version 1.0.0",
-            content="Release notes",
+            content="Release notes " * 20,  # Make it long enough
+            snippet="Test snippet",
+            version="1.0.0",  # Required field
         )
 
-        result = validate_content_context(release)
-        assert result is True
+        result = validate_content_for_processing(release)
+        assert result["is_valid"] is True

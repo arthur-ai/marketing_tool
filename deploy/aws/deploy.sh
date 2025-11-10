@@ -61,6 +61,7 @@ REQUIRED ENVIRONMENT VARIABLES:
     OPENAI_API_KEY           OpenAI API key
     API_KEY                  API authentication key (32+ characters)
     DATABASE_PASSWORD        Database master password (8+ characters)
+    REDIS_PASSWORD           Redis authentication token (16-128 characters)
 
 OPTIONAL ENVIRONMENT VARIABLES:
     ENABLE_MONGODB           Enable MongoDB/DocumentDB (true/false, default: false)
@@ -140,7 +141,7 @@ fi
 # Check required environment variables
 print_info "Checking required environment variables..."
 
-required_vars=("OPENAI_API_KEY" "API_KEY" "DATABASE_PASSWORD")
+required_vars=("OPENAI_API_KEY" "API_KEY" "DATABASE_PASSWORD" "REDIS_PASSWORD")
 missing_vars=()
 
 for var in "${required_vars[@]}"; do
@@ -168,6 +169,12 @@ fi
 # Validate password length
 if [[ ${#DATABASE_PASSWORD} -lt 8 ]]; then
     print_error "DATABASE_PASSWORD must be at least 8 characters long"
+    exit 1
+fi
+
+# Validate Redis password length
+if [[ ${#REDIS_PASSWORD} -lt 16 ]] || [[ ${#REDIS_PASSWORD} -gt 128 ]]; then
+    print_error "REDIS_PASSWORD must be between 16 and 128 characters long"
     exit 1
 fi
 
@@ -225,6 +232,7 @@ PARAMETERS="$PARAMETERS ParameterKey=ProjectName,ParameterValue=$PROJECT_NAME"
 PARAMETERS="$PARAMETERS ParameterKey=OpenAIApiKey,ParameterValue=$OPENAI_API_KEY"
 PARAMETERS="$PARAMETERS ParameterKey=ApiKey,ParameterValue=$API_KEY"
 PARAMETERS="$PARAMETERS ParameterKey=DatabasePassword,ParameterValue=$DATABASE_PASSWORD"
+PARAMETERS="$PARAMETERS ParameterKey=RedisPassword,ParameterValue=$REDIS_PASSWORD"
 PARAMETERS="$PARAMETERS ParameterKey=EnableMongoDB,ParameterValue=$ENABLE_MONGODB"
 
 # Add MongoDB password only if MongoDB is enabled
