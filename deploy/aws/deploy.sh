@@ -228,11 +228,9 @@ PARAMETERS="$PARAMETERS ParameterKey=DatabasePassword,ParameterValue=$DATABASE_P
 PARAMETERS="$PARAMETERS ParameterKey=EnableMongoDB,ParameterValue=$ENABLE_MONGODB"
 
 # Add MongoDB password only if MongoDB is enabled
+# Note: We don't pass the parameter at all when disabled, so CloudFormation uses the default empty string
 if [[ "$ENABLE_MONGODB" == "true" ]]; then
     PARAMETERS="$PARAMETERS ParameterKey=MongoDBPassword,ParameterValue=$MONGODB_PASSWORD"
-else
-    # Use empty string as default (CloudFormation will use the default from template)
-    PARAMETERS="$PARAMETERS ParameterKey=MongoDBPassword,ParameterValue="
 fi
 
 if [[ -n "$DOMAIN_NAME" ]]; then

@@ -118,7 +118,6 @@ Parameters:
     Type: String
     NoEcho: true
     Description: MongoDB password (required only if EnableMongoDB is true)
-    MinLength: 8
     Default: ''
 
   RedisPassword:
