@@ -41,7 +41,7 @@ export MONGODB_PASSWORD="your_mongodb_password_here"
 
 ```bash
 # Deploy to production
-./deploy.sh -e production -r us-east-1
+./deploy.sh -e production -r us-east-2
 
 # Deploy with custom domain
 ./deploy.sh -e production -d api.mycompany.com -c arn:aws:acm:us-east-1:123456789012:certificate/12345678-1234-1234-1234-123456789012
@@ -62,7 +62,7 @@ ECR_URI=$(aws cloudformation describe-stacks --stack-name marketing-tool-product
 docker build -t $ECR_URI:latest .
 
 # Login to ECR
-aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ECR_URI
+aws ecr get-login-password --region us-east-2 | docker login --username AWS --password-stdin $ECR_URI
 
 # Push the image
 docker push $ECR_URI:latest

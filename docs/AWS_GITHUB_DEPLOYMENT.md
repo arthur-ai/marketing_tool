@@ -43,7 +43,7 @@ Navigate to **Settings** → **Secrets and variables** → **Actions** and add:
 2. Click **"Run workflow"**
 3. Select:
    - **Environment**: `development`, `staging`, or `production`
-   - **Region**: AWS region (default: `us-east-1`)
+   - **Region**: AWS region (default: `us-east-2`)
 4. Click **"Run workflow"**
 
 ### Method 2: Tag-based Deployment
@@ -154,7 +154,7 @@ After deployment, the CloudFormation stack provides:
    ```bash
    aws cloudformation describe-stack-events \
      --stack-name marketing-tool-production \
-     --region us-east-1
+     --region us-east-2
    ```
 
 2. **Check ECS Service**:
@@ -162,7 +162,7 @@ After deployment, the CloudFormation stack provides:
    aws ecs describe-services \
      --cluster marketing-tool-production-cluster \
      --services marketing-tool-production-service \
-     --region us-east-1
+     --region us-east-2
    ```
 
 3. **View Application Logs**:

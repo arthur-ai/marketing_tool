@@ -249,9 +249,32 @@ if [[ -n "$CERTIFICATE_ARN" ]]; then
     PARAMETERS="$PARAMETERS ParameterKey=CertificateArn,ParameterValue=$CERTIFICATE_ARN"
 fi
 
+# Validate CloudFormation template
+print_info "Validating CloudFormation template..."
+if [ -f "validate-template.sh" ]; then
+    if ! ./validate-template.sh 2>&1 | grep -q "ERROR"; then
+        print_success "Template validation passed"
+    else
+        print_warning "Template validation found issues, but continuing..."
+    fi
+else
+    print_warning "Validation script not found, skipping template validation"
+fi
+
+# Validate template with AWS CLI
+print_info "Validating template with AWS CloudFormation..."
+if aws cloudformation validate-template --template-body file://cloudformation-template.yaml --region "$REGION" &> /tmp/cf-validate.log; then
+    print_success "AWS CloudFormation template validation passed"
+else
+    print_error "AWS CloudFormation template validation failed:"
+    cat /tmp/cf-validate.log
+    print_error "Please fix the template errors before deploying"
+    exit 1
+fi
+
 # Check if stack exists
 STACK_EXISTS=false
-if aws cloudformation describe-stacks --stack-name "$STACK_NAME" &> /dev/null; then
+if aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "$REGION" &> /dev/null; then
     STACK_EXISTS=true
     print_info "Stack $STACK_NAME already exists"
 else
@@ -267,7 +290,7 @@ else
     ACTION="create"
 fi
 
-CF_COMMAND="aws cloudformation $COMMAND --stack-name $STACK_NAME --template-body file://cloudformation-template.yaml --parameters $PARAMETERS --capabilities CAPABILITY_IAM"
+CF_COMMAND="aws cloudformation $COMMAND --stack-name $STACK_NAME --template-body file://cloudformation-template.yaml --parameters $PARAMETERS --capabilities CAPABILITY_IAM --region $REGION"
 
 if [[ "$DRY_RUN" == true ]]; then
     print_info "DRY RUN: Would execute the following command:"
@@ -284,21 +307,21 @@ if eval "$CF_COMMAND"; then
     print_success "CloudFormation stack $ACTION initiated successfully"
 
     print_info "Waiting for stack $ACTION to complete..."
-    if aws cloudformation wait "stack-${ACTION}-complete" --stack-name "$STACK_NAME"; then
+    if aws cloudformation wait "stack-${ACTION}-complete" --stack-name "$STACK_NAME" --region "$REGION"; then
         print_success "Stack $ACTION completed successfully!"
 
         # Get stack outputs
         print_info "Retrieving stack outputs..."
-        aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query 'Stacks[0].Outputs' --output table
+        aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "$REGION" --query 'Stacks[0].Outputs' --output table
 
         # Get the ALB URL
-        ALB_URL=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query 'Stacks[0].Outputs[?OutputKey==`ALBURL`].OutputValue' --output text)
+        ALB_URL=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "$REGION" --query 'Stacks[0].Outputs[?OutputKey==`ALBURL`].OutputValue' --output text)
         if [[ -n "$ALB_URL" ]]; then
             print_success "Application is available at: $ALB_URL"
         fi
 
         # Get ECR repository URI
-        ECR_URI=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query 'Stacks[0].Outputs[?OutputKey==`ECRRepositoryURI`].OutputValue' --output text)
+        ECR_URI=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "$REGION" --query 'Stacks[0].Outputs[?OutputKey==`ECRRepositoryURI`].OutputValue' --output text)
         if [[ -n "$ECR_URI" ]]; then
             print_info "ECR Repository URI: $ECR_URI"
             echo ""

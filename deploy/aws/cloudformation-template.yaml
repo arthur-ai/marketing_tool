@@ -165,44 +165,6 @@ Parameters:
     Default: ''
     Description: Route 53 Hosted Zone ID (required if using custom domain)
 
-  MinCapacity:
-    Type: Number
-    Default: 1
-    MinValue: 1
-    MaxValue: 10
-    Description: Minimum number of ECS tasks for auto-scaling
-
-  MaxCapacity:
-    Type: Number
-    Default: 10
-    MinValue: 1
-    MaxValue: 50
-    Description: Maximum number of ECS tasks for auto-scaling
-
-  TargetCPUUtilization:
-    Type: Number
-    Default: 70
-    MinValue: 1
-    MaxValue: 100
-    Description: Target CPU utilization percentage for auto-scaling
-
-  TargetMemoryUtilization:
-    Type: Number
-    Default: 80
-    MinValue: 1
-    MaxValue: 100
-    Description: Target memory utilization percentage for auto-scaling
-
-  NotificationEmail:
-    Type: String
-    Default: ''
-    Description: Email address for CloudWatch alarm notifications (optional)
-
-  HostedZoneId:
-    Type: String
-    Default: ''
-    Description: Route 53 Hosted Zone ID (required if using custom domain)
-
 Conditions:
   HasDomainName: !Not [!Equals [!Ref DomainName, '']]
   HasCertificate: !Not [!Equals [!Ref CertificateArn, '']]
@@ -784,7 +746,8 @@ Resources:
       HealthCheckTimeoutSeconds: 10
       HealthyThresholdCount: 2
       UnhealthyThresholdCount: 5
-      HealthCheckMatcher: '200'
+      Matcher:
+        HttpCode: '200'
       HealthCheckEnabled: true
       Tags:
         - Key: Name

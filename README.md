@@ -324,7 +324,7 @@ export MONGODB_PASSWORD="your_mongodb_password_here"
 
 # Deploy to AWS
 cd deploy/aws
-./deploy-aws.sh -e production -r us-east-1
+./deploy-aws.sh -e production -r us-east-2
 ```
 
 See `deploy/AWS_DEPLOYMENT.md` for detailed AWS deployment instructions.
