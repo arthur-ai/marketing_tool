@@ -43,8 +43,8 @@ jobs:
       - name: Generate version tag
         id: version
         run: |
-          # Fetch all tags
-          git fetch --tags
+          # Fetch all tags (including remote)
+          git fetch --tags --force
 
           # Get the latest tag (only v*.*.* format)
           LATEST_TAG=$(git tag -l "v*.*.*" --sort=-version:refname | head -n 1)
@@ -72,21 +72,29 @@ jobs:
 
           # Create new version tag
           NEW_VERSION="v${MAJOR}.${MINOR}.${PATCH}"
-          echo "New version: $NEW_VERSION"
 
-          # Check if tag already exists (shouldn't happen, but be safe)
-          if git rev-parse "$NEW_VERSION" >/dev/null 2>&1; then
+          # Keep incrementing until we find a tag that doesn't exist
+          while git rev-parse "$NEW_VERSION" >/dev/null 2>&1; do
             echo "⚠️  Tag $NEW_VERSION already exists, incrementing patch version"
             PATCH=$((PATCH + 1))
             NEW_VERSION="v${MAJOR}.${MINOR}.${PATCH}"
-            echo "Using version: $NEW_VERSION"
-          fi
+          done
+
+          echo "Using version: $NEW_VERSION"
 
           # Create and push the tag
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag -a "$NEW_VERSION" -m "Release $NEW_VERSION - Auto-generated from main branch push [$(git rev-parse --short HEAD)]"
-          git push origin "$NEW_VERSION"
+          git push origin "$NEW_VERSION" || {
+            echo "⚠️  Failed to push tag, it may already exist remotely. Checking..."
+            if git ls-remote --tags origin | grep -q "refs/tags/$NEW_VERSION$"; then
+              echo "✅ Tag $NEW_VERSION already exists remotely, using it"
+            else
+              echo "❌ Failed to push tag and it doesn't exist remotely"
+              exit 1
+            fi
+          }
 
           echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
           echo "tag_created=true" >> $GITHUB_OUTPUT
