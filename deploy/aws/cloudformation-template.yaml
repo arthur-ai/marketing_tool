@@ -967,7 +967,6 @@ Resources:
       Description: Redis cluster for ARQ job queue and job state persistence
       NodeType: !Ref RedisNodeType
       Port: 6379
-      NumCacheClusters: !If [IsProduction, 2, 1]
       Engine: redis
       EngineVersion: '7.0'
       CacheSubnetGroupName: !Ref RedisSubnetGroup
@@ -977,6 +976,10 @@ Resources:
       TransitEncryptionEnabled: true
       AuthToken: !Ref RedisPassword
       AutomaticFailoverEnabled: !If [IsProduction, true, false]
+      # When AutomaticFailoverEnabled is true, use ReplicasPerNodeGroup (1 replica = 2 nodes total)
+      # When false, use NumCacheClusters (single node)
+      ReplicasPerNodeGroup: !If [IsProduction, 1, !Ref 'AWS::NoValue']
+      NumCacheClusters: !If [IsProduction, !Ref 'AWS::NoValue', 1]
       SnapshotRetentionLimit: 7
       PreferredMaintenanceWindow: !If [IsProduction, 'sun:03:00-sun:04:00', 'sun:05:00-sun:06:00']
       Tags:
