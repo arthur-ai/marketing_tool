@@ -36,11 +36,10 @@ def sample_job():
     )
 
 
-@pytest.mark.asyncio
 class TestJobsAPI:
     """Test suite for Jobs API endpoints."""
 
-    async def test_list_jobs_success(self, client, sample_job):
+    def test_list_jobs_success(self, client, sample_job):
         """Test successful job listing."""
         with patch("marketing_project.api.jobs.get_job_manager") as mock_manager:
             mock_manager_instance = AsyncMock()
@@ -54,7 +53,7 @@ class TestJobsAPI:
             assert len(data["jobs"]) == 1
             assert data["total"] == 1
 
-    async def test_list_jobs_with_filters(self, client, sample_job):
+    def test_list_jobs_with_filters(self, client, sample_job):
         """Test job listing with filters."""
         with patch("marketing_project.api.jobs.get_job_manager") as mock_manager:
             mock_manager_instance = AsyncMock()
@@ -66,7 +65,7 @@ class TestJobsAPI:
             data = response.json()
             assert data["success"] is True
 
-    async def test_list_jobs_error(self, client):
+    def test_list_jobs_error(self, client):
         """Test job listing error handling."""
         with patch("marketing_project.api.jobs.get_job_manager") as mock_manager:
             mock_manager_instance = AsyncMock()
@@ -78,7 +77,7 @@ class TestJobsAPI:
             response = client.get("/api/v1/jobs")
             assert response.status_code == 500
 
-    async def test_get_job_success(self, client, sample_job):
+    def test_get_job_success(self, client, sample_job):
         """Test successful job retrieval."""
         with patch("marketing_project.api.jobs.get_job_manager") as mock_manager:
             mock_manager_instance = AsyncMock()
@@ -91,7 +90,7 @@ class TestJobsAPI:
             assert data["success"] is True
             assert data["job"]["id"] == "test-job-123"
 
-    async def test_get_job_not_found(self, client):
+    def test_get_job_not_found(self, client):
         """Test job retrieval when job not found."""
         with patch("marketing_project.api.jobs.get_job_manager") as mock_manager:
             mock_manager_instance = AsyncMock()
@@ -101,7 +100,7 @@ class TestJobsAPI:
             response = client.get("/api/v1/jobs/non-existent")
             assert response.status_code == 404
 
-    async def test_get_job_status_success(self, client, sample_job):
+    def test_get_job_status_success(self, client, sample_job):
         """Test successful job status retrieval."""
         with patch("marketing_project.api.jobs.get_job_manager") as mock_manager:
             mock_manager_instance = AsyncMock()
@@ -115,7 +114,7 @@ class TestJobsAPI:
             assert data["status"] == "completed"
             assert data["progress"] == 100
 
-    async def test_get_job_status_not_found(self, client):
+    def test_get_job_status_not_found(self, client):
         """Test job status when job not found."""
         with patch("marketing_project.api.jobs.get_job_manager") as mock_manager:
             mock_manager_instance = AsyncMock()
@@ -125,7 +124,7 @@ class TestJobsAPI:
             response = client.get("/api/v1/jobs/non-existent/status")
             assert response.status_code == 404
 
-    async def test_get_job_result_success(self, client, sample_job):
+    def test_get_job_result_success(self, client, sample_job):
         """Test successful job result retrieval."""
         with patch("marketing_project.api.jobs.get_job_manager") as mock_manager:
             mock_manager_instance = AsyncMock()
@@ -138,7 +137,7 @@ class TestJobsAPI:
             assert data["success"] is True
             assert data["job_id"] == "test-job-123"
 
-    async def test_get_job_result_pending(self, client):
+    def test_get_job_result_pending(self, client):
         """Test job result when job is still pending."""
         pending_job = Job(
             id="pending-job",
@@ -157,7 +156,7 @@ class TestJobsAPI:
             response = client.get("/api/v1/jobs/pending-job/result")
             assert response.status_code == 202
 
-    async def test_get_job_result_failed(self, client):
+    def test_get_job_result_failed(self, client):
         """Test job result when job failed."""
         failed_job = Job(
             id="failed-job",
@@ -176,7 +175,7 @@ class TestJobsAPI:
             response = client.get("/api/v1/jobs/failed-job/result")
             assert response.status_code == 500
 
-    async def test_cancel_job_success(self, client):
+    def test_cancel_job_success(self, client):
         """Test successful job cancellation."""
         processing_job = Job(
             id="processing-job",
@@ -206,7 +205,7 @@ class TestJobsAPI:
             data = response.json()
             assert data["success"] is True
 
-    async def test_cancel_job_not_found(self, client):
+    def test_cancel_job_not_found(self, client):
         """Test job cancellation when job not found."""
         with (
             patch("marketing_project.api.jobs.get_job_manager") as mock_job_manager,
@@ -225,7 +224,7 @@ class TestJobsAPI:
             response = client.delete("/api/v1/jobs/non-existent")
             assert response.status_code == 404
 
-    async def test_cancel_job_already_completed(self, client, sample_job):
+    def test_cancel_job_already_completed(self, client, sample_job):
         """Test job cancellation when job already completed."""
         with (
             patch("marketing_project.api.jobs.get_job_manager") as mock_job_manager,
@@ -245,7 +244,7 @@ class TestJobsAPI:
             response = client.delete("/api/v1/jobs/test-job-123")
             assert response.status_code == 400
 
-    async def test_get_job_chain_success(self, client, sample_job):
+    def test_get_job_chain_success(self, client, sample_job):
         """Test successful job chain retrieval."""
         with patch("marketing_project.api.jobs.get_job_manager") as mock_manager:
             mock_manager_instance = AsyncMock()
@@ -267,7 +266,7 @@ class TestJobsAPI:
             assert data["success"] is True
             assert data["root_job_id"] == "test-job-123"
 
-    async def test_get_job_chain_not_found(self, client):
+    def test_get_job_chain_not_found(self, client):
         """Test job chain when job not found."""
         with patch("marketing_project.api.jobs.get_job_manager") as mock_manager:
             mock_manager_instance = AsyncMock()
@@ -279,7 +278,7 @@ class TestJobsAPI:
             response = client.get("/api/v1/jobs/non-existent/chain")
             assert response.status_code == 404
 
-    async def test_delete_all_jobs_success(self, client):
+    def test_delete_all_jobs_success(self, client):
         """Test successful deletion of all jobs."""
         with patch("marketing_project.api.jobs.get_job_manager") as mock_manager:
             mock_manager_instance = AsyncMock()
@@ -292,7 +291,7 @@ class TestJobsAPI:
             assert data["success"] is True
             assert data["deleted_count"] == 5
 
-    async def test_clear_arq_jobs_success(self, client):
+    def test_clear_arq_jobs_success(self, client):
         """Test successful clearing of ARQ jobs."""
         with patch("marketing_project.api.jobs.get_job_manager") as mock_manager:
             mock_manager_instance = AsyncMock()
