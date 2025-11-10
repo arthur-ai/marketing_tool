@@ -24,7 +24,6 @@ from marketing_project.plugins.content_analysis.tasks import (
     estimate_syllables,
     extract_content_metadata,
     extract_potential_keywords,
-    route_to_appropriate_agent,
     validate_content_structure,
 )
 
@@ -147,46 +146,6 @@ class TestValidateContentStructure:
         sample_blog_post.snippet = ""
         result = validate_content_structure(sample_blog_post)
         assert result is False
-
-
-class TestRouteToAppropriateAgent:
-    """Test the route_to_appropriate_agent function."""
-
-    def test_route_transcript_content(
-        self, sample_app_context_transcript, sample_available_agents
-    ):
-        """Test routing transcript content."""
-        result = route_to_appropriate_agent(
-            sample_app_context_transcript, sample_available_agents
-        )
-        assert "Successfully routed transcript to transcripts_agent" in result
-
-    def test_route_blog_post_content(
-        self, sample_app_context_blog, sample_available_agents
-    ):
-        """Test routing blog post content."""
-        result = route_to_appropriate_agent(
-            sample_app_context_blog, sample_available_agents
-        )
-        assert "Successfully routed blog_post to blog_agent" in result
-
-    def test_route_release_notes_content(
-        self, sample_app_context_release, sample_available_agents
-    ):
-        """Test routing release notes content."""
-        result = route_to_appropriate_agent(
-            sample_app_context_release, sample_available_agents
-        )
-        assert "Successfully routed release_notes to releasenotes_agent" in result
-
-    def test_route_content_no_agent_available(self, sample_app_context_transcript):
-        """Test routing when no agent is available."""
-        available_agents = {}  # Empty agents dictionary
-
-        result = route_to_appropriate_agent(
-            sample_app_context_transcript, available_agents
-        )
-        assert "No specialized agent for transcript, using general processing" in result
 
 
 class TestAnalyzeContentForPipeline:
