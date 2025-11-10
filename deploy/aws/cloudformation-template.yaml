@@ -453,7 +453,7 @@ Resources:
         BlockPublicPolicy: true
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
-      Encryption:
+      BucketEncryption:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: AES256
@@ -885,7 +885,7 @@ Resources:
     Type: AWS::SSM::Parameter
     Properties:
       Name: !Sub '/${ProjectName}/${Environment}/redis/password'
-      Type: SecureString
+      Type: String
       Value: !Ref RedisPassword
       Description: Redis authentication token for ElastiCache
 
