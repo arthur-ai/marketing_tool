@@ -142,27 +142,32 @@ class TestRedisIntegration:
         status = redis_manager.get_health_status()
         assert status["healthy"] is True
 
-    async def test_circuit_breaker_recovery(self, redis_manager, test_redis_available):
+    async def test_circuit_breaker_recovery(self, test_redis_available):
         """Test circuit breaker recovery after failures."""
         os.environ["REDIS_HOST"] = REDIS_HOST
         os.environ["REDIS_PORT"] = str(REDIS_PORT)
         os.environ["REDIS_CIRCUIT_FAILURE_THRESHOLD"] = "2"
         os.environ["REDIS_CIRCUIT_RECOVERY_TIMEOUT"] = "5"
 
-        # Manually trigger failures to open circuit
-        for _ in range(2):
-            redis_manager._record_circuit_breaker_failure()
+        # Create a new manager with the updated env vars
+        redis_manager = RedisManager()
+        try:
+            # Manually trigger failures to open circuit
+            for _ in range(2):
+                redis_manager._record_circuit_breaker_failure()
 
-        assert redis_manager._circuit_breaker_state == "open"
+            assert redis_manager._circuit_breaker_state == "open"
 
-        # Wait for recovery timeout
-        import time
+            # Wait for recovery timeout
+            import time
 
-        time.sleep(6)  # Wait for recovery timeout
+            time.sleep(6)  # Wait for recovery timeout
 
-        # Check if circuit breaker allows operations again
-        assert redis_manager._check_circuit_breaker() is True
-        assert redis_manager._circuit_breaker_state == "half_open"
+            # Check if circuit breaker allows operations again
+            assert redis_manager._check_circuit_breaker() is True
+            assert redis_manager._circuit_breaker_state == "half_open"
+        finally:
+            await redis_manager.cleanup()
 
     async def test_connection_cleanup(self, redis_manager, test_redis_available):
         """Test that cleanup properly closes connections."""

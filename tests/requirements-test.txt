@@ -4,10 +4,20 @@ pytest-cov>=4.1.0
 click>=8.1.3
 anyio>=4.3.0
 
+# Core dependencies needed for tests
+pydantic==2.12.2
+fastapi>=0.115.13
+
+# Job Queue dependencies (needed for job_manager and worker tests)
+arq>=0.25.0
+
+# Redis dependencies (needed for Redis manager tests)
+redis>=5.0.0
+
 # Optional: code quality and typing checks (comment out if not used)
 # mypy>=1.7.0
 # flake8>=7.0.0
 
 # If you want HTTP endpoint tests (for your FastAPI server)
-# httpx>=0.26.0
-# pytest-httpx>=0.30.0
+httpx>=0.26.0
+pytest-httpx>=0.30.0

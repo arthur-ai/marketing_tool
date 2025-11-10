@@ -90,35 +90,42 @@ class TestFunctionPipelineE2E:
         job_id = str(uuid4())
         content_json = sample_blog_post.model_dump_json()
 
-        with patch(
-            "marketing_project.processors.blog_processor.FunctionPipeline"
-        ) as mock_pipeline_class:
-            mock_pipeline = AsyncMock()
+        with (
+            patch(
+                "marketing_project.processors.blog_processor.FunctionPipeline"
+            ) as mock_pipeline_class,
+            patch(
+                "marketing_project.services.job_manager.get_job_manager"
+            ) as mock_get_job_manager,
+        ):
+            # Create a mock pipeline instance
+            mock_pipeline_instance = MagicMock()
             mock_pipeline_result = {
                 "pipeline_status": "completed",
                 "step_results": {},
                 "metadata": {"job_id": job_id},
             }
-            mock_pipeline.execute_pipeline = AsyncMock(
+            mock_pipeline_instance.execute_pipeline = AsyncMock(
                 return_value=mock_pipeline_result
             )
-            mock_pipeline_class.return_value = mock_pipeline
+            # Make the class return our mock instance
+            mock_pipeline_class.return_value = mock_pipeline_instance
 
-            with patch(
-                "marketing_project.processors.blog_processor.get_job_manager"
-            ) as mock_get_job_manager:
-                mock_job_manager = AsyncMock()
-                mock_job = MagicMock()
-                mock_job.metadata = {}
-                mock_job_manager.get_job = AsyncMock(return_value=mock_job)
-                mock_get_job_manager.return_value = mock_job_manager
+            mock_job_manager = AsyncMock()
+            mock_job = MagicMock()
+            mock_job.metadata = {}
+            mock_job_manager.get_job = AsyncMock(return_value=mock_job)
+            mock_get_job_manager.return_value = mock_job_manager
 
-                result_json = await process_blog_post(content_json, job_id=job_id)
-                result = json.loads(result_json)
+            result_json = await process_blog_post(content_json, job_id=job_id)
+            result = json.loads(result_json)
 
-                assert result["status"] == "success"
-                # Verify job manager was used
-                mock_job_manager.get_job.assert_called()
+            assert result["status"] == "success"
+            # Verify job manager was used
+            mock_job_manager.get_job.assert_called()
+            # Verify pipeline was created and executed
+            mock_pipeline_class.assert_called_once()
+            mock_pipeline_instance.execute_pipeline.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_pipeline_error_handling(self, sample_blog_post):

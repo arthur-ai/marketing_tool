@@ -19,11 +19,30 @@ def seo_optimization_plugin():
 @pytest.fixture
 def sample_context():
     """Sample context for plugin execution."""
+    from marketing_project.models.pipeline_steps import (
+        ArticleGenerationResult,
+        MarketingBriefResult,
+        SEOKeywordsResult,
+    )
+
     return {
         "input_content": {"id": "test-1", "title": "Test", "content": "Test content"},
-        "seo_keywords": {"primary_keywords": ["test"]},
-        "marketing_brief": {"summary": "Test brief"},
-        "article_generation": {"content": "Generated article"},
+        "seo_keywords": SEOKeywordsResult(
+            main_keyword="test",
+            primary_keywords=["test"],
+            search_intent="informational",
+        ),
+        "marketing_brief": MarketingBriefResult(
+            target_audience=["Test audience"],
+            key_messages=["Test message"],
+            content_strategy="Test strategy",
+        ),
+        "article_generation": ArticleGenerationResult(
+            article_title="Test Article",
+            article_content="Generated article content",
+            outline=["Section 1"],
+            call_to_action="Learn more",
+        ),
     }
 
 
@@ -45,17 +64,23 @@ class TestSEOOptimizationPlugin:
     @pytest.mark.asyncio
     async def test_execute(self, seo_optimization_plugin, sample_context):
         """Test plugin execution."""
+        mock_result = SEOOptimizationResult(
+            optimized_content="Optimized content",
+            meta_title="Test Meta Title",
+            meta_description="Test meta description",
+            slug="test-slug",
+        )
+
         mock_pipeline = MagicMock()
-        mock_result = SEOOptimizationResult(optimized=True)
+        mock_pipeline._get_user_prompt = MagicMock(return_value="Test prompt")
+        mock_pipeline._get_system_instruction = MagicMock(
+            return_value="Test instruction"
+        )
+        mock_pipeline._call_function = AsyncMock(return_value=mock_result)
 
-        with patch.object(
-            seo_optimization_plugin, "_call_function", new_callable=AsyncMock
-        ) as mock_call:
-            mock_call.return_value = mock_result
+        result = await seo_optimization_plugin.execute(
+            sample_context, mock_pipeline, job_id="test-job"
+        )
 
-            result = await seo_optimization_plugin.execute(
-                sample_context, mock_pipeline, job_id="test-job"
-            )
-
-            assert isinstance(result, SEOOptimizationResult)
-            mock_call.assert_called_once()
+        assert isinstance(result, SEOOptimizationResult)
+        mock_pipeline._call_function.assert_called_once()

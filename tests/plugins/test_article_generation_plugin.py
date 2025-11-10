@@ -19,10 +19,23 @@ def article_generation_plugin():
 @pytest.fixture
 def sample_context():
     """Sample context for plugin execution."""
+    from marketing_project.models.pipeline_steps import (
+        MarketingBriefResult,
+        SEOKeywordsResult,
+    )
+
     return {
         "input_content": {"id": "test-1", "title": "Test", "content": "Test content"},
-        "seo_keywords": {"primary_keywords": ["test"]},
-        "marketing_brief": {"summary": "Test brief"},
+        "seo_keywords": SEOKeywordsResult(
+            main_keyword="test",
+            primary_keywords=["test"],
+            search_intent="informational",
+        ),
+        "marketing_brief": MarketingBriefResult(
+            target_audience=["Test audience"],
+            key_messages=["Test message"],
+            content_strategy="Test strategy",
+        ),
     }
 
 
@@ -44,17 +57,23 @@ class TestArticleGenerationPlugin:
     @pytest.mark.asyncio
     async def test_execute(self, article_generation_plugin, sample_context):
         """Test plugin execution."""
+        mock_result = ArticleGenerationResult(
+            article_title="Test Article",
+            article_content="Generated article content",
+            outline=["Section 1", "Section 2"],
+            call_to_action="Learn more",
+        )
+
         mock_pipeline = MagicMock()
-        mock_result = ArticleGenerationResult(content="Generated article content")
+        mock_pipeline._get_user_prompt = MagicMock(return_value="Test prompt")
+        mock_pipeline._get_system_instruction = MagicMock(
+            return_value="Test instruction"
+        )
+        mock_pipeline._call_function = AsyncMock(return_value=mock_result)
 
-        with patch.object(
-            article_generation_plugin, "_call_function", new_callable=AsyncMock
-        ) as mock_call:
-            mock_call.return_value = mock_result
+        result = await article_generation_plugin.execute(
+            sample_context, mock_pipeline, job_id="test-job"
+        )
 
-            result = await article_generation_plugin.execute(
-                sample_context, mock_pipeline, job_id="test-job"
-            )
-
-            assert isinstance(result, ArticleGenerationResult)
-            mock_call.assert_called_once()
+        assert isinstance(result, ArticleGenerationResult)
+        mock_pipeline._call_function.assert_called_once()

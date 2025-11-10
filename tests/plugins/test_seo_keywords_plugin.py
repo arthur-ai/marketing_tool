@@ -62,21 +62,24 @@ class TestSEOKeywordsPlugin:
     @pytest.mark.asyncio
     async def test_execute(self, seo_keywords_plugin, sample_context):
         """Test plugin execution."""
-        mock_pipeline = MagicMock()
         mock_result = SEOKeywordsResult(
+            main_keyword="artificial intelligence",
             primary_keywords=["artificial intelligence", "machine learning"],
             secondary_keywords=["AI", "ML"],
+            search_intent="informational",
         )
 
-        with patch.object(
-            seo_keywords_plugin, "_call_function", new_callable=AsyncMock
-        ) as mock_call:
-            mock_call.return_value = mock_result
+        mock_pipeline = MagicMock()
+        mock_pipeline._get_user_prompt = MagicMock(return_value="Test prompt")
+        mock_pipeline._get_system_instruction = MagicMock(
+            return_value="Test instruction"
+        )
+        mock_pipeline._call_function = AsyncMock(return_value=mock_result)
 
-            result = await seo_keywords_plugin.execute(
-                sample_context, mock_pipeline, job_id="test-job"
-            )
+        result = await seo_keywords_plugin.execute(
+            sample_context, mock_pipeline, job_id="test-job"
+        )
 
-            assert isinstance(result, SEOKeywordsResult)
-            assert len(result.primary_keywords) > 0
-            mock_call.assert_called_once()
+        assert isinstance(result, SEOKeywordsResult)
+        assert len(result.primary_keywords) > 0
+        mock_pipeline._call_function.assert_called_once()
