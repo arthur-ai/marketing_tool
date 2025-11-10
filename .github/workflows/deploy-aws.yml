@@ -17,8 +17,8 @@ on:
         required: false
         default: 'us-east-1'
   push:
-    tags:
-      - 'v*.*.*'
+    branches:
+      - main
 
 env:
   AWS_REGION: ${{ github.event.inputs.region || 'us-east-1' }}
@@ -30,7 +30,7 @@ jobs:
     name: Deploy to AWS
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write  # Required to create tags
       id-token: write  # Required for OIDC authentication
 
     steps:
@@ -38,6 +38,59 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate version tag
+        id: version
+        run: |
+          # Fetch all tags
+          git fetch --tags
+
+          # Get the latest tag (only v*.*.* format)
+          LATEST_TAG=$(git tag -l "v*.*.*" --sort=-version:refname | head -n 1)
+
+          if [ -z "$LATEST_TAG" ]; then
+            LATEST_TAG="v0.0.0"
+            echo "No existing tags found, starting from v0.0.0"
+          else
+            echo "Latest tag: $LATEST_TAG"
+          fi
+
+          # Extract version number (remove 'v' prefix)
+          VERSION_NUMBER=$(echo $LATEST_TAG | sed 's/^v//')
+
+          # Split version into major.minor.patch
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION_NUMBER"
+
+          # Ensure we have valid numbers (handle edge cases)
+          MAJOR=${MAJOR:-0}
+          MINOR=${MINOR:-0}
+          PATCH=${PATCH:-0}
+
+          # Increment patch version
+          PATCH=$((PATCH + 1))
+
+          # Create new version tag
+          NEW_VERSION="v${MAJOR}.${MINOR}.${PATCH}"
+          echo "New version: $NEW_VERSION"
+
+          # Check if tag already exists (shouldn't happen, but be safe)
+          if git rev-parse "$NEW_VERSION" >/dev/null 2>&1; then
+            echo "⚠️  Tag $NEW_VERSION already exists, incrementing patch version"
+            PATCH=$((PATCH + 1))
+            NEW_VERSION="v${MAJOR}.${MINOR}.${PATCH}"
+            echo "Using version: $NEW_VERSION"
+          fi
+
+          # Create and push the tag
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$NEW_VERSION" -m "Release $NEW_VERSION - Auto-generated from main branch push [$(git rev-parse --short HEAD)]"
+          git push origin "$NEW_VERSION"
+
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "tag_created=true" >> $GITHUB_OUTPUT
+          echo "✅ Created and pushed tag: $NEW_VERSION"
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -64,12 +117,9 @@ jobs:
         with:
           images: ${{ steps.login-ecr.outputs.registry }}/${{ env.PROJECT_NAME }}
           tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=sha,prefix=sha-
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ steps.version.outputs.version }}
+            type=raw,value=latest
+            type=sha,prefix=sha,format=short
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
