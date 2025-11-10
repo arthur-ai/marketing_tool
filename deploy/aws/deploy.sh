@@ -15,7 +15,7 @@ NC='\033[0m' # No Color
 # Default values
 ENVIRONMENT="production"
 PROJECT_NAME="marketing-tool"
-REGION="us-east-1"
+REGION="us-east-2"
 STACK_NAME=""
 DOMAIN_NAME=""
 CERTIFICATE_ARN=""
@@ -49,7 +49,7 @@ Deploy Marketing Tool to AWS using CloudFormation
 OPTIONS:
     -e, --environment ENV     Environment (development|staging|production) [default: production]
     -n, --project-name NAME   Project name [default: marketing-tool]
-    -r, --region REGION       AWS region [default: us-east-1]
+    -r, --region REGION       AWS region [default: us-east-2]
     -s, --stack-name NAME     CloudFormation stack name [default: marketing-tool-ENV]
     -d, --domain DOMAIN       Domain name for the application (optional)
     -c, --certificate ARN     ACM certificate ARN for HTTPS (optional)

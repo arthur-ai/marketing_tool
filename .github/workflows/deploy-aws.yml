@@ -15,13 +15,13 @@ on:
       region:
         description: 'AWS region'
         required: false
-        default: 'us-east-1'
+        default: 'us-east-2'
   push:
     branches:
       - main
 
 env:
-  AWS_REGION: ${{ github.event.inputs.region || 'us-east-1' }}
+  AWS_REGION: ${{ github.event.inputs.region || 'us-east-2' }}
   ENVIRONMENT: ${{ github.event.inputs.environment || 'production' }}
   PROJECT_NAME: marketing-tool
 
