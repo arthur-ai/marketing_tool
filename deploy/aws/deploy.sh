@@ -61,7 +61,10 @@ REQUIRED ENVIRONMENT VARIABLES:
     OPENAI_API_KEY           OpenAI API key
     API_KEY                  API authentication key (32+ characters)
     DATABASE_PASSWORD        Database master password (8+ characters)
-    MONGODB_PASSWORD         MongoDB password (8+ characters)
+
+OPTIONAL ENVIRONMENT VARIABLES:
+    ENABLE_MONGODB           Enable MongoDB/DocumentDB (true/false, default: false)
+    MONGODB_PASSWORD         MongoDB password (8+ characters, required only if ENABLE_MONGODB=true)
 
 EXAMPLES:
     # Deploy to production
@@ -137,7 +140,7 @@ fi
 # Check required environment variables
 print_info "Checking required environment variables..."
 
-required_vars=("OPENAI_API_KEY" "API_KEY" "DATABASE_PASSWORD" "MONGODB_PASSWORD")
+required_vars=("OPENAI_API_KEY" "API_KEY" "DATABASE_PASSWORD")
 missing_vars=()
 
 for var in "${required_vars[@]}"; do
@@ -168,9 +171,20 @@ if [[ ${#DATABASE_PASSWORD} -lt 8 ]]; then
     exit 1
 fi
 
-if [[ ${#MONGODB_PASSWORD} -lt 8 ]]; then
-    print_error "MONGODB_PASSWORD must be at least 8 characters long"
-    exit 1
+# Check MongoDB configuration
+ENABLE_MONGODB="${ENABLE_MONGODB:-false}"
+if [[ "$ENABLE_MONGODB" == "true" ]]; then
+    if [[ -z "$MONGODB_PASSWORD" ]]; then
+        print_error "MONGODB_PASSWORD is required when ENABLE_MONGODB=true"
+        exit 1
+    fi
+    if [[ ${#MONGODB_PASSWORD} -lt 8 ]]; then
+        print_error "MONGODB_PASSWORD must be at least 8 characters long"
+        exit 1
+    fi
+    print_info "MongoDB will be enabled"
+else
+    print_info "MongoDB will be disabled (set ENABLE_MONGODB=true to enable)"
 fi
 
 print_success "All required environment variables are set"
@@ -211,7 +225,15 @@ PARAMETERS="$PARAMETERS ParameterKey=ProjectName,ParameterValue=$PROJECT_NAME"
 PARAMETERS="$PARAMETERS ParameterKey=OpenAIApiKey,ParameterValue=$OPENAI_API_KEY"
 PARAMETERS="$PARAMETERS ParameterKey=ApiKey,ParameterValue=$API_KEY"
 PARAMETERS="$PARAMETERS ParameterKey=DatabasePassword,ParameterValue=$DATABASE_PASSWORD"
-PARAMETERS="$PARAMETERS ParameterKey=MongoDBPassword,ParameterValue=$MONGODB_PASSWORD"
+PARAMETERS="$PARAMETERS ParameterKey=EnableMongoDB,ParameterValue=$ENABLE_MONGODB"
+
+# Add MongoDB password only if MongoDB is enabled
+if [[ "$ENABLE_MONGODB" == "true" ]]; then
+    PARAMETERS="$PARAMETERS ParameterKey=MongoDBPassword,ParameterValue=$MONGODB_PASSWORD"
+else
+    # Use empty string as default (CloudFormation will use the default from template)
+    PARAMETERS="$PARAMETERS ParameterKey=MongoDBPassword,ParameterValue="
+fi
 
 if [[ -n "$DOMAIN_NAME" ]]; then
     PARAMETERS="$PARAMETERS ParameterKey=DomainName,ParameterValue=$DOMAIN_NAME"

@@ -95,8 +95,13 @@
     "Description": "Database master password"
   },
   {
+    "ParameterKey": "EnableMongoDB",
+    "ParameterValue": "false",
+    "Description": "Enable MongoDB/DocumentDB (true/false, default: false)"
+  },
+  {
     "ParameterKey": "MongoDBPassword",
-    "ParameterValue": "YOUR_MONGODB_PASSWORD_HERE",
-    "Description": "MongoDB password"
+    "ParameterValue": "",
+    "Description": "MongoDB password (required only if EnableMongoDB is true)"
   }
 ]

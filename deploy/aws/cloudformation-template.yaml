@@ -108,11 +108,63 @@ Parameters:
     Description: Database master password
     MinLength: 8
 
+  EnableMongoDB:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: Enable MongoDB/DocumentDB (optional, only needed if using MongoDB as content source)
+
   MongoDBPassword:
     Type: String
     NoEcho: true
-    Description: MongoDB password
+    Description: MongoDB password (required only if EnableMongoDB is true)
     MinLength: 8
+    Default: ''
+
+  RedisPassword:
+    Type: String
+    NoEcho: true
+    Description: Redis authentication token (required when TransitEncryptionEnabled is true)
+    MinLength: 16
+    MaxLength: 128
+
+  MinCapacity:
+    Type: Number
+    Default: 1
+    MinValue: 1
+    MaxValue: 10
+    Description: Minimum number of ECS tasks for auto-scaling
+
+  MaxCapacity:
+    Type: Number
+    Default: 10
+    MinValue: 1
+    MaxValue: 50
+    Description: Maximum number of ECS tasks for auto-scaling
+
+  TargetCPUUtilization:
+    Type: Number
+    Default: 70
+    MinValue: 1
+    MaxValue: 100
+    Description: Target CPU utilization percentage for auto-scaling
+
+  TargetMemoryUtilization:
+    Type: Number
+    Default: 80
+    MinValue: 1
+    MaxValue: 100
+    Description: Target memory utilization percentage for auto-scaling
+
+  NotificationEmail:
+    Type: String
+    Default: ''
+    Description: Email address for CloudWatch alarm notifications (optional)
+
+  HostedZoneId:
+    Type: String
+    Default: ''
+    Description: Route 53 Hosted Zone ID (required if using custom domain)
 
   RedisPassword:
     Type: String
@@ -165,6 +217,7 @@ Conditions:
   IsProduction: !Equals [!Ref Environment, 'production']
   HasNotificationEmail: !Not [!Equals [!Ref NotificationEmail, '']]
   HasHostedZoneId: !Not [!Equals [!Ref HostedZoneId, '']]
+  EnableMongoDB: !Equals [!Ref EnableMongoDB, 'true']
 
 Resources:
   # VPC and Networking
@@ -573,7 +626,10 @@ Resources:
             - Name: AWS_REGION
               Value: !Ref AWS::Region
             - Name: MONGODB_URL
-              Value: !Sub 'mongodb://${MongoDBCluster.Endpoint}:27017/marketing_project'
+              Value: !If
+                - EnableMongoDB
+                - !Sub 'mongodb://${MongoDBCluster.Endpoint}:27017/marketing_project'
+                - !Ref 'AWS::NoValue'
             - Name: POSTGRES_URL
               Value: !Sub 'postgresql://postgres:${DatabasePassword}@${Database.Endpoint.Address}:5432/marketing_project'
             - Name: PIPELINE_CONFIG_PATH
@@ -1115,9 +1171,10 @@ Resources:
           Value: !GetAtt ALB.LoadBalancerFullName
       AlarmActions: !If [HasNotificationEmail, [!Ref AlarmNotificationTopic], []]
 
-  # DocumentDB (MongoDB-compatible)
+  # DocumentDB (MongoDB-compatible) - Optional
   MongoDBSubnetGroup:
     Type: AWS::DocDB::DBSubnetGroup
+    Condition: EnableMongoDB
     Properties:
       DBSubnetGroupDescription: Subnet group for DocumentDB cluster
       SubnetIds:
@@ -1126,6 +1183,7 @@ Resources:
 
   MongoDBCluster:
     Type: AWS::DocDB::DBCluster
+    Condition: EnableMongoDB
     Properties:
       DBClusterIdentifier: !Sub '${ProjectName}-${Environment}-mongodb'
       MasterUsername: admin
@@ -1144,6 +1202,7 @@ Resources:
 
   MongoDBInstance:
     Type: AWS::DocDB::DBInstance
+    Condition: EnableMongoDB
     Properties:
       DBInstanceIdentifier: !Sub '${ProjectName}-${Environment}-mongodb-instance'
       DBClusterIdentifier: !Ref MongoDBCluster
@@ -1261,6 +1320,7 @@ Outputs:
       Name: !Sub '${ProjectName}-${Environment}-Redis-Endpoint'
 
   MongoDBEndpoint:
+    Condition: EnableMongoDB
     Description: DocumentDB MongoDB Endpoint
     Value: !GetAtt MongoDBCluster.Endpoint
     Export:
