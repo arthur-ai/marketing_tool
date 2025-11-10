@@ -166,6 +166,51 @@ Parameters:
     Default: ''
     Description: Route 53 Hosted Zone ID (required if using custom domain)
 
+  RedisPassword:
+    Type: String
+    NoEcho: true
+    Description: Redis authentication token (required when TransitEncryptionEnabled is true)
+    MinLength: 16
+    MaxLength: 128
+
+  MinCapacity:
+    Type: Number
+    Default: 1
+    MinValue: 1
+    MaxValue: 10
+    Description: Minimum number of ECS tasks for auto-scaling
+
+  MaxCapacity:
+    Type: Number
+    Default: 10
+    MinValue: 1
+    MaxValue: 50
+    Description: Maximum number of ECS tasks for auto-scaling
+
+  TargetCPUUtilization:
+    Type: Number
+    Default: 70
+    MinValue: 1
+    MaxValue: 100
+    Description: Target CPU utilization percentage for auto-scaling
+
+  TargetMemoryUtilization:
+    Type: Number
+    Default: 80
+    MinValue: 1
+    MaxValue: 100
+    Description: Target memory utilization percentage for auto-scaling
+
+  NotificationEmail:
+    Type: String
+    Default: ''
+    Description: Email address for CloudWatch alarm notifications (optional)
+
+  HostedZoneId:
+    Type: String
+    Default: ''
+    Description: Route 53 Hosted Zone ID (required if using custom domain)
+
 Conditions:
   HasDomainName: !Not [!Equals [!Ref DomainName, '']]
   HasCertificate: !Not [!Equals [!Ref CertificateArn, '']]
