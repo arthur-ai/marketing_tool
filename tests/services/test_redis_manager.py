@@ -330,22 +330,30 @@ class TestCloudWatchMetrics:
     )
     async def test_publish_metrics_when_enabled(self):
         """Test that metrics are published when CloudWatch is enabled."""
-        with patch("marketing_project.services.redis_manager.boto3") as mock_boto3:
+        # Patch boto3.client at the global level where it's used
+        with patch("boto3.client") as mock_boto3_client:
             mock_client = MagicMock()
-            mock_boto3.client.return_value = mock_client
+            mock_boto3_client.return_value = mock_client
 
-            manager = RedisManager()
-            manager._cloudwatch_enabled = True
-            manager._cloudwatch_client = mock_client
-            manager._operation_times.extend([0.001, 0.002, 0.003])
-            manager._success_count = 10
-            manager._error_count = 2
-            manager._last_metrics_publish = None
+            # Ensure boto3 is available in the module
+            with patch(
+                "marketing_project.services.redis_manager.BOTO3_AVAILABLE", True
+            ):
+                manager = RedisManager()
+                # Ensure CloudWatch client was initialized
+                if manager._cloudwatch_client is None:
+                    manager._cloudwatch_client = mock_client
+                    manager._cloudwatch_enabled = True
 
-            await manager._publish_metrics_if_needed()
+                manager._operation_times.extend([0.001, 0.002, 0.003])
+                manager._success_count = 10
+                manager._error_count = 2
+                manager._last_metrics_publish = None
 
-            # Verify metrics were published
-            assert mock_client.put_metric_data.called
+                await manager._publish_metrics_if_needed()
+
+                # Verify metrics were published
+                assert mock_client.put_metric_data.called
 
     @pytest.mark.asyncio
     async def test_publish_metrics_when_disabled(self, redis_manager):
