@@ -260,10 +260,6 @@ Conditions:
   CreateNewRedis: !Equals [!Ref ExistingRedisEndpoint, '']
   UseExistingS3Bucket: !Not [!Equals [!Ref ExistingS3BucketName, '']]
   CreateNewS3Bucket: !Equals [!Ref ExistingS3BucketName, '']
-  IsProductionAndCreateNewDatabase:
-    Fn::And:
-      - IsProduction
-      - CreateNewDatabase
 
 Resources:
   # Note: Using existing VPC and subnets - no networking resources created
@@ -977,43 +973,6 @@ Resources:
           Value: !GetAtt ECSService.Name
         - Name: ClusterName
           Value: !Ref ECSCluster
-      AlarmActions: !If [HasNotificationEmail, [!Ref AlarmNotificationTopic], []]
-
-  # RDS CloudWatch Alarms (only if creating new database)
-  RDSFreeStorageAlarm:
-    Type: AWS::CloudWatch::Alarm
-    Condition: IsProductionAndCreateNewDatabase
-    Properties:
-      AlarmName: !Sub '${ProjectName}-${Environment}-rds-low-storage'
-      AlarmDescription: 'RDS database free storage space is low'
-      MetricName: FreeStorageSpace
-      Namespace: AWS/RDS
-      Statistic: Average
-      Period: 300
-      EvaluationPeriods: 1
-      Threshold: 2000000000
-      ComparisonOperator: LessThanThreshold
-      Dimensions:
-        - Name: DBInstanceIdentifier
-          Value: !Ref Database
-      AlarmActions: !If [HasNotificationEmail, [!Ref AlarmNotificationTopic], []]
-
-  RDSCPUAlarm:
-    Type: AWS::CloudWatch::Alarm
-    Condition: IsProductionAndCreateNewDatabase
-    Properties:
-      AlarmName: !Sub '${ProjectName}-${Environment}-rds-high-cpu'
-      AlarmDescription: 'RDS database CPU utilization is high'
-      MetricName: CPUUtilization
-      Namespace: AWS/RDS
-      Statistic: Average
-      Period: 300
-      EvaluationPeriods: 2
-      Threshold: 80
-      ComparisonOperator: GreaterThanThreshold
-      Dimensions:
-        - Name: DBInstanceIdentifier
-          Value: !Ref Database
       AlarmActions: !If [HasNotificationEmail, [!Ref AlarmNotificationTopic], []]
 
   # ALB CloudWatch Alarms
