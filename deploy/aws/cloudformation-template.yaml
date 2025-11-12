@@ -691,7 +691,7 @@ Resources:
     Condition: CreateNewRedis
     Properties:
       ReplicationGroupId: !Sub '${ProjectName}-${Environment}-redis'
-      NodeType: !Ref RedisNodeType
+      CacheNodeType: !Ref RedisNodeType
       Port: 6379
       Engine: redis
       EngineVersion: '7.0'
