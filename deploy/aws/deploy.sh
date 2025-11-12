@@ -19,6 +19,15 @@ REGION="us-east-2"
 STACK_NAME=""
 DOMAIN_NAME=""
 CERTIFICATE_ARN=""
+EXISTING_VPC_ID=""
+EXISTING_PUBLIC_SUBNET_1_ID=""
+EXISTING_PUBLIC_SUBNET_2_ID=""
+EXISTING_DB_SUBNET_1_ID=""
+EXISTING_DB_SUBNET_2_ID=""
+EXISTING_DATABASE_ENDPOINT=""
+EXISTING_DATABASE_NAME=""
+EXISTING_REDIS_ENDPOINT=""
+EXISTING_S3_BUCKET_NAME=""
 DRY_RUN=false
 FORCE_UPDATE=false
 
@@ -51,8 +60,20 @@ OPTIONS:
     -n, --project-name NAME   Project name [default: marketing-tool]
     -r, --region REGION       AWS region [default: us-east-2]
     -s, --stack-name NAME     CloudFormation stack name [default: marketing-tool-ENV]
+    -v, --deploy-version VER  Deploy version to force new resources [default: v1]
     -d, --domain DOMAIN       Domain name for the application (optional)
     -c, --certificate ARN     ACM certificate ARN for HTTPS (optional)
+    --existing-vpc-id ID           Existing VPC ID (required)
+    --existing-public-subnet-1 ID   Existing public subnet 1 ID (required)
+    --existing-public-subnet-2 ID   Existing public subnet 2 ID (required)
+    --existing-public-subnet-3 ID   Existing public subnet 3 ID (required)
+    --existing-db-subnet-1 ID       Existing database subnet 1 ID (required)
+    --existing-db-subnet-2 ID       Existing database subnet 2 ID (required)
+    --existing-db-subnet-3 ID       Existing database subnet 3 ID (required - use Arthur Engine's private subnet 3)
+    --existing-database-endpoint ENDPOINT  Existing RDS database endpoint (optional - your RDS endpoint with marketing_tool_main database)
+    --existing-database-name NAME          Database name (optional - default: marketing_tool_main)
+    --existing-redis-endpoint ENDPOINT     Existing Redis endpoint (optional)
+    --existing-s3-bucket-name NAME         Existing S3 bucket name (optional)
     -f, --force               Force update even if no changes detected
     --dry-run                 Show what would be deployed without actually deploying
     -h, --help                Show this help message
@@ -60,7 +81,7 @@ OPTIONS:
 REQUIRED ENVIRONMENT VARIABLES:
     OPENAI_API_KEY           OpenAI API key
     API_KEY                  API authentication key (32+ characters)
-    DATABASE_PASSWORD        Database master password (8+ characters)
+    DATABASE_PASSWORD        Database master password (stored in AWS Secrets Manager)
     REDIS_PASSWORD           Redis authentication token (16-128 characters)
 
 OPTIONAL ENVIRONMENT VARIABLES:
@@ -105,6 +126,54 @@ while [[ $# -gt 0 ]]; do
             ;;
         -c|--certificate)
             CERTIFICATE_ARN="$2"
+            shift 2
+            ;;
+        -v|--deploy-version)
+            DEPLOY_VERSION="$2"
+            shift 2
+            ;;
+        --existing-vpc-id)
+            EXISTING_VPC_ID="$2"
+            shift 2
+            ;;
+        --existing-public-subnet-1)
+            EXISTING_PUBLIC_SUBNET_1_ID="$2"
+            shift 2
+            ;;
+        --existing-public-subnet-2)
+            EXISTING_PUBLIC_SUBNET_2_ID="$2"
+            shift 2
+            ;;
+        --existing-public-subnet-3)
+            EXISTING_PUBLIC_SUBNET_3_ID="$2"
+            shift 2
+            ;;
+        --existing-db-subnet-1)
+            EXISTING_DB_SUBNET_1_ID="$2"
+            shift 2
+            ;;
+        --existing-db-subnet-2)
+            EXISTING_DB_SUBNET_2_ID="$2"
+            shift 2
+            ;;
+        --existing-db-subnet-3)
+            EXISTING_DB_SUBNET_3_ID="$2"
+            shift 2
+            ;;
+        --existing-database-endpoint)
+            EXISTING_DATABASE_ENDPOINT="$2"
+            shift 2
+            ;;
+        --existing-database-name)
+            EXISTING_DATABASE_NAME="$2"
+            shift 2
+            ;;
+        --existing-redis-endpoint)
+            EXISTING_REDIS_ENDPOINT="$2"
+            shift 2
+            ;;
+        --existing-s3-bucket-name)
+            EXISTING_S3_BUCKET_NAME="$2"
             shift 2
             ;;
         -f|--force)
@@ -166,12 +235,6 @@ if [[ ${#API_KEY} -lt 32 ]]; then
     exit 1
 fi
 
-# Validate password length
-if [[ ${#DATABASE_PASSWORD} -lt 8 ]]; then
-    print_error "DATABASE_PASSWORD must be at least 8 characters long"
-    exit 1
-fi
-
 # Validate Redis password length
 if [[ ${#REDIS_PASSWORD} -lt 16 ]] || [[ ${#REDIS_PASSWORD} -gt 128 ]]; then
     print_error "REDIS_PASSWORD must be between 16 and 128 characters long"
@@ -194,7 +257,29 @@ else
     print_info "MongoDB will be disabled (set ENABLE_MONGODB=true to enable)"
 fi
 
-print_success "All required environment variables are set"
+# Check required infrastructure parameters
+print_info "Checking required infrastructure parameters..."
+required_infra=("EXISTING_VPC_ID" "EXISTING_PUBLIC_SUBNET_1_ID" "EXISTING_PUBLIC_SUBNET_2_ID" "EXISTING_PUBLIC_SUBNET_3_ID" "EXISTING_DB_SUBNET_1_ID" "EXISTING_DB_SUBNET_2_ID" "EXISTING_DB_SUBNET_3_ID")
+missing_infra=()
+
+for var in "${required_infra[@]}"; do
+    eval "value=\$$var"
+    if [[ -z "$value" ]]; then
+        missing_infra+=("$var")
+    fi
+done
+
+if [[ ${#missing_infra[@]} -gt 0 ]]; then
+    print_error "Missing required infrastructure parameters:"
+    for var in "${missing_infra[@]}"; do
+        echo "  - $var"
+    done
+    echo ""
+    echo "Please provide these parameters using --existing-* flags and try again."
+    exit 1
+fi
+
+print_success "All required environment variables and infrastructure parameters are set"
 
 # Check AWS CLI
 if ! command -v aws &> /dev/null; then
@@ -221,13 +306,22 @@ echo "  Environment: $ENVIRONMENT"
 echo "  Project Name: $PROJECT_NAME"
 echo "  Stack Name: $STACK_NAME"
 echo "  Region: $REGION"
+echo "  VPC ID: $EXISTING_VPC_ID"
 echo "  Domain: ${DOMAIN_NAME:-'Not specified'}"
 echo "  Certificate: ${CERTIFICATE_ARN:-'Not specified'}"
+echo "  Existing Database: ${EXISTING_DATABASE_ENDPOINT:-'Will create new'}"
+if [[ -n "$EXISTING_DATABASE_ENDPOINT" ]]; then
+    echo "  Database Name: ${EXISTING_DATABASE_NAME:-marketing_tool_main}"
+fi
+echo "  Existing Redis: ${EXISTING_REDIS_ENDPOINT:-'Will create new'}"
+echo "  Existing S3 Bucket: ${EXISTING_S3_BUCKET_NAME:-'Will create new'}"
 echo "  Dry Run: $DRY_RUN"
 echo ""
 
 # Build CloudFormation parameters
-PARAMETERS="ParameterKey=Environment,ParameterValue=$ENVIRONMENT"
+DEPLOY_VERSION="${DEPLOY_VERSION:-v1}"
+PARAMETERS="ParameterKey=DeployVersion,ParameterValue=$DEPLOY_VERSION"
+PARAMETERS="$PARAMETERS ParameterKey=Environment,ParameterValue=$ENVIRONMENT"
 PARAMETERS="$PARAMETERS ParameterKey=ProjectName,ParameterValue=$PROJECT_NAME"
 PARAMETERS="$PARAMETERS ParameterKey=OpenAIApiKey,ParameterValue=$OPENAI_API_KEY"
 PARAMETERS="$PARAMETERS ParameterKey=ApiKey,ParameterValue=$API_KEY"
@@ -247,6 +341,30 @@ fi
 
 if [[ -n "$CERTIFICATE_ARN" ]]; then
     PARAMETERS="$PARAMETERS ParameterKey=CertificateArn,ParameterValue=$CERTIFICATE_ARN"
+fi
+
+# Required infrastructure parameters
+PARAMETERS="$PARAMETERS ParameterKey=ExistingVpcId,ParameterValue=$EXISTING_VPC_ID"
+PARAMETERS="$PARAMETERS ParameterKey=ExistingPublicSubnet1Id,ParameterValue=$EXISTING_PUBLIC_SUBNET_1_ID"
+PARAMETERS="$PARAMETERS ParameterKey=ExistingPublicSubnet2Id,ParameterValue=$EXISTING_PUBLIC_SUBNET_2_ID"
+PARAMETERS="$PARAMETERS ParameterKey=ExistingPublicSubnet3Id,ParameterValue=$EXISTING_PUBLIC_SUBNET_3_ID"
+PARAMETERS="$PARAMETERS ParameterKey=ExistingDatabaseSubnet1Id,ParameterValue=$EXISTING_DB_SUBNET_1_ID"
+PARAMETERS="$PARAMETERS ParameterKey=ExistingDatabaseSubnet2Id,ParameterValue=$EXISTING_DB_SUBNET_2_ID"
+PARAMETERS="$PARAMETERS ParameterKey=ExistingDatabaseSubnet3Id,ParameterValue=$EXISTING_DB_SUBNET_3_ID"
+
+if [[ -n "$EXISTING_DATABASE_ENDPOINT" ]]; then
+    PARAMETERS="$PARAMETERS ParameterKey=ExistingDatabaseEndpoint,ParameterValue=$EXISTING_DATABASE_ENDPOINT"
+    # Use provided database name or default
+    DB_NAME="${EXISTING_DATABASE_NAME:-marketing_tool_main}"
+    PARAMETERS="$PARAMETERS ParameterKey=ExistingDatabaseName,ParameterValue=$DB_NAME"
+fi
+
+if [[ -n "$EXISTING_REDIS_ENDPOINT" ]]; then
+    PARAMETERS="$PARAMETERS ParameterKey=ExistingRedisEndpoint,ParameterValue=$EXISTING_REDIS_ENDPOINT"
+fi
+
+if [[ -n "$EXISTING_S3_BUCKET_NAME" ]]; then
+    PARAMETERS="$PARAMETERS ParameterKey=ExistingS3BucketName,ParameterValue=$EXISTING_S3_BUCKET_NAME"
 fi
 
 # Validate CloudFormation template

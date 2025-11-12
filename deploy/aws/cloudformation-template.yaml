@@ -1,7 +1,76 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: 'Marketing Tool API - Complete AWS deployment with ECS, RDS, ElastiCache, and monitoring'
 
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Deployment Configuration"
+        Parameters:
+          - DeployVersion
+          - Environment
+          - ProjectName
+      - Label:
+          default: "Infrastructure Configuration"
+        Parameters:
+          - ExistingVpcId
+          - ExistingPublicSubnet1Id
+          - ExistingPublicSubnet2Id
+          - ExistingPublicSubnet3Id
+          - ExistingDatabaseSubnet1Id
+          - ExistingDatabaseSubnet2Id
+          - ExistingDatabaseSubnet3Id
+      - Label:
+          default: "Existing Resources (Optional)"
+        Parameters:
+          - ExistingDatabaseEndpoint
+          - ExistingDatabaseName
+          - ExistingRedisEndpoint
+          - ExistingS3BucketName
+      - Label:
+          default: "Application Configuration"
+        Parameters:
+          - DomainName
+          - CertificateArn
+          - OpenAIApiKey
+          - ApiKey
+      - Label:
+          default: "Database Configuration"
+        Parameters:
+          - DatabaseInstanceClass
+          - DatabaseAllocatedStorage
+          - DatabasePassword
+      - Label:
+          default: "Redis Configuration"
+        Parameters:
+          - RedisNodeType
+          - RedisPassword
+      - Label:
+          default: "ECS Configuration"
+        Parameters:
+          - InstanceType
+          - DesiredCount
+          - MinCapacity
+          - MaxCapacity
+          - TargetCPUUtilization
+          - TargetMemoryUtilization
+      - Label:
+          default: "MongoDB Configuration (Optional)"
+        Parameters:
+          - EnableMongoDB
+          - MongoDBPassword
+      - Label:
+          default: "Monitoring & Notifications"
+        Parameters:
+          - NotificationEmail
+          - HostedZoneId
+
 Parameters:
+  DeployVersion:
+    Type: String
+    Description: Bump this (e.g., v2) to force new resources on update
+    Default: "v1"
+
   Environment:
     Type: String
     Default: production
@@ -13,40 +82,53 @@ Parameters:
     Default: marketing-tool
     Description: Name of the project
 
-  VpcCIDR:
+  ExistingVpcId:
     Type: String
-    Default: 10.0.0.0/16
-    Description: CIDR block for the VPC
+    Description: Existing VPC ID (shared with Arthur Engine - required)
 
-  PublicSubnet1CIDR:
-    Type: String
-    Default: 10.0.1.0/24
-    Description: CIDR block for public subnet 1
+  ExistingPublicSubnet1Id:
+    Type: AWS::EC2::Subnet::Id
+    Description: Existing public subnet 1 ID (shared with Arthur Engine - required)
 
-  PublicSubnet2CIDR:
-    Type: String
-    Default: 10.0.2.0/24
-    Description: CIDR block for public subnet 2
+  ExistingPublicSubnet2Id:
+    Type: AWS::EC2::Subnet::Id
+    Description: Existing public subnet 2 ID (shared with Arthur Engine - required)
 
-  PrivateSubnet1CIDR:
-    Type: String
-    Default: 10.0.3.0/24
-    Description: CIDR block for private subnet 1
+  ExistingPublicSubnet3Id:
+    Type: AWS::EC2::Subnet::Id
+    Description: Existing public subnet 3 ID (shared with Arthur Engine - required)
 
-  PrivateSubnet2CIDR:
-    Type: String
-    Default: 10.0.4.0/24
-    Description: CIDR block for private subnet 2
+  ExistingDatabaseSubnet1Id:
+    Type: AWS::EC2::Subnet::Id
+    Description: Existing database subnet 1 ID (use Arthur Engine's private subnet 1 - required)
 
-  DatabaseSubnet1CIDR:
-    Type: String
-    Default: 10.0.5.0/24
-    Description: CIDR block for database subnet 1
+  ExistingDatabaseSubnet2Id:
+    Type: AWS::EC2::Subnet::Id
+    Description: Existing database subnet 2 ID (use Arthur Engine's private subnet 2 - required)
 
-  DatabaseSubnet2CIDR:
+  ExistingDatabaseSubnet3Id:
+    Type: AWS::EC2::Subnet::Id
+    Description: Existing database subnet 3 ID (use Arthur Engine's private subnet 3 - required)
+
+  ExistingDatabaseEndpoint:
     Type: String
-    Default: 10.0.6.0/24
-    Description: CIDR block for database subnet 2
+    Default: ''
+    Description: Existing RDS database endpoint (optional - provide your RDS endpoint to use existing instance, or leave empty to create new RDS instance)
+
+  ExistingDatabaseName:
+    Type: String
+    Default: 'marketing_tool_main'
+
+  ExistingRedisEndpoint:
+    Type: String
+    Default: ''
+    Description: Existing ElastiCache Redis endpoint (optional - leave empty to create new Redis)
+
+  ExistingS3BucketName:
+    Type: String
+    Default: ''
+    Description: Existing S3 bucket name for uploads (optional - leave empty to create new bucket)
+
 
   InstanceType:
     Type: String
@@ -172,201 +254,28 @@ Conditions:
   HasNotificationEmail: !Not [!Equals [!Ref NotificationEmail, '']]
   HasHostedZoneId: !Not [!Equals [!Ref HostedZoneId, '']]
   EnableMongoDB: !Equals [!Ref EnableMongoDB, 'true']
+  UseExistingDatabase: !Not [!Equals [!Ref ExistingDatabaseEndpoint, '']]
+  CreateNewDatabase: !Equals [!Ref ExistingDatabaseEndpoint, '']
+  UseExistingRedis: !Not [!Equals [!Ref ExistingRedisEndpoint, '']]
+  CreateNewRedis: !Equals [!Ref ExistingRedisEndpoint, '']
+  UseExistingS3Bucket: !Not [!Equals [!Ref ExistingS3BucketName, '']]
+  CreateNewS3Bucket: !Equals [!Ref ExistingS3BucketName, '']
 
 Resources:
-  # VPC and Networking
-  VPC:
-    Type: AWS::EC2::VPC
-    Properties:
-      CidrBlock: !Ref VpcCIDR
-      EnableDnsHostnames: true
-      EnableDnsSupport: true
-      Tags:
-        - Key: Name
-          Value: !Sub '${ProjectName}-${Environment}-vpc'
-
-  InternetGateway:
-    Type: AWS::EC2::InternetGateway
-    Properties:
-      Tags:
-        - Key: Name
-          Value: !Sub '${ProjectName}-${Environment}-igw'
-
-  InternetGatewayAttachment:
-    Type: AWS::EC2::VPCGatewayAttachment
-    Properties:
-      InternetGatewayId: !Ref InternetGateway
-      VpcId: !Ref VPC
-
-  # Public Subnets
-  PublicSubnet1:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref VPC
-      AvailabilityZone: !Select [0, !GetAZs '']
-      CidrBlock: !Ref PublicSubnet1CIDR
-      MapPublicIpOnLaunch: true
-      Tags:
-        - Key: Name
-          Value: !Sub '${ProjectName}-${Environment}-public-subnet-1'
-
-  PublicSubnet2:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref VPC
-      AvailabilityZone: !Select [1, !GetAZs '']
-      CidrBlock: !Ref PublicSubnet2CIDR
-      MapPublicIpOnLaunch: true
-      Tags:
-        - Key: Name
-          Value: !Sub '${ProjectName}-${Environment}-public-subnet-2'
-
-  # Private Subnets
-  PrivateSubnet1:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref VPC
-      AvailabilityZone: !Select [0, !GetAZs '']
-      CidrBlock: !Ref PrivateSubnet1CIDR
-      Tags:
-        - Key: Name
-          Value: !Sub '${ProjectName}-${Environment}-private-subnet-1'
-
-  PrivateSubnet2:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref VPC
-      AvailabilityZone: !Select [1, !GetAZs '']
-      CidrBlock: !Ref PrivateSubnet2CIDR
-      Tags:
-        - Key: Name
-          Value: !Sub '${ProjectName}-${Environment}-private-subnet-2'
-
-  # Database Subnets
-  DatabaseSubnet1:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref VPC
-      AvailabilityZone: !Select [0, !GetAZs '']
-      CidrBlock: !Ref DatabaseSubnet1CIDR
-      Tags:
-        - Key: Name
-          Value: !Sub '${ProjectName}-${Environment}-database-subnet-1'
-
-  DatabaseSubnet2:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref VPC
-      AvailabilityZone: !Select [1, !GetAZs '']
-      CidrBlock: !Ref DatabaseSubnet2CIDR
-      Tags:
-        - Key: Name
-          Value: !Sub '${ProjectName}-${Environment}-database-subnet-2'
-
-  # Route Tables
-  PublicRouteTable:
-    Type: AWS::EC2::RouteTable
-    Properties:
-      VpcId: !Ref VPC
-      Tags:
-        - Key: Name
-          Value: !Sub '${ProjectName}-${Environment}-public-rt'
-
-  DefaultPublicRoute:
-    Type: AWS::EC2::Route
-    DependsOn: InternetGatewayAttachment
-    Properties:
-      RouteTableId: !Ref PublicRouteTable
-      DestinationCidrBlock: 0.0.0.0/0
-      GatewayId: !Ref InternetGateway
-
-  PublicSubnet1RouteTableAssociation:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      RouteTableId: !Ref PublicRouteTable
-      SubnetId: !Ref PublicSubnet1
-
-  PublicSubnet2RouteTableAssociation:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      RouteTableId: !Ref PublicRouteTable
-      SubnetId: !Ref PublicSubnet2
-
-  PrivateRouteTable1:
-    Type: AWS::EC2::RouteTable
-    Properties:
-      VpcId: !Ref VPC
-      Tags:
-        - Key: Name
-          Value: !Sub '${ProjectName}-${Environment}-private-rt-1'
-
-  PrivateSubnet1RouteTableAssociation:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      RouteTableId: !Ref PrivateRouteTable1
-      SubnetId: !Ref PrivateSubnet1
-
-  PrivateRouteTable2:
-    Type: AWS::EC2::RouteTable
-    Properties:
-      VpcId: !Ref VPC
-      Tags:
-        - Key: Name
-          Value: !Sub '${ProjectName}-${Environment}-private-rt-2'
-
-  PrivateSubnet2RouteTableAssociation:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      RouteTableId: !Ref PrivateRouteTable2
-      SubnetId: !Ref PrivateSubnet2
-
-  # NAT Gateways
-  NatGateway1EIP:
-    Type: AWS::EC2::EIP
-    DependsOn: InternetGatewayAttachment
-    Properties:
-      Domain: vpc
-
-  NatGateway1:
-    Type: AWS::EC2::NatGateway
-    Properties:
-      AllocationId: !GetAtt NatGateway1EIP.AllocationId
-      SubnetId: !Ref PublicSubnet1
-
-  NatGateway2EIP:
-    Type: AWS::EC2::EIP
-    DependsOn: InternetGatewayAttachment
-    Properties:
-      Domain: vpc
-
-  NatGateway2:
-    Type: AWS::EC2::NatGateway
-    Properties:
-      AllocationId: !GetAtt NatGateway2EIP.AllocationId
-      SubnetId: !Ref PublicSubnet2
-
-  DefaultPrivateRoute1:
-    Type: AWS::EC2::Route
-    Properties:
-      RouteTableId: !Ref PrivateRouteTable1
-      DestinationCidrBlock: 0.0.0.0/0
-      NatGatewayId: !Ref NatGateway1
-
-  DefaultPrivateRoute2:
-    Type: AWS::EC2::Route
-    Properties:
-      RouteTableId: !Ref PrivateRouteTable2
-      DestinationCidrBlock: 0.0.0.0/0
-      NatGatewayId: !Ref NatGateway2
+  # Note: Using existing VPC and subnets - no networking resources created
+  # ECS tasks use public subnets with public IPs for direct internet access
 
   # Database Subnet Group
   DatabaseSubnetGroup:
     Type: AWS::RDS::DBSubnetGroup
     Properties:
+      DBSubnetGroupName: !Sub '${ProjectName}-${Environment}-db-subnet-${DeployVersion}'
       DBSubnetGroupDescription: Subnet group for marketing tool database
       SubnetIds:
-        - !Ref DatabaseSubnet1
-        - !Ref DatabaseSubnet2
+        - !Ref ExistingDatabaseSubnet1Id
+        - !Ref ExistingDatabaseSubnet2Id
+        - !Ref ExistingDatabaseSubnet3Id
+      VpcId: !Ref ExistingVpcId
       Tags:
         - Key: Name
           Value: !Sub '${ProjectName}-${Environment}-db-subnet-group'
@@ -376,7 +285,7 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: Security group for Application Load Balancer
-      VpcId: !Ref VPC
+      VpcId: !Ref ExistingVpcId
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 80
@@ -394,7 +303,7 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: Security group for ECS tasks
-      VpcId: !Ref VPC
+      VpcId: !Ref ExistingVpcId
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 8000
@@ -408,7 +317,7 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: Security group for RDS database
-      VpcId: !Ref VPC
+      VpcId: !Ref ExistingVpcId
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 5432
@@ -422,7 +331,7 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: Security group for ElastiCache Redis
-      VpcId: !Ref VPC
+      VpcId: !Ref ExistingVpcId
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 6379
@@ -435,8 +344,9 @@ Resources:
   # S3 Bucket for File Uploads
   UploadsBucket:
     Type: AWS::S3::Bucket
+    Condition: CreateNewS3Bucket
     Properties:
-      BucketName: !Sub '${ProjectName}-${Environment}-uploads-${AWS::AccountId}'
+      BucketName: !If [CreateNewS3Bucket, !Sub '${ProjectName}-${Environment}-uploads-${AWS::AccountId}', !Ref ExistingS3BucketName]
       VersioningConfiguration:
         Status: Enabled
       LifecycleConfiguration:
@@ -494,8 +404,8 @@ Resources:
       NetworkMode: awsvpc
       RequiresCompatibilities:
         - FARGATE
-      Cpu: !If [IsProduction, '512', '256']
-      Memory: !If [IsProduction, '1024', '512']
+      Cpu: '256'
+      Memory: '512'
       ExecutionRoleArn: !Ref ECSTaskExecutionRole
       TaskRoleArn: !Ref ECSTaskRole
       ContainerDefinitions:
@@ -525,9 +435,9 @@ Resources:
               Value: 'sqlite:///./content.db'
             # Redis connection - support both REDIS_URL and individual settings
             - Name: REDIS_URL
-              Value: !Sub 'redis://${RedisCluster.PrimaryEndPoint.Address}:6379'
+              Value: !If [UseExistingRedis, !Sub 'redis://${ExistingRedisEndpoint}:6379', !Sub 'redis://${RedisCluster.PrimaryEndPoint.Address}:6379']
             - Name: REDIS_HOST
-              Value: !GetAtt RedisCluster.PrimaryEndPoint.Address
+              Value: !If [UseExistingRedis, !Ref ExistingRedisEndpoint, !GetAtt RedisCluster.PrimaryEndPoint.Address]
             - Name: REDIS_PORT
               Value: '6379'
             - Name: REDIS_DATABASE
@@ -562,7 +472,10 @@ Resources:
                 - !Sub 'mongodb://${MongoDBCluster.Endpoint}:27017/marketing_project'
                 - !Ref 'AWS::NoValue'
             - Name: POSTGRES_URL
-              Value: !Sub 'postgresql://postgres:${DatabasePassword}@${Database.Endpoint.Address}:5432/marketing_project'
+              Value: !If
+                - UseExistingDatabase
+                - !Sub 'postgresql://postgres:${DatabasePassword}@${ExistingDatabaseEndpoint}:5432/${ExistingDatabaseName}'
+                - !Sub 'postgresql://postgres:${DatabasePassword}@${Database.Endpoint.Address}:5432/marketing_tool_main'
             - Name: PIPELINE_CONFIG_PATH
               Value: '/app/src/marketing_project/config/pipeline.yml'
             - Name: PROMPTS_DIR
@@ -589,7 +502,7 @@ Resources:
             - Name: UPLOAD_DIR
               Value: '/tmp/uploads'
             - Name: AWS_S3_BUCKET
-              Value: !Ref UploadsBucket
+              Value: !If [UseExistingS3Bucket, !Ref ExistingS3BucketName, !Ref UploadsBucket]
             - Name: AWS_S3_REGION
               Value: !Ref AWS::Region
             # Content source configuration
@@ -646,16 +559,31 @@ Resources:
       LaunchType: FARGATE
       NetworkConfiguration:
         AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
           SecurityGroups:
             - !Ref ECSSecurityGroup
           Subnets:
-            - !Ref PrivateSubnet1
-            - !Ref PrivateSubnet2
-          AssignPublicIp: DISABLED
+            - !Ref ExistingPublicSubnet1Id
+            - !Ref ExistingPublicSubnet2Id
+            - !Ref ExistingPublicSubnet3Id
       LoadBalancers:
         - ContainerName: marketing-tool-api
           ContainerPort: 8000
           TargetGroupArn: !Ref ALBTargetGroup
+
+  # Auto Scaling Role
+  AutoScalingRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: application-autoscaling.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceAutoscaleRole
 
   # Auto Scaling Target
   ECSServiceAutoScalingTarget:
@@ -664,7 +592,7 @@ Resources:
       MaxCapacity: !Ref MaxCapacity
       MinCapacity: !Ref MinCapacity
       ResourceId: !Sub 'service/${ECSCluster}/${ECSService}'
-      RoleARN: !Sub 'arn:aws:iam::${AWS::AccountId}:role/aws-service-role/ecs.application-autoscaling.amazonaws.com/AWSServiceRoleForApplicationAutoScaling_ECSService'
+      RoleARN: !GetAtt AutoScalingRole.Arn
       ScalableDimension: ecs:service:DesiredCount
       ServiceNamespace: ecs
 
@@ -704,18 +632,22 @@ Resources:
       Scheme: internet-facing
       Type: application
       Subnets:
-        - !Ref PublicSubnet1
-        - !Ref PublicSubnet2
+        - !Ref ExistingPublicSubnet1Id
+        - !Ref ExistingPublicSubnet2Id
+        - !Ref ExistingPublicSubnet3Id
       SecurityGroups:
         - !Ref ALBSecurityGroup
+      LoadBalancerAttributes:
+        - Key: idle_timeout.timeout_seconds
+          Value: "240"
 
   ALBTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
-      Name: !Sub '${ProjectName}-${Environment}-tg'
+      Name: !Sub '${ProjectName}-${Environment}-tg-${DeployVersion}'
       Port: 8000
       Protocol: HTTP
-      VpcId: !Ref VPC
+      VpcId: !Ref ExistingVpcId
       TargetType: ip
       HealthCheckPath: /api/v1/health
       HealthCheckProtocol: HTTP
@@ -740,9 +672,12 @@ Resources:
             RedirectConfig:
               Protocol: HTTPS
               Port: '443'
+              Host: '#{host}'
+              Path: '/#{path}'
+              Query: '#{query}'
               StatusCode: HTTP_301
-          - Type: forward
-            TargetGroupArn: !Ref ALBTargetGroup
+        - Type: forward
+          TargetGroupArn: !Ref ALBTargetGroup
       LoadBalancerArn: !Ref ALB
       Port: 80
       Protocol: HTTP
@@ -869,15 +804,16 @@ Resources:
       Value: !Ref RedisPassword
       Description: Redis authentication token for ElastiCache
 
-  # RDS Database
+  # RDS Database (only create if not using existing)
   Database:
     Type: AWS::RDS::DBInstance
+    Condition: CreateNewDatabase
     Properties:
-      DBInstanceIdentifier: !Sub '${ProjectName}-${Environment}-postgres'
-      DBName: marketing_project
+      DBInstanceIdentifier: !Sub '${ProjectName}-${Environment}-postgres-${DeployVersion}'
+      DBName: marketing_tool_main
       DBInstanceClass: !Ref DatabaseInstanceClass
       AllocatedStorage: !Ref DatabaseAllocatedStorage
-      MaxAllocatedStorage: !If [IsProduction, 100, 50]
+      MaxAllocatedStorage: 50
       Engine: postgres
       EngineVersion: '15.4'
       MasterUsername: postgres
@@ -885,46 +821,50 @@ Resources:
       VPCSecurityGroups:
         - !Ref DatabaseSecurityGroup
       DBSubnetGroupName: !Ref DatabaseSubnetGroup
-      BackupRetentionPeriod: !If [IsProduction, 7, 1]
-      MultiAZ: !If [IsProduction, true, false]
+      BackupRetentionPeriod: 1
+      MultiAZ: false
       StorageEncrypted: true
-      DeletionProtection: !If [IsProduction, true, false]
+      DeletionProtection: false
+      SkipFinalSnapshot: true
       StorageType: gp3
       Tags:
         - Key: Name
           Value: !Sub '${ProjectName}-${Environment}-postgres'
 
-  # ElastiCache Redis
+  # ElastiCache Redis (only create if not using existing)
   RedisSubnetGroup:
     Type: AWS::ElastiCache::SubnetGroup
+    Condition: CreateNewRedis
     Properties:
       Description: Subnet group for Redis cluster
+      CacheSubnetGroupName: !Sub '${ProjectName}-${Environment}-redis-subnet-${DeployVersion}'
       SubnetIds:
-        - !Ref PrivateSubnet1
-        - !Ref PrivateSubnet2
+        - !Ref ExistingPublicSubnet1Id
+        - !Ref ExistingPublicSubnet2Id
+        - !Ref ExistingPublicSubnet3Id
 
   RedisCluster:
     Type: AWS::ElastiCache::ReplicationGroup
+    Condition: CreateNewRedis
     Properties:
-      ReplicationGroupId: !Sub '${ProjectName}-${Environment}-redis'
+      ReplicationGroupId: !Sub '${ProjectName}-${Environment}-redis-${DeployVersion}'
       Description: Redis cluster for ARQ job queue and job state persistence
       NodeType: !Ref RedisNodeType
       Port: 6379
       Engine: redis
       EngineVersion: '7.0'
-      CacheSubnetGroupName: !Ref RedisSubnetGroup
+      CacheSubnetGroupName: !Sub '${ProjectName}-${Environment}-redis-subnet-${DeployVersion}'
       SecurityGroupIds:
         - !Ref RedisSecurityGroup
       AtRestEncryptionEnabled: true
       TransitEncryptionEnabled: true
       AuthToken: !Ref RedisPassword
-      AutomaticFailoverEnabled: !If [IsProduction, true, false]
-      # When AutomaticFailoverEnabled is true, use ReplicasPerNodeGroup (1 replica = 2 nodes total)
-      # When false, use NumCacheClusters (single node)
-      ReplicasPerNodeGroup: !If [IsProduction, 1, !Ref 'AWS::NoValue']
-      NumCacheClusters: !If [IsProduction, !Ref 'AWS::NoValue', 1]
+      AutomaticFailoverEnabled: false
+      # Single node Redis (no replication for cost savings)
+      NumCacheClusters: 1
+      ReplicasPerNodeGroup: !Ref 'AWS::NoValue'
       SnapshotRetentionLimit: 7
-      PreferredMaintenanceWindow: !If [IsProduction, 'sun:03:00-sun:04:00', 'sun:05:00-sun:06:00']
+      PreferredMaintenanceWindow: 'sun:05:00-sun:06:00'
       Tags:
         - Key: Name
           Value: !Sub '${ProjectName}-${Environment}-redis'
@@ -1035,10 +975,10 @@ Resources:
           Value: !Ref ECSCluster
       AlarmActions: !If [HasNotificationEmail, [!Ref AlarmNotificationTopic], []]
 
-  # RDS CloudWatch Alarms
+  # RDS CloudWatch Alarms (only if creating new database)
   RDSFreeStorageAlarm:
     Type: AWS::CloudWatch::Alarm
-    Condition: IsProduction
+    Condition: !And [IsProduction, CreateNewDatabase]
     Properties:
       AlarmName: !Sub '${ProjectName}-${Environment}-rds-low-storage'
       AlarmDescription: 'RDS database free storage space is low'
@@ -1056,7 +996,7 @@ Resources:
 
   RDSCPUAlarm:
     Type: AWS::CloudWatch::Alarm
-    Condition: IsProduction
+    Condition: !And [IsProduction, CreateNewDatabase]
     Properties:
       AlarmName: !Sub '${ProjectName}-${Environment}-rds-high-cpu'
       AlarmDescription: 'RDS database CPU utilization is high'
@@ -1116,8 +1056,9 @@ Resources:
     Properties:
       DBSubnetGroupDescription: Subnet group for DocumentDB cluster
       SubnetIds:
-        - !Ref DatabaseSubnet1
-        - !Ref DatabaseSubnet2
+        - !Ref ExistingDatabaseSubnet1Id
+        - !Ref ExistingDatabaseSubnet2Id
+        - !Ref ExistingDatabaseSubnet3Id
 
   MongoDBCluster:
     Type: AWS::DocDB::DBCluster
@@ -1217,7 +1158,7 @@ Resources:
 Outputs:
   VPCId:
     Description: VPC ID
-    Value: !Ref VPC
+    Value: !Ref ExistingVpcId
     Export:
       Name: !Sub '${ProjectName}-${Environment}-VPC-ID'
 
@@ -1247,13 +1188,13 @@ Outputs:
 
   DatabaseEndpoint:
     Description: RDS Database Endpoint
-    Value: !GetAtt Database.Endpoint.Address
+    Value: !If [UseExistingDatabase, !Ref ExistingDatabaseEndpoint, !GetAtt Database.Endpoint.Address]
     Export:
       Name: !Sub '${ProjectName}-${Environment}-DB-Endpoint'
 
   RedisEndpoint:
     Description: ElastiCache Redis Endpoint
-    Value: !GetAtt RedisCluster.PrimaryEndPoint.Address
+    Value: !If [UseExistingRedis, !Ref ExistingRedisEndpoint, !GetAtt RedisCluster.PrimaryEndPoint.Address]
     Export:
       Name: !Sub '${ProjectName}-${Environment}-Redis-Endpoint'
 
@@ -1272,7 +1213,7 @@ Outputs:
 
   S3UploadsBucket:
     Description: S3 Bucket for file uploads
-    Value: !Ref UploadsBucket
+    Value: !If [UseExistingS3Bucket, !Ref ExistingS3BucketName, !Ref UploadsBucket]
     Export:
       Name: !Sub '${ProjectName}-${Environment}-S3-Bucket'
 
