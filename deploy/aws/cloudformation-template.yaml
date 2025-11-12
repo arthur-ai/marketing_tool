@@ -212,11 +212,11 @@ Parameters:
     Description: Target memory utilization percentage for auto-scaling
 
 Conditions:
-  HasDomainName: !NotEquals [!Ref DomainName, '']
-  HasCertificate: !NotEquals [!Ref CertificateArn, '']
+  HasDomainName: !Not [!Equals [!Ref DomainName, '']]
+  HasCertificate: !Not [!Equals [!Ref CertificateArn, '']]
   IsProduction: !Equals [!Ref Environment, 'production']
   EnableMongoDB: !Equals [!Ref EnableMongoDB, 'true']
-  UseExistingRedis: !NotEquals [!Ref ExistingRedisEndpoint, '']
+  UseExistingRedis: !Not [!Equals [!Ref ExistingRedisEndpoint, '']]
   CreateNewRedis: !Equals [!Ref ExistingRedisEndpoint, '']
 
 Resources:
