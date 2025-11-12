@@ -7,7 +7,6 @@ Metadata:
       - Label:
           default: "Deployment Configuration"
         Parameters:
-          - DeployVersion
           - Environment
           - ProjectName
       - Label:
@@ -37,8 +36,6 @@ Metadata:
       - Label:
           default: "Database Configuration"
         Parameters:
-          - DatabaseInstanceClass
-          - DatabaseAllocatedStorage
           - DatabasePassword
       - Label:
           default: "Redis Configuration"
@@ -59,18 +56,8 @@ Metadata:
         Parameters:
           - EnableMongoDB
           - MongoDBPassword
-      - Label:
-          default: "Monitoring & Notifications"
-        Parameters:
-          - NotificationEmail
-          - HostedZoneId
 
 Parameters:
-  DeployVersion:
-    Type: String
-    Description: Bump this (e.g., v2) to force new resources on update
-    Default: "v1"
-
   Environment:
     Type: String
     Default: production
@@ -142,19 +129,6 @@ Parameters:
     MinValue: 1
     MaxValue: 10
     Description: Desired number of ECS tasks
-
-  DatabaseInstanceClass:
-    Type: String
-    Default: db.t3.micro
-    AllowedValues: [db.t3.micro, db.t3.small, db.t3.medium, db.t3.large]
-    Description: RDS instance class
-
-  DatabaseAllocatedStorage:
-    Type: Number
-    Default: 20
-    MinValue: 20
-    MaxValue: 1000
-    Description: RDS allocated storage in GB
 
   RedisNodeType:
     Type: String
@@ -237,48 +211,17 @@ Parameters:
     MaxValue: 100
     Description: Target memory utilization percentage for auto-scaling
 
-  NotificationEmail:
-    Type: String
-    Default: ''
-    Description: Email address for CloudWatch alarm notifications (optional)
-
-  HostedZoneId:
-    Type: String
-    Default: ''
-    Description: Route 53 Hosted Zone ID (required if using custom domain)
-
 Conditions:
-  HasDomainName: !Not [!Equals [!Ref DomainName, '']]
-  HasCertificate: !Not [!Equals [!Ref CertificateArn, '']]
+  HasDomainName: !NotEquals [!Ref DomainName, '']
+  HasCertificate: !NotEquals [!Ref CertificateArn, '']
   IsProduction: !Equals [!Ref Environment, 'production']
-  HasNotificationEmail: !Not [!Equals [!Ref NotificationEmail, '']]
-  HasHostedZoneId: !Not [!Equals [!Ref HostedZoneId, '']]
   EnableMongoDB: !Equals [!Ref EnableMongoDB, 'true']
-  UseExistingDatabase: !Not [!Equals [!Ref ExistingDatabaseEndpoint, '']]
-  CreateNewDatabase: !Equals [!Ref ExistingDatabaseEndpoint, '']
-  UseExistingRedis: !Not [!Equals [!Ref ExistingRedisEndpoint, '']]
+  UseExistingRedis: !NotEquals [!Ref ExistingRedisEndpoint, '']
   CreateNewRedis: !Equals [!Ref ExistingRedisEndpoint, '']
-  UseExistingS3Bucket: !Not [!Equals [!Ref ExistingS3BucketName, '']]
-  CreateNewS3Bucket: !Equals [!Ref ExistingS3BucketName, '']
 
 Resources:
   # Note: Using existing VPC and subnets - no networking resources created
   # ECS tasks use public subnets with public IPs for direct internet access
-
-  # Database Subnet Group
-  DatabaseSubnetGroup:
-    Type: AWS::RDS::DBSubnetGroup
-    Properties:
-      DBSubnetGroupName: !Sub '${ProjectName}-${Environment}-db-subnet-${DeployVersion}'
-      DBSubnetGroupDescription: Subnet group for marketing tool database
-      SubnetIds:
-        - !Ref ExistingDatabaseSubnet1Id
-        - !Ref ExistingDatabaseSubnet2Id
-        - !Ref ExistingDatabaseSubnet3Id
-      VpcId: !Ref ExistingVpcId
-      Tags:
-        - Key: Name
-          Value: !Sub '${ProjectName}-${Environment}-db-subnet-group'
 
   # Security Groups
   ALBSecurityGroup:
@@ -341,46 +284,6 @@ Resources:
         - Key: Name
           Value: !Sub '${ProjectName}-${Environment}-redis-sg'
 
-  # S3 Bucket for File Uploads
-  UploadsBucket:
-    Type: AWS::S3::Bucket
-    Condition: CreateNewS3Bucket
-    Properties:
-      BucketName: !If [CreateNewS3Bucket, !Sub '${ProjectName}-${Environment}-uploads-${AWS::AccountId}', !Ref ExistingS3BucketName]
-      VersioningConfiguration:
-        Status: Enabled
-      LifecycleConfiguration:
-        Rules:
-          - Id: DeleteOldVersions
-            Status: Enabled
-            NoncurrentVersionExpirationInDays: 30
-          - Id: DeleteOldUploads
-            Status: Enabled
-            ExpirationInDays: 90
-            Prefix: uploads/
-      PublicAccessBlockConfiguration:
-        BlockPublicAcls: true
-        BlockPublicPolicy: true
-        IgnorePublicAcls: true
-        RestrictPublicBuckets: true
-      BucketEncryption:
-        ServerSideEncryptionConfiguration:
-          - ServerSideEncryptionByDefault:
-              SSEAlgorithm: AES256
-      Tags:
-        - Key: Name
-          Value: !Sub '${ProjectName}-${Environment}-uploads'
-
-  # SNS Topic for CloudWatch Alarms
-  AlarmNotificationTopic:
-    Type: AWS::SNS::Topic
-    Condition: HasNotificationEmail
-    Properties:
-      TopicName: !Sub '${ProjectName}-${Environment}-alarms'
-      Subscription:
-        - Endpoint: !Ref NotificationEmail
-          Protocol: email
-
   # ECR Repository is created by GitHub Actions workflow, not CloudFormation
   # Repository name: ${ProjectName}-${Environment}
 
@@ -433,37 +336,13 @@ Resources:
               Value: 'true'
             - Name: CONTENT_DATABASE_URL
               Value: 'sqlite:///./content.db'
-            # Redis connection - support both REDIS_URL and individual settings
+            # Redis connection
             - Name: REDIS_URL
               Value: !If [UseExistingRedis, !Sub 'redis://${ExistingRedisEndpoint}:6379', !Sub 'redis://${RedisCluster.PrimaryEndPoint.Address}:6379']
             - Name: REDIS_HOST
               Value: !If [UseExistingRedis, !Ref ExistingRedisEndpoint, !GetAtt RedisCluster.PrimaryEndPoint.Address]
             - Name: REDIS_PORT
               Value: '6379'
-            - Name: REDIS_DATABASE
-              Value: '0'
-            # Redis connection pool configuration
-            - Name: REDIS_MAX_CONNECTIONS
-              Value: '50'
-            - Name: REDIS_SOCKET_TIMEOUT
-              Value: '5'
-            - Name: REDIS_CONNECT_TIMEOUT
-              Value: '5'
-            # Redis retry configuration
-            - Name: REDIS_RETRY_ATTEMPTS
-              Value: '3'
-            - Name: REDIS_RETRY_BACKOFF_MIN
-              Value: '2'
-            - Name: REDIS_RETRY_BACKOFF_MAX
-              Value: '10'
-            # Circuit breaker configuration
-            - Name: REDIS_CIRCUIT_FAILURE_THRESHOLD
-              Value: '5'
-            - Name: REDIS_CIRCUIT_RECOVERY_TIMEOUT
-              Value: '60'
-            # CloudWatch metrics (production only)
-            - Name: ENABLE_CLOUDWATCH_METRICS
-              Value: !If [IsProduction, 'true', 'false']
             - Name: AWS_REGION
               Value: !Ref AWS::Region
             - Name: MONGODB_URL
@@ -472,10 +351,7 @@ Resources:
                 - !Sub 'mongodb://${MongoDBCluster.Endpoint}:27017/marketing_project'
                 - !Ref 'AWS::NoValue'
             - Name: POSTGRES_URL
-              Value: !If
-                - UseExistingDatabase
-                - !Sub 'postgresql://postgres:${DatabasePassword}@${ExistingDatabaseEndpoint}:5432/${ExistingDatabaseName}'
-                - !Sub 'postgresql://postgres:${DatabasePassword}@${Database.Endpoint.Address}:5432/marketing_tool_main'
+              Value: !Sub 'postgresql://postgres:${DatabasePassword}@${ExistingDatabaseEndpoint}:5432/${ExistingDatabaseName}'
             - Name: PIPELINE_CONFIG_PATH
               Value: '/app/src/marketing_project/config/pipeline.yml'
             - Name: PROMPTS_DIR
@@ -502,7 +378,7 @@ Resources:
             - Name: UPLOAD_DIR
               Value: '/tmp/uploads'
             - Name: AWS_S3_BUCKET
-              Value: !If [UseExistingS3Bucket, !Ref ExistingS3BucketName, !Ref UploadsBucket]
+              Value: !Ref ExistingS3BucketName
             - Name: AWS_S3_REGION
               Value: !Ref AWS::Region
             # Content source configuration
@@ -644,7 +520,7 @@ Resources:
   ALBTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
-      Name: !Sub '${ProjectName}-${Environment}-tg-${DeployVersion}'
+      Name: !Sub '${ProjectName}-${Environment}-tg'
       Port: 8000
       Protocol: HTTP
       VpcId: !Ref ExistingVpcId
@@ -762,24 +638,12 @@ Resources:
                   - s3:PutObject
                   - s3:DeleteObject
                 Resource:
-                  - !Sub 'arn:aws:s3:::${UploadsBucket}/*'
+                  - !Sub 'arn:aws:s3:::${ExistingS3BucketName}/*'
               - Effect: Allow
                 Action:
                   - s3:ListBucket
                 Resource:
-                  - !Sub 'arn:aws:s3:::${UploadsBucket}'
-        - PolicyName: CloudWatchMetrics
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - cloudwatch:PutMetricData
-                Resource: '*'
-                Condition:
-                  StringEquals:
-                    'cloudwatch:namespace': 'MarketingTool/Redis'
-
+                  - !Sub 'arn:aws:s3:::${ExistingS3BucketName}'
   # Secrets Manager
   OpenAISecret:
     Type: AWS::SecretsManager::Secret
@@ -804,40 +668,13 @@ Resources:
       Value: !Ref RedisPassword
       Description: Redis authentication token for ElastiCache
 
-  # RDS Database (only create if not using existing)
-  Database:
-    Type: AWS::RDS::DBInstance
-    Condition: CreateNewDatabase
-    Properties:
-      DBInstanceIdentifier: !Sub '${ProjectName}-${Environment}-postgres-${DeployVersion}'
-      DBName: marketing_tool_main
-      DBInstanceClass: !Ref DatabaseInstanceClass
-      AllocatedStorage: !Ref DatabaseAllocatedStorage
-      MaxAllocatedStorage: 50
-      Engine: postgres
-      EngineVersion: '15.4'
-      MasterUsername: postgres
-      MasterUserPassword: !Ref DatabasePassword
-      VPCSecurityGroups:
-        - !Ref DatabaseSecurityGroup
-      DBSubnetGroupName: !Ref DatabaseSubnetGroup
-      BackupRetentionPeriod: 1
-      MultiAZ: false
-      StorageEncrypted: true
-      DeletionProtection: false
-      SkipFinalSnapshot: true
-      StorageType: gp3
-      Tags:
-        - Key: Name
-          Value: !Sub '${ProjectName}-${Environment}-postgres'
-
   # ElastiCache Redis (only create if not using existing)
   RedisSubnetGroup:
     Type: AWS::ElastiCache::SubnetGroup
     Condition: CreateNewRedis
     Properties:
       Description: Subnet group for Redis cluster
-      CacheSubnetGroupName: !Sub '${ProjectName}-${Environment}-redis-subnet-${DeployVersion}'
+      CacheSubnetGroupName: !Sub '${ProjectName}-${Environment}-redis-subnet'
       SubnetIds:
         - !Ref ExistingPublicSubnet1Id
         - !Ref ExistingPublicSubnet2Id
@@ -847,13 +684,13 @@ Resources:
     Type: AWS::ElastiCache::ReplicationGroup
     Condition: CreateNewRedis
     Properties:
-      ReplicationGroupId: !Sub '${ProjectName}-${Environment}-redis-${DeployVersion}'
+      ReplicationGroupId: !Sub '${ProjectName}-${Environment}-redis'
       Description: Redis cluster for ARQ job queue and job state persistence
       NodeType: !Ref RedisNodeType
       Port: 6379
       Engine: redis
       EngineVersion: '7.0'
-      CacheSubnetGroupName: !Sub '${ProjectName}-${Environment}-redis-subnet-${DeployVersion}'
+      CacheSubnetGroupName: !Sub '${ProjectName}-${Environment}-redis-subnet'
       SecurityGroupIds:
         - !Ref RedisSecurityGroup
       AtRestEncryptionEnabled: true
@@ -868,149 +705,6 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub '${ProjectName}-${Environment}-redis'
-
-  # CloudWatch Alarms for Redis (Production Only)
-  RedisErrorRateAlarm:
-    Type: AWS::CloudWatch::Alarm
-    Condition: IsProduction
-    Properties:
-      AlarmName: !Sub '${ProjectName}-${Environment}-redis-error-rate'
-      AlarmDescription: 'High Redis error rate detected'
-      MetricName: RedisErrorRate
-      Namespace: MarketingTool/Redis
-      Statistic: Average
-      Period: 300
-      EvaluationPeriods: 1
-      Threshold: 5
-      ComparisonOperator: GreaterThanThreshold
-      TreatMissingData: notBreaching
-      AlarmActions: !If [HasNotificationEmail, [!Ref AlarmNotificationTopic], []]
-
-  RedisLatencyAlarm:
-    Type: AWS::CloudWatch::Alarm
-    Condition: IsProduction
-    Properties:
-      AlarmName: !Sub '${ProjectName}-${Environment}-redis-latency-p95'
-      AlarmDescription: 'High Redis operation latency detected'
-      MetricName: RedisOperationLatencyP95
-      Namespace: MarketingTool/Redis
-      Statistic: Average
-      Period: 300
-      EvaluationPeriods: 1
-      Threshold: 100
-      ComparisonOperator: GreaterThanThreshold
-      TreatMissingData: notBreaching
-      AlarmActions: !If [HasNotificationEmail, [!Ref AlarmNotificationTopic], []]
-
-  RedisCircuitBreakerAlarm:
-    Type: AWS::CloudWatch::Alarm
-    Condition: IsProduction
-    Properties:
-      AlarmName: !Sub '${ProjectName}-${Environment}-redis-circuit-breaker'
-      AlarmDescription: 'Redis circuit breaker is open'
-      MetricName: RedisCircuitBreakerOpen
-      Namespace: MarketingTool/Redis
-      Statistic: Maximum
-      Period: 60
-      EvaluationPeriods: 1
-      Threshold: 1
-      ComparisonOperator: GreaterThanOrEqualToThreshold
-      TreatMissingData: notBreaching
-      AlarmActions: !If [HasNotificationEmail, [!Ref AlarmNotificationTopic], []]
-
-  RedisConnectionPoolAlarm:
-    Type: AWS::CloudWatch::Alarm
-    Condition: IsProduction
-    Properties:
-      AlarmName: !Sub '${ProjectName}-${Environment}-redis-pool-usage'
-      AlarmDescription: 'Redis connection pool usage is high'
-      MetricName: RedisConnectionPoolUsage
-      Namespace: MarketingTool/Redis
-      Statistic: Average
-      Period: 300
-      EvaluationPeriods: 1
-      Threshold: 90
-      ComparisonOperator: GreaterThanThreshold
-      TreatMissingData: notBreaching
-      AlarmActions: !If [HasNotificationEmail, [!Ref AlarmNotificationTopic], []]
-
-  # ECS CloudWatch Alarms
-  ECSCPUAlarm:
-    Type: AWS::CloudWatch::Alarm
-    Condition: IsProduction
-    Properties:
-      AlarmName: !Sub '${ProjectName}-${Environment}-ecs-high-cpu'
-      AlarmDescription: 'ECS service CPU utilization is high'
-      MetricName: CPUUtilization
-      Namespace: AWS/ECS
-      Statistic: Average
-      Period: 300
-      EvaluationPeriods: 2
-      Threshold: 80
-      ComparisonOperator: GreaterThanThreshold
-      Dimensions:
-        - Name: ServiceName
-          Value: !GetAtt ECSService.Name
-        - Name: ClusterName
-          Value: !Ref ECSCluster
-      AlarmActions: !If [HasNotificationEmail, [!Ref AlarmNotificationTopic], []]
-
-  ECSMemoryAlarm:
-    Type: AWS::CloudWatch::Alarm
-    Condition: IsProduction
-    Properties:
-      AlarmName: !Sub '${ProjectName}-${Environment}-ecs-high-memory'
-      AlarmDescription: 'ECS service memory utilization is high'
-      MetricName: MemoryUtilization
-      Namespace: AWS/ECS
-      Statistic: Average
-      Period: 300
-      EvaluationPeriods: 2
-      Threshold: 85
-      ComparisonOperator: GreaterThanThreshold
-      Dimensions:
-        - Name: ServiceName
-          Value: !GetAtt ECSService.Name
-        - Name: ClusterName
-          Value: !Ref ECSCluster
-      AlarmActions: !If [HasNotificationEmail, [!Ref AlarmNotificationTopic], []]
-
-  # ALB CloudWatch Alarms
-  ALBHighResponseTimeAlarm:
-    Type: AWS::CloudWatch::Alarm
-    Condition: IsProduction
-    Properties:
-      AlarmName: !Sub '${ProjectName}-${Environment}-alb-high-response-time'
-      AlarmDescription: 'ALB target response time is high'
-      MetricName: TargetResponseTime
-      Namespace: AWS/ApplicationELB
-      Statistic: Average
-      Period: 300
-      EvaluationPeriods: 2
-      Threshold: 2
-      ComparisonOperator: GreaterThanThreshold
-      Dimensions:
-        - Name: LoadBalancer
-          Value: !GetAtt ALB.LoadBalancerFullName
-      AlarmActions: !If [HasNotificationEmail, [!Ref AlarmNotificationTopic], []]
-
-  ALBHighHTTP5xxAlarm:
-    Type: AWS::CloudWatch::Alarm
-    Condition: IsProduction
-    Properties:
-      AlarmName: !Sub '${ProjectName}-${Environment}-alb-high-5xx'
-      AlarmDescription: 'ALB HTTP 5xx error rate is high'
-      MetricName: HTTPCode_Target_5XX_Count
-      Namespace: AWS/ApplicationELB
-      Statistic: Sum
-      Period: 300
-      EvaluationPeriods: 1
-      Threshold: 10
-      ComparisonOperator: GreaterThanThreshold
-      Dimensions:
-        - Name: LoadBalancer
-          Value: !GetAtt ALB.LoadBalancerFullName
-      AlarmActions: !If [HasNotificationEmail, [!Ref AlarmNotificationTopic], []]
 
   # DocumentDB (MongoDB-compatible) - Optional
   MongoDBSubnetGroup:
@@ -1058,60 +752,12 @@ Resources:
       RetentionInDays: !If [IsProduction, 30, 7]
 
 
-  # Basic CloudWatch Dashboard
-  CloudWatchDashboard:
-    Type: AWS::CloudWatch::Dashboard
-    Properties:
-      DashboardName: !Sub '${ProjectName}-${Environment}-dashboard'
-      DashboardBody: !Sub |
-        {
-          "widgets": [
-            {
-              "type": "metric",
-              "x": 0,
-              "y": 0,
-              "width": 12,
-              "height": 6,
-              "properties": {
-                "metrics": [
-                  [ "AWS/ECS", "CPUUtilization", "ServiceName", "${ECSService}", "ClusterName", "${ECSCluster}" ],
-                  [ ".", "MemoryUtilization", ".", ".", ".", "." ]
-                ],
-                "view": "timeSeries",
-                "stacked": false,
-                "region": "${AWS::Region}",
-                "title": "ECS Service Metrics",
-                "period": 300
-              }
-            },
-            {
-              "type": "metric",
-              "x": 12,
-              "y": 0,
-              "width": 12,
-              "height": 6,
-              "properties": {
-                "metrics": [
-                  [ "AWS/ApplicationELB", "RequestCount", "LoadBalancer", "${ALB}" ],
-                  [ ".", "TargetResponseTime", ".", "." ]
-                ],
-                "view": "timeSeries",
-                "stacked": false,
-                "region": "${AWS::Region}",
-                "title": "Load Balancer Metrics",
-                "period": 300
-              }
-            }
-          ]
-        }
-
   # Route 53 Record (if domain provided)
   DNSRecord:
     Type: AWS::Route53::RecordSet
     Condition: HasDomainName
     Properties:
-      HostedZoneId: !If [HasHostedZoneId, !Ref HostedZoneId, !Ref 'AWS::NoValue']
-      HostedZoneName: !If [HasHostedZoneId, !Ref 'AWS::NoValue', !Sub '${DomainName}.']
+      HostedZoneName: !Sub '${DomainName}.'
       Name: !Ref DomainName
       Type: A
       AliasTarget:
@@ -1151,7 +797,7 @@ Outputs:
 
   DatabaseEndpoint:
     Description: RDS Database Endpoint
-    Value: !If [UseExistingDatabase, !Ref ExistingDatabaseEndpoint, !GetAtt Database.Endpoint.Address]
+    Value: !Ref ExistingDatabaseEndpoint
     Export:
       Name: !Sub '${ProjectName}-${Environment}-DB-Endpoint'
 
@@ -1176,13 +822,6 @@ Outputs:
 
   S3UploadsBucket:
     Description: S3 Bucket for file uploads
-    Value: !If [UseExistingS3Bucket, !Ref ExistingS3BucketName, !Ref UploadsBucket]
+    Value: !Ref ExistingS3BucketName
     Export:
       Name: !Sub '${ProjectName}-${Environment}-S3-Bucket'
-
-  SNSAlarmTopic:
-    Description: SNS Topic for CloudWatch alarms
-    Condition: HasNotificationEmail
-    Value: !Ref AlarmNotificationTopic
-    Export:
-      Name: !Sub '${ProjectName}-${Environment}-SNS-Topic'
