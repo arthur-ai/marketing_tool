@@ -34,7 +34,6 @@ from typing import Optional
 import uvicorn
 import yaml
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
-from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 
@@ -51,6 +50,7 @@ from .config.settings import PIPELINE_SPEC, PROMPTS_DIR, TEMPLATE_VERSION
 from .middleware.cors import setup_cors
 from .middleware.error_handling import ErrorHandlingMiddleware
 from .middleware.logging import LoggingMiddleware, RequestIDMiddleware
+from .middleware.trusted_host import TrustedHostMiddlewareWithHealthBypass
 from .scheduler import Scheduler
 
 # Initialize logger
@@ -228,10 +228,10 @@ app.add_middleware(
 # 4. CORS middleware
 setup_cors(app)
 
-# 5. Trusted host middleware (outermost)
+# 5. Trusted host middleware (outermost) - with health check bypass
 app.add_middleware(
-    TrustedHostMiddleware,
-    allowed_hosts=["localhost", "127.0.0.1", "*.marketing-project.com"],
+    TrustedHostMiddlewareWithHealthBypass,
+    allowed_hosts=["localhost", "127.0.0.1", "*.arthur.ai"],
 )
 
 # Include API router
