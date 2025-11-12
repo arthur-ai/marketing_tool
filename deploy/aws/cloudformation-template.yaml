@@ -260,7 +260,10 @@ Conditions:
   CreateNewRedis: !Equals [!Ref ExistingRedisEndpoint, '']
   UseExistingS3Bucket: !Not [!Equals [!Ref ExistingS3BucketName, '']]
   CreateNewS3Bucket: !Equals [!Ref ExistingS3BucketName, '']
-  IsProductionAndCreateNewDatabase: !And [IsProduction, CreateNewDatabase]
+  IsProductionAndCreateNewDatabase:
+    Fn::And:
+      - IsProduction
+      - CreateNewDatabase
 
 Resources:
   # Note: Using existing VPC and subnets - no networking resources created
