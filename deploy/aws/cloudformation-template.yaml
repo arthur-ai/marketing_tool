@@ -691,7 +691,6 @@ Resources:
     Condition: CreateNewRedis
     Properties:
       ReplicationGroupId: !Sub '${ProjectName}-${Environment}-redis'
-      Description: Redis cluster for ARQ job queue and job state persistence
       NodeType: !Ref RedisNodeType
       Port: 6379
       Engine: redis
