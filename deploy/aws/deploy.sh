@@ -85,8 +85,7 @@ REQUIRED ENVIRONMENT VARIABLES:
     REDIS_PASSWORD           Redis authentication token (16-128 characters)
 
 OPTIONAL ENVIRONMENT VARIABLES:
-    ENABLE_MONGODB           Enable MongoDB/DocumentDB (true/false, default: false)
-    MONGODB_PASSWORD         MongoDB password (8+ characters, required only if ENABLE_MONGODB=true)
+    EXISTING_MONGODB_ENDPOINT  Existing MongoDB/DocumentDB endpoint (optional - provide to use existing MongoDB)
 
 EXAMPLES:
     # Deploy to production
@@ -241,22 +240,6 @@ if [[ ${#REDIS_PASSWORD} -lt 16 ]] || [[ ${#REDIS_PASSWORD} -gt 128 ]]; then
     exit 1
 fi
 
-# Check MongoDB configuration
-ENABLE_MONGODB="${ENABLE_MONGODB:-false}"
-if [[ "$ENABLE_MONGODB" == "true" ]]; then
-    if [[ -z "$MONGODB_PASSWORD" ]]; then
-        print_error "MONGODB_PASSWORD is required when ENABLE_MONGODB=true"
-        exit 1
-    fi
-    if [[ ${#MONGODB_PASSWORD} -lt 8 ]]; then
-        print_error "MONGODB_PASSWORD must be at least 8 characters long"
-        exit 1
-    fi
-    print_info "MongoDB will be enabled"
-else
-    print_info "MongoDB will be disabled (set ENABLE_MONGODB=true to enable)"
-fi
-
 # Check required infrastructure parameters
 print_info "Checking required infrastructure parameters..."
 required_infra=("EXISTING_VPC_ID" "EXISTING_PUBLIC_SUBNET_1_ID" "EXISTING_PUBLIC_SUBNET_2_ID" "EXISTING_PUBLIC_SUBNET_3_ID" "EXISTING_DB_SUBNET_1_ID" "EXISTING_DB_SUBNET_2_ID" "EXISTING_DB_SUBNET_3_ID")
@@ -339,12 +322,8 @@ PARAMETERS="$PARAMETERS ParameterKey=OpenAIApiKey,ParameterValue=$OPENAI_API_KEY
 PARAMETERS="$PARAMETERS ParameterKey=ApiKey,ParameterValue=$API_KEY"
 PARAMETERS="$PARAMETERS ParameterKey=DatabasePassword,ParameterValue=$DATABASE_PASSWORD"
 PARAMETERS="$PARAMETERS ParameterKey=RedisPassword,ParameterValue=$REDIS_PASSWORD"
-PARAMETERS="$PARAMETERS ParameterKey=EnableMongoDB,ParameterValue=$ENABLE_MONGODB"
-
-# Add MongoDB password only if MongoDB is enabled
-# Note: We don't pass the parameter at all when disabled, so CloudFormation uses the default empty string
-if [[ "$ENABLE_MONGODB" == "true" ]]; then
-    PARAMETERS="$PARAMETERS ParameterKey=MongoDBPassword,ParameterValue=$MONGODB_PASSWORD"
+if [[ -n "$EXISTING_MONGODB_ENDPOINT" ]]; then
+    PARAMETERS="$PARAMETERS ParameterKey=ExistingMongoDBEndpoint,ParameterValue=$EXISTING_MONGODB_ENDPOINT"
 fi
 
 # Required domain parameters

@@ -26,6 +26,7 @@ Metadata:
           - ExistingDatabaseEndpoint
           - ExistingDatabaseName
           - ExistingRedisEndpoint
+          - ExistingMongoDBEndpoint
           - ExistingS3BucketName
       - Label:
           default: "Application Configuration"
@@ -53,11 +54,6 @@ Metadata:
           - MaxCapacity
           - TargetCPUUtilization
           - TargetMemoryUtilization
-      - Label:
-          default: "MongoDB Configuration (Optional)"
-        Parameters:
-          - EnableMongoDB
-          - MongoDBPassword
 
 Parameters:
   Environment:
@@ -116,8 +112,12 @@ Parameters:
   ExistingS3BucketName:
     Type: String
     Default: ''
-    Description: Existing S3 bucket name for uploads (optional - leave empty to create new bucket)
+    Description: Existing S3 bucket name for uploads (optional - provide an existing S3 bucket name for file uploads, or leave empty if not using S3)
 
+  ExistingMongoDBEndpoint:
+    Type: String
+    Default: ''
+    Description: Existing MongoDB/DocumentDB endpoint (optional - leave empty if not using MongoDB, or provide endpoint to connect to existing MongoDB instance)
 
   InstanceType:
     Type: String
@@ -169,17 +169,6 @@ Parameters:
     Description: Database master password
     MinLength: 8
 
-  EnableMongoDB:
-    Type: String
-    Default: 'false'
-    AllowedValues: ['true', 'false']
-    Description: Enable MongoDB/DocumentDB (optional, only needed if using MongoDB as content source)
-
-  MongoDBPassword:
-    Type: String
-    NoEcho: true
-    Description: MongoDB password (required only if EnableMongoDB is true)
-    Default: ''
 
   RedisPassword:
     Type: String
@@ -224,9 +213,10 @@ Parameters:
 Conditions:
   HasCertificate: !Not [!Equals [!Ref CertificateArn, '']]
   IsProduction: !Equals [!Ref Environment, 'production']
-  EnableMongoDB: !Equals [!Ref EnableMongoDB, 'true']
+  UseExistingMongoDB: !Not [!Equals [!Ref ExistingMongoDBEndpoint, '']]
   UseExistingRedis: !Not [!Equals [!Ref ExistingRedisEndpoint, '']]
   CreateNewRedis: !Equals [!Ref ExistingRedisEndpoint, '']
+  UseS3Bucket: !Not [!Equals [!Ref ExistingS3BucketName, '']]
 
 Resources:
   # Note: Using existing VPC and subnets - no networking resources created
@@ -289,6 +279,10 @@ Resources:
           FromPort: 6379
           ToPort: 6379
           SourceSecurityGroupId: !Ref ECSSecurityGroup
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic for ElastiCache cluster setup and management
       Tags:
         - Key: Name
           Value: !Sub '${ProjectName}-${Environment}-redis-sg'
@@ -356,8 +350,8 @@ Resources:
               Value: !Ref AWS::Region
             - Name: MONGODB_URL
               Value: !If
-                - EnableMongoDB
-                - !Sub 'mongodb://${MongoDBCluster.Endpoint}:27017/marketing_project'
+                - UseExistingMongoDB
+                - !Sub 'mongodb://${ExistingMongoDBEndpoint}:27017/marketing_project'
                 - !Ref 'AWS::NoValue'
             - Name: POSTGRES_URL
               Value: !Sub 'postgresql://postgres:${DatabasePassword}@${ExistingDatabaseEndpoint}:5432/${ExistingDatabaseName}'
@@ -647,22 +641,25 @@ Resources:
                   - logs:CreateLogStream
                   - logs:PutLogEvents
                 Resource: '*'
-        - PolicyName: S3Access
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - s3:GetObject
-                  - s3:PutObject
-                  - s3:DeleteObject
-                Resource:
-                  - !Sub 'arn:aws:s3:::${ExistingS3BucketName}/*'
-              - Effect: Allow
-                Action:
-                  - s3:ListBucket
-                Resource:
-                  - !Sub 'arn:aws:s3:::${ExistingS3BucketName}'
+        - !If
+          - UseS3Bucket
+          - PolicyName: S3Access
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - s3:GetObject
+                    - s3:PutObject
+                    - s3:DeleteObject
+                  Resource:
+                    - !Sub 'arn:aws:s3:::${ExistingS3BucketName}/*'
+                - Effect: Allow
+                  Action:
+                    - s3:ListBucket
+                  Resource:
+                    - !Sub 'arn:aws:s3:::${ExistingS3BucketName}'
+          - !Ref 'AWS::NoValue'
   # Secrets Manager
   OpenAISecret:
     Type: AWS::SecretsManager::Secret
@@ -702,8 +699,6 @@ Resources:
   RedisCluster:
     Type: AWS::ElastiCache::ReplicationGroup
     Condition: CreateNewRedis
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
     Properties:
       ReplicationGroupId: !Sub '${ProjectName}-${Environment}-redis'
       ReplicationGroupDescription: Redis cluster for ARQ job queue and job state persistence
@@ -726,62 +721,13 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub '${ProjectName}-${Environment}-redis'
-    # Retain Redis cluster on stack deletion to prevent data loss
-    # Manually delete after ensuring no services depend on it
-
-  # DocumentDB (MongoDB-compatible) - Optional
-  MongoDBSubnetGroup:
-    Type: AWS::DocDB::DBSubnetGroup
-    Condition: EnableMongoDB
-    Properties:
-      DBSubnetGroupDescription: Subnet group for DocumentDB cluster
-      SubnetIds:
-        - !Ref ExistingDatabaseSubnet1Id
-        - !Ref ExistingDatabaseSubnet2Id
-        - !Ref ExistingDatabaseSubnet3Id
-
-  MongoDBCluster:
-    Type: AWS::DocDB::DBCluster
-    Condition: EnableMongoDB
-    DeletionPolicy: Snapshot
-    UpdateReplacePolicy: Snapshot
-    Properties:
-      DBClusterIdentifier: !Sub '${ProjectName}-${Environment}-mongodb'
-      MasterUsername: admin
-      MasterUserPassword: !Ref MongoDBPassword
-      VpcSecurityGroupIds:
-        - !Ref DatabaseSecurityGroup
-      DBSubnetGroupName: !Ref MongoDBSubnetGroup
-      BackupRetentionPeriod: !If [IsProduction, 7, 1]
-      PreferredBackupWindow: '03:00-04:00'
-      PreferredMaintenanceWindow: 'sun:04:00-sun:05:00'
-      StorageEncrypted: true
-      DeletionProtection: !If [IsProduction, true, false]
-      Tags:
-        - Key: Name
-          Value: !Sub '${ProjectName}-${Environment}-mongodb'
-    # Create snapshot before deletion to preserve data
-
-  MongoDBInstance:
-    Type: AWS::DocDB::DBInstance
-    Condition: EnableMongoDB
-    DeletionPolicy: Snapshot
-    UpdateReplacePolicy: Snapshot
-    Properties:
-      DBInstanceIdentifier: !Sub '${ProjectName}-${Environment}-mongodb-instance'
-      DBClusterIdentifier: !Ref MongoDBCluster
-      DBInstanceClass: !If [IsProduction, 'db.r5.large', 'db.t3.medium']
-    # Create snapshot before deletion to preserve data
 
   # CloudWatch Log Group
   CloudWatchLogGroup:
     Type: AWS::Logs::LogGroup
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
     Properties:
       LogGroupName: !Sub '/ecs/${ProjectName}-${Environment}'
       RetentionInDays: !If [IsProduction, 30, 7]
-    # Retain logs on stack deletion to preserve historical data
 
 
   # Route 53 Record (creates subdomain in parent hosted zone)
@@ -837,13 +783,6 @@ Outputs:
     Value: !If [UseExistingRedis, !Ref ExistingRedisEndpoint, !GetAtt RedisCluster.PrimaryEndPoint.Address]
     Export:
       Name: !Sub '${ProjectName}-${Environment}-Redis-Endpoint'
-
-  MongoDBEndpoint:
-    Condition: EnableMongoDB
-    Description: DocumentDB MongoDB Endpoint
-    Value: !GetAtt MongoDBCluster.Endpoint
-    Export:
-      Name: !Sub '${ProjectName}-${Environment}-MongoDB-Endpoint'
 
   CloudWatchLogGroup:
     Description: CloudWatch Log Group
