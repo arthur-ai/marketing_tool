@@ -279,6 +279,18 @@ if [[ ${#missing_infra[@]} -gt 0 ]]; then
     exit 1
 fi
 
+# Check required domain parameters
+print_info "Checking required domain parameters..."
+if [[ -z "$DOMAIN_NAME" ]]; then
+    print_error "DOMAIN_NAME environment variable is required"
+    exit 1
+fi
+
+if [[ -z "$HOSTED_ZONE_ID" ]]; then
+    print_error "HOSTED_ZONE_ID environment variable is required"
+    exit 1
+fi
+
 print_success "All required environment variables and infrastructure parameters are set"
 
 # Check AWS CLI
@@ -335,9 +347,9 @@ if [[ "$ENABLE_MONGODB" == "true" ]]; then
     PARAMETERS="$PARAMETERS ParameterKey=MongoDBPassword,ParameterValue=$MONGODB_PASSWORD"
 fi
 
-if [[ -n "$DOMAIN_NAME" ]]; then
-    PARAMETERS="$PARAMETERS ParameterKey=DomainName,ParameterValue=$DOMAIN_NAME"
-fi
+# Required domain parameters
+PARAMETERS="$PARAMETERS ParameterKey=DomainName,ParameterValue=$DOMAIN_NAME"
+PARAMETERS="$PARAMETERS ParameterKey=HostedZoneId,ParameterValue=$HOSTED_ZONE_ID"
 
 if [[ -n "$CERTIFICATE_ARN" ]]; then
     PARAMETERS="$PARAMETERS ParameterKey=CertificateArn,ParameterValue=$CERTIFICATE_ARN"

@@ -31,6 +31,7 @@ Metadata:
           default: "Application Configuration"
         Parameters:
           - DomainName
+          - HostedZoneId
           - CertificateArn
           - OpenAIApiKey
           - ApiKey
@@ -139,8 +140,11 @@ Parameters:
 
   DomainName:
     Type: String
-    Default: ''
-    Description: Domain name for the application (optional)
+    Description: Domain name for the application (required)
+
+  HostedZoneId:
+    Type: String
+    Description: Route53 Hosted Zone ID for the parent domain (required, e.g., for marketing.sandbox.arthur.ai, use the hosted zone ID for sandbox.arthur.ai)
 
   CertificateArn:
     Type: String
@@ -218,7 +222,6 @@ Parameters:
     Description: Docker image version/tag to deploy (e.g., latest, v1.0.0, commit-hash)
 
 Conditions:
-  HasDomainName: !Not [!Equals [!Ref DomainName, '']]
   HasCertificate: !Not [!Equals [!Ref CertificateArn, '']]
   IsProduction: !Equals [!Ref Environment, 'production']
   EnableMongoDB: !Equals [!Ref EnableMongoDB, 'true']
@@ -337,7 +340,7 @@ Resources:
             - Name: TEMPLATE_VERSION
               Value: 'v1'
             - Name: CORS_ORIGINS
-              Value: !If [HasDomainName, !Sub 'https://${DomainName}', 'https://marketing-project.com,https://www.marketing-project.com']
+              Value: !Sub 'https://${DomainName}'
             - Name: CORS_ALLOW_CREDENTIALS
               Value: 'true'
             - Name: CONTENT_DATABASE_URL
@@ -452,6 +455,12 @@ Resources:
         - ContainerName: marketing-tool-api
           ContainerPort: 8000
           TargetGroupArn: !Ref ALBTargetGroup
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      HealthCheckGracePeriodSeconds: 60
+    # Note: During stack deletion, ECS service will automatically scale down tasks
+    # Network interfaces will be released once all tasks are stopped
 
   # Auto Scaling Role
   AutoScalingRole:
@@ -470,6 +479,7 @@ Resources:
   # Auto Scaling Target
   ECSServiceAutoScalingTarget:
     Type: AWS::ApplicationAutoScaling::ScalableTarget
+    DependsOn: ECSService
     Properties:
       MaxCapacity: !Ref MaxCapacity
       MinCapacity: !Ref MinCapacity
@@ -477,6 +487,7 @@ Resources:
       RoleARN: !GetAtt AutoScalingRole.Arn
       ScalableDimension: ecs:service:DesiredCount
       ServiceNamespace: ecs
+    # Ensure auto-scaling is deleted before ECS service to prevent conflicts
 
   # Auto Scaling Policy - CPU
   ECSServiceScalingPolicyCPU:
@@ -522,6 +533,8 @@ Resources:
       LoadBalancerAttributes:
         - Key: idle_timeout.timeout_seconds
           Value: "240"
+    # Note: During stack deletion, ECS service (which depends on ALB) will be deleted first,
+    # automatically scaling down tasks and releasing network interfaces before ALB deletion
 
   ALBTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
@@ -689,6 +702,8 @@ Resources:
   RedisCluster:
     Type: AWS::ElastiCache::ReplicationGroup
     Condition: CreateNewRedis
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       ReplicationGroupId: !Sub '${ProjectName}-${Environment}-redis'
       ReplicationGroupDescription: Redis cluster for ARQ job queue and job state persistence
@@ -711,6 +726,8 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub '${ProjectName}-${Environment}-redis'
+    # Retain Redis cluster on stack deletion to prevent data loss
+    # Manually delete after ensuring no services depend on it
 
   # DocumentDB (MongoDB-compatible) - Optional
   MongoDBSubnetGroup:
@@ -726,6 +743,8 @@ Resources:
   MongoDBCluster:
     Type: AWS::DocDB::DBCluster
     Condition: EnableMongoDB
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
     Properties:
       DBClusterIdentifier: !Sub '${ProjectName}-${Environment}-mongodb'
       MasterUsername: admin
@@ -741,29 +760,35 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub '${ProjectName}-${Environment}-mongodb'
+    # Create snapshot before deletion to preserve data
 
   MongoDBInstance:
     Type: AWS::DocDB::DBInstance
     Condition: EnableMongoDB
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
     Properties:
       DBInstanceIdentifier: !Sub '${ProjectName}-${Environment}-mongodb-instance'
       DBClusterIdentifier: !Ref MongoDBCluster
       DBInstanceClass: !If [IsProduction, 'db.r5.large', 'db.t3.medium']
+    # Create snapshot before deletion to preserve data
 
   # CloudWatch Log Group
   CloudWatchLogGroup:
     Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       LogGroupName: !Sub '/ecs/${ProjectName}-${Environment}'
       RetentionInDays: !If [IsProduction, 30, 7]
+    # Retain logs on stack deletion to preserve historical data
 
 
-  # Route 53 Record (if domain provided)
+  # Route 53 Record (creates subdomain in parent hosted zone)
   DNSRecord:
     Type: AWS::Route53::RecordSet
-    Condition: HasDomainName
     Properties:
-      HostedZoneName: !Sub '${DomainName}.'
+      HostedZoneId: !Ref HostedZoneId
       Name: !Ref DomainName
       Type: A
       AliasTarget:
@@ -785,7 +810,7 @@ Outputs:
 
   ALBURL:
     Description: Application Load Balancer URL
-    Value: !If [HasDomainName, !Sub 'https://${DomainName}', !Sub 'http://${ALB.DNSName}']
+    Value: !Sub 'https://${DomainName}'
     Export:
       Name: !Sub '${ProjectName}-${Environment}-ALB-URL'
 
