@@ -7,6 +7,7 @@ This package contains essential middleware components for the marketing project 
 from .cors import setup_cors
 from .error_handling import ErrorHandlingMiddleware, create_error_response
 from .logging import LoggingMiddleware, RequestIDMiddleware
+from .trusted_host import TrustedHostMiddlewareWithHealthBypass
 
 __all__ = [
     "setup_cors",
@@ -14,4 +15,5 @@ __all__ = [
     "RequestIDMiddleware",
     "ErrorHandlingMiddleware",
     "create_error_response",
+    "TrustedHostMiddlewareWithHealthBypass",
 ]
