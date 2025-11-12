@@ -260,6 +260,7 @@ Conditions:
   CreateNewRedis: !Equals [!Ref ExistingRedisEndpoint, '']
   UseExistingS3Bucket: !Not [!Equals [!Ref ExistingS3BucketName, '']]
   CreateNewS3Bucket: !Equals [!Ref ExistingS3BucketName, '']
+  IsProductionAndCreateNewDatabase: !And [IsProduction, CreateNewDatabase]
 
 Resources:
   # Note: Using existing VPC and subnets - no networking resources created
@@ -978,7 +979,7 @@ Resources:
   # RDS CloudWatch Alarms (only if creating new database)
   RDSFreeStorageAlarm:
     Type: AWS::CloudWatch::Alarm
-    Condition: !And [IsProduction, CreateNewDatabase]
+    Condition: IsProductionAndCreateNewDatabase
     Properties:
       AlarmName: !Sub '${ProjectName}-${Environment}-rds-low-storage'
       AlarmDescription: 'RDS database free storage space is low'
@@ -996,7 +997,7 @@ Resources:
 
   RDSCPUAlarm:
     Type: AWS::CloudWatch::Alarm
-    Condition: !And [IsProduction, CreateNewDatabase]
+    Condition: IsProductionAndCreateNewDatabase
     Properties:
       AlarmName: !Sub '${ProjectName}-${Environment}-rds-high-cpu'
       AlarmDescription: 'RDS database CPU utilization is high'
