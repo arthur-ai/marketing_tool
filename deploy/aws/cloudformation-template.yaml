@@ -552,8 +552,8 @@ Resources:
               Path: '/#{path}'
               Query: '#{query}'
               StatusCode: HTTP_301
-        - Type: forward
-          TargetGroupArn: !Ref ALBTargetGroup
+          - Type: forward
+            TargetGroupArn: !Ref ALBTargetGroup
       LoadBalancerArn: !Ref ALB
       Port: 80
       Protocol: HTTP
