@@ -9,6 +9,7 @@ Metadata:
         Parameters:
           - Environment
           - ProjectName
+          - DeployVersion
       - Label:
           default: "Infrastructure Configuration"
         Parameters:
@@ -211,6 +212,11 @@ Parameters:
     MaxValue: 100
     Description: Target memory utilization percentage for auto-scaling
 
+  DeployVersion:
+    Type: String
+    Default: latest
+    Description: Docker image version/tag to deploy (e.g., latest, v1.0.0, commit-hash)
+
 Conditions:
   HasDomainName: !Not [!Equals [!Ref DomainName, '']]
   HasCertificate: !Not [!Equals [!Ref CertificateArn, '']]
@@ -313,7 +319,7 @@ Resources:
       TaskRoleArn: !Ref ECSTaskRole
       ContainerDefinitions:
         - Name: marketing-tool-api
-          Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ProjectName}-${Environment}:latest'
+          Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ProjectName}-${Environment}:${DeployVersion}'
           PortMappings:
             - ContainerPort: 8000
               Protocol: tcp

@@ -184,6 +184,7 @@ jobs:
 
           # Build deployment command with required infrastructure parameters
           DEPLOY_CMD="./deploy.sh -e ${{ env.ENVIRONMENT }} -r ${{ env.AWS_REGION }} -n ${{ env.PROJECT_NAME }}"
+          DEPLOY_CMD="$DEPLOY_CMD -v ${{ steps.version.outputs.version }}"
           DEPLOY_CMD="$DEPLOY_CMD --existing-vpc-id $EXISTING_VPC_ID"
           DEPLOY_CMD="$DEPLOY_CMD --existing-public-subnet-1 $EXISTING_PUBLIC_SUBNET_1_ID"
           DEPLOY_CMD="$DEPLOY_CMD --existing-public-subnet-2 $EXISTING_PUBLIC_SUBNET_2_ID"
