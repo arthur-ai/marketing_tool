@@ -254,6 +254,16 @@ Parameters:
     MaxValue: 50
     Description: Maximum number of frontend ECS tasks for auto-scaling
 
+  FrontendDockerRegistryUsername:
+    Type: String
+    Description: Docker registry username (required for docker.arthur.ai)
+    NoEcho: true
+
+  FrontendDockerRegistryPassword:
+    Type: String
+    Description: Docker registry password (required for docker.arthur.ai)
+    NoEcho: true
+
 Conditions:
   HasCertificate: !Not [!Equals [!Ref CertificateArn, '']]
   IsProduction: !Equals [!Ref Environment, 'prod']
@@ -515,6 +525,8 @@ Resources:
       ContainerDefinitions:
         - Name: marketing-frontend
           Image: !Sub '${FrontendContainerImage}:${FrontendDeployVersion}'
+          RepositoryCredentials:
+            CredentialsParameter: !Ref FrontendDockerRegistrySecret
           PortMappings:
             - ContainerPort: 3000
               Protocol: tcp
@@ -815,6 +827,7 @@ Resources:
                 Resource:
                   - !Ref OpenAISecret
                   - !Ref ApiKeySecret
+                  - !Ref FrontendDockerRegistrySecret
         - PolicyName: SSMParameterAccess
           PolicyDocument:
             Version: '2012-10-17'
@@ -879,6 +892,17 @@ Resources:
       Name: !Sub '${ProjectName}-${Environment}-api-key'
       Description: API authentication key for marketing tool
       SecretString: !Ref ApiKey
+
+  FrontendDockerRegistrySecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub '${ProjectName}-${Environment}-docker-registry-credentials'
+      Description: Docker registry credentials for frontend image pull
+      SecretString: !Sub |
+        {
+          "username": "${FrontendDockerRegistryUsername}",
+          "password": "${FrontendDockerRegistryPassword}"
+        }
 
   # Systems Manager Parameter for Redis Password (Option 1 - simpler than Secrets Manager)
   RedisPasswordParameter:

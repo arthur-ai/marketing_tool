@@ -26,6 +26,14 @@ on:
         required: false
         type: string
         default: 'latest'
+      frontend_docker_registry_username:
+        description: 'Docker registry username (optional - uses secret if not provided)'
+        required: false
+        type: string
+      frontend_docker_registry_password:
+        description: 'Docker registry password (optional - uses secret if not provided)'
+        required: false
+        type: string
   push:
     branches:
       - main
@@ -191,6 +199,8 @@ jobs:
           EXISTING_S3_BUCKET_NAME: ${{ secrets.EXISTING_S3_BUCKET_NAME }}
           FRONTEND_CONTAINER_IMAGE: ${{ github.event.inputs.frontend_image || secrets.FRONTEND_CONTAINER_IMAGE || 'docker.arthur.ai/arthur/marketing-tool/marketing-frontend' }}
           FRONTEND_DEPLOY_VERSION: ${{ github.event.inputs.frontend_version || 'latest' }}
+          FRONTEND_DOCKER_REGISTRY_USERNAME: ${{ github.event.inputs.frontend_docker_registry_username || secrets.FRONTEND_DOCKER_REGISTRY_USERNAME }}
+          FRONTEND_DOCKER_REGISTRY_PASSWORD: ${{ github.event.inputs.frontend_docker_registry_password || secrets.FRONTEND_DOCKER_REGISTRY_PASSWORD }}
         run: |
           cd deploy/aws
           chmod +x deploy.sh
@@ -234,6 +244,11 @@ jobs:
           if [ -n "$FRONTEND_CONTAINER_IMAGE" ]; then
             DEPLOY_CMD="$DEPLOY_CMD --frontend-image $FRONTEND_CONTAINER_IMAGE"
             DEPLOY_CMD="$DEPLOY_CMD --frontend-version $FRONTEND_DEPLOY_VERSION"
+            # Docker registry credentials are required when deploying frontend
+            if [ -n "$FRONTEND_DOCKER_REGISTRY_USERNAME" ] && [ -n "$FRONTEND_DOCKER_REGISTRY_PASSWORD" ]; then
+              DEPLOY_CMD="$DEPLOY_CMD --frontend-docker-registry-username $FRONTEND_DOCKER_REGISTRY_USERNAME"
+              DEPLOY_CMD="$DEPLOY_CMD --frontend-docker-registry-password $FRONTEND_DOCKER_REGISTRY_PASSWORD"
+            fi
           fi
 
           # Execute deployment

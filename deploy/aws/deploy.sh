@@ -30,6 +30,8 @@ EXISTING_REDIS_ENDPOINT=""
 EXISTING_S3_BUCKET_NAME=""
 FRONTEND_CONTAINER_IMAGE=""
 FRONTEND_DEPLOY_VERSION="latest"
+FRONTEND_DOCKER_REGISTRY_USERNAME=""
+FRONTEND_DOCKER_REGISTRY_PASSWORD=""
 DRY_RUN=false
 FORCE_UPDATE=false
 
@@ -78,6 +80,9 @@ OPTIONS:
     --existing-s3-bucket-name NAME         Existing S3 bucket name (optional)
     --frontend-image URI                   Frontend Docker image URI from ECR (optional - e.g., 123456789.dkr.ecr.us-east-1.amazonaws.com/marketing-frontend:latest)
     --frontend-version VERSION            Frontend Docker image version/tag (optional - default: latest)
+    --frontend-backend-api-url URL        Backend API URL for frontend (optional - auto-inferred as https://DomainName/api if not provided)
+    --frontend-docker-registry-username USERNAME Docker registry username (required when deploying frontend)
+    --frontend-docker-registry-password PASSWORD Docker registry password (required when deploying frontend)
     -f, --force               Force update even if no changes detected
     --dry-run                 Show what would be deployed without actually deploying
     -h, --help                Show this help message
@@ -185,6 +190,18 @@ while [[ $# -gt 0 ]]; do
             ;;
         --frontend-version)
             FRONTEND_DEPLOY_VERSION="$2"
+            shift 2
+            ;;
+        --frontend-backend-api-url)
+            FRONTEND_BACKEND_API_URL="$2"
+            shift 2
+            ;;
+        --frontend-docker-registry-username)
+            FRONTEND_DOCKER_REGISTRY_USERNAME="$2"
+            shift 2
+            ;;
+        --frontend-docker-registry-password)
+            FRONTEND_DOCKER_REGISTRY_PASSWORD="$2"
             shift 2
             ;;
         -f|--force)
@@ -381,6 +398,17 @@ fi
 if [[ -n "$FRONTEND_CONTAINER_IMAGE" ]]; then
     PARAMETERS="$PARAMETERS ParameterKey=FrontendContainerImage,ParameterValue=$FRONTEND_CONTAINER_IMAGE"
     PARAMETERS="$PARAMETERS ParameterKey=FrontendDeployVersion,ParameterValue=$FRONTEND_DEPLOY_VERSION"
+    # API URL is optional - will be auto-inferred from DomainName if not provided
+    if [[ -n "$FRONTEND_BACKEND_API_URL" ]]; then
+        PARAMETERS="$PARAMETERS ParameterKey=FrontendBackendApiUrl,ParameterValue=$FRONTEND_BACKEND_API_URL"
+    fi
+    # Docker registry credentials - always required for docker.arthur.ai
+    if [[ -z "$FRONTEND_DOCKER_REGISTRY_USERNAME" ]] || [[ -z "$FRONTEND_DOCKER_REGISTRY_PASSWORD" ]]; then
+        print_error "Frontend Docker registry username and password are required when deploying frontend"
+        exit 1
+    fi
+    PARAMETERS="$PARAMETERS ParameterKey=FrontendDockerRegistryUsername,ParameterValue=$FRONTEND_DOCKER_REGISTRY_USERNAME"
+    PARAMETERS="$PARAMETERS ParameterKey=FrontendDockerRegistryPassword,ParameterValue=$FRONTEND_DOCKER_REGISTRY_PASSWORD"
 fi
 
 # Validate CloudFormation template
