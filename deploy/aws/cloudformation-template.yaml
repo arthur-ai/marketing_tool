@@ -58,8 +58,8 @@ Metadata:
 Parameters:
   Environment:
     Type: String
-    Default: production
-    AllowedValues: [development, staging, production]
+    Default: prod
+    AllowedValues: [dev, stag, prod]
     Description: Environment name
 
   ProjectName:
@@ -669,7 +669,7 @@ Resources:
   FrontendALBTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
-      Name: !Sub '${ProjectName}-${Environment}-frontend-tg'
+      Name: !Sub '${ProjectName}-${Environment}-frontend'
       Port: 3000
       Protocol: HTTP
       VpcId: !Ref ExistingVpcId

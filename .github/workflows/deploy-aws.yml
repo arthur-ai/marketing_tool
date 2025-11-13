@@ -8,10 +8,10 @@ on:
         required: true
         type: choice
         options:
-          - development
-          - staging
-          - production
-        default: 'production'
+          - dev
+          - stag
+          - prod
+        default: 'prod'
       region:
         description: 'AWS region'
         required: false
