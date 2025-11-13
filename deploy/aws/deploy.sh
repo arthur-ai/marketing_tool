@@ -28,6 +28,9 @@ EXISTING_DATABASE_ENDPOINT=""
 EXISTING_DATABASE_NAME=""
 EXISTING_REDIS_ENDPOINT=""
 EXISTING_S3_BUCKET_NAME=""
+FRONTEND_CONTAINER_IMAGE=""
+FRONTEND_DEPLOY_VERSION="latest"
+FRONTEND_BACKEND_API_URL=""
 DRY_RUN=false
 FORCE_UPDATE=false
 
@@ -61,7 +64,7 @@ OPTIONS:
     -r, --region REGION       AWS region [default: us-east-2]
     -s, --stack-name NAME     CloudFormation stack name [default: marketing-tool-ENV]
     -v, --deploy-version VER  Deploy version to force new resources [default: v1]
-    -d, --domain DOMAIN       Domain name for the application (optional)
+    -d, --domain DOMAIN       Domain name for the application (required). Frontend: DomainName, API: DomainName/api/*
     -c, --certificate ARN     ACM certificate ARN for HTTPS (optional)
     --existing-vpc-id ID           Existing VPC ID (required)
     --existing-public-subnet-1 ID   Existing public subnet 1 ID (required)
@@ -74,6 +77,9 @@ OPTIONS:
     --existing-database-name NAME          Database name (optional - default: marketing_tool_main)
     --existing-redis-endpoint ENDPOINT     Existing Redis endpoint (optional)
     --existing-s3-bucket-name NAME         Existing S3 bucket name (optional)
+    --frontend-image URI                   Frontend Docker image URI from ECR (optional - e.g., 123456789.dkr.ecr.us-east-1.amazonaws.com/marketing-frontend:latest)
+    --frontend-version VERSION            Frontend Docker image version/tag (optional - default: latest)
+    --frontend-backend-api-url URL        Backend API URL for frontend (optional - auto-inferred as https://DomainName/api if not provided)
     -f, --force               Force update even if no changes detected
     --dry-run                 Show what would be deployed without actually deploying
     -h, --help                Show this help message
@@ -173,6 +179,18 @@ while [[ $# -gt 0 ]]; do
             ;;
         --existing-s3-bucket-name)
             EXISTING_S3_BUCKET_NAME="$2"
+            shift 2
+            ;;
+        --frontend-image)
+            FRONTEND_CONTAINER_IMAGE="$2"
+            shift 2
+            ;;
+        --frontend-version)
+            FRONTEND_DEPLOY_VERSION="$2"
+            shift 2
+            ;;
+        --frontend-backend-api-url)
+            FRONTEND_BACKEND_API_URL="$2"
             shift 2
             ;;
         -f|--force)
@@ -303,6 +321,8 @@ echo "  Stack Name: $STACK_NAME"
 echo "  Region: $REGION"
 echo "  VPC ID: $EXISTING_VPC_ID"
 echo "  Domain: ${DOMAIN_NAME:-'Not specified'}"
+echo "  Frontend: ${DOMAIN_NAME:-'N/A'}"
+echo "  API: ${DOMAIN_NAME:-'N/A'}/api/*"
 echo "  Certificate: ${CERTIFICATE_ARN:-'Not specified'}"
 echo "  Existing Database: ${EXISTING_DATABASE_ENDPOINT:-'Will create new'}"
 if [[ -n "$EXISTING_DATABASE_ENDPOINT" ]]; then
@@ -310,6 +330,15 @@ if [[ -n "$EXISTING_DATABASE_ENDPOINT" ]]; then
 fi
 echo "  Existing Redis: ${EXISTING_REDIS_ENDPOINT:-'Will create new'}"
 echo "  Existing S3 Bucket: ${EXISTING_S3_BUCKET_NAME:-'Will create new'}"
+echo "  Frontend Image: ${FRONTEND_CONTAINER_IMAGE:-'Not deploying frontend'}"
+if [[ -n "$FRONTEND_CONTAINER_IMAGE" ]]; then
+    echo "  Frontend Version: ${FRONTEND_DEPLOY_VERSION}"
+    if [[ -n "$FRONTEND_BACKEND_API_URL" ]]; then
+        echo "  Frontend Backend API URL: $FRONTEND_BACKEND_API_URL"
+    else
+        echo "  Frontend Backend API URL: Auto-inferred as https://${DOMAIN_NAME:-'N/A'}/api"
+    fi
+fi
 echo "  Dry Run: $DRY_RUN"
 echo ""
 
@@ -356,6 +385,16 @@ fi
 
 if [[ -n "$EXISTING_S3_BUCKET_NAME" ]]; then
     PARAMETERS="$PARAMETERS ParameterKey=ExistingS3BucketName,ParameterValue=$EXISTING_S3_BUCKET_NAME"
+fi
+
+# Frontend parameters
+if [[ -n "$FRONTEND_CONTAINER_IMAGE" ]]; then
+    PARAMETERS="$PARAMETERS ParameterKey=FrontendContainerImage,ParameterValue=$FRONTEND_CONTAINER_IMAGE"
+    PARAMETERS="$PARAMETERS ParameterKey=FrontendDeployVersion,ParameterValue=$FRONTEND_DEPLOY_VERSION"
+    # API URL is optional - will be auto-inferred from DomainName if not provided
+    if [[ -n "$FRONTEND_BACKEND_API_URL" ]]; then
+        PARAMETERS="$PARAMETERS ParameterKey=FrontendBackendApiUrl,ParameterValue=$FRONTEND_BACKEND_API_URL"
+    fi
 fi
 
 # Validate CloudFormation template

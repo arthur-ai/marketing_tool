@@ -140,7 +140,7 @@ Parameters:
 
   DomainName:
     Type: String
-    Description: Domain name for the application (required)
+    Description: Domain name for the application (required). Frontend will be at this domain, API will be at DomainName/api/*
 
   HostedZoneId:
     Type: String
@@ -210,6 +210,55 @@ Parameters:
     Default: latest
     Description: Docker image version/tag to deploy (e.g., latest, v1.0.0, commit-hash)
 
+  # Frontend Configuration
+  FrontendContainerImage:
+    Type: String
+    Default: 'docker.arthur.ai/arthur/marketing-tool/marketing-frontend'
+    Description: Frontend Docker image base URI without tag (e.g., docker.arthur.ai/arthur/marketing-tool/marketing-frontend or 123456789.dkr.ecr.us-east-1.amazonaws.com/marketing-frontend). The version will be appended automatically. Defaults to Nexus repository.
+
+  FrontendDeployVersion:
+    Type: String
+    Default: latest
+    Description: Frontend Docker image version/tag (e.g., latest, v1.0.0, commit-hash)
+
+  FrontendBackendApiUrl:
+    Type: String
+    Default: ''
+    Description: Backend API URL for frontend environment variable (optional). If not provided and FrontendContainerImage is set, will be auto-inferred as https://DomainName/api
+
+  FrontendTaskCPU:
+    Type: String
+    Default: '512'
+    AllowedValues: ['256', '512', '1024', '2048', '4096']
+    Description: CPU units for frontend task
+
+  FrontendTaskMemory:
+    Type: String
+    Default: '1024'
+    AllowedValues: ['512', '1024', '2048', '4096', '8192']
+    Description: Memory for frontend task in MB
+
+  FrontendDesiredCount:
+    Type: Number
+    Default: 2
+    MinValue: 1
+    MaxValue: 10
+    Description: Desired number of frontend ECS tasks
+
+  FrontendMinCapacity:
+    Type: Number
+    Default: 1
+    MinValue: 1
+    MaxValue: 10
+    Description: Minimum number of frontend ECS tasks for auto-scaling
+
+  FrontendMaxCapacity:
+    Type: Number
+    Default: 10
+    MinValue: 1
+    MaxValue: 50
+    Description: Maximum number of frontend ECS tasks for auto-scaling
+
 Conditions:
   HasCertificate: !Not [!Equals [!Ref CertificateArn, '']]
   IsProduction: !Equals [!Ref Environment, 'production']
@@ -217,6 +266,7 @@ Conditions:
   UseExistingRedis: !Not [!Equals [!Ref ExistingRedisEndpoint, '']]
   CreateNewRedis: !Equals [!Ref ExistingRedisEndpoint, '']
   UseS3Bucket: !Not [!Equals [!Ref ExistingS3BucketName, '']]
+  DeployFrontend: !Not [!Equals [!Ref FrontendContainerImage, '']]
 
 Resources:
   # Note: Using existing VPC and subnets - no networking resources created
@@ -456,6 +506,81 @@ Resources:
     # Note: During stack deletion, ECS service will automatically scale down tasks
     # Network interfaces will be released once all tasks are stopped
 
+  # Frontend ECS Task Definition
+  FrontendECSTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Condition: DeployFrontend
+    Properties:
+      Family: !Sub '${ProjectName}-${Environment}-frontend-task'
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: !Ref FrontendTaskCPU
+      Memory: !Ref FrontendTaskMemory
+      ExecutionRoleArn: !Ref ECSTaskExecutionRole
+      TaskRoleArn: !Ref ECSTaskRole
+      ContainerDefinitions:
+        - Name: marketing-frontend
+          Image: !Sub '${FrontendContainerImage}:${FrontendDeployVersion}'
+          PortMappings:
+            - ContainerPort: 3000
+              Protocol: tcp
+          Environment:
+            - Name: NODE_ENV
+              Value: !Ref Environment
+            - Name: NEXT_PUBLIC_BACKEND_API_BASE_URL
+              Value: !If
+                - !Not [!Equals [!Ref FrontendBackendApiUrl, '']]
+                - !Ref FrontendBackendApiUrl
+                - !Sub 'https://${DomainName}/api'
+            - Name: NEXT_PUBLIC_BACKEND_WEBSOCKET_URL
+              Value: !Sub 'wss://${DomainName}/api'
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref CloudWatchLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: frontend
+          HealthCheck:
+            Command:
+              - CMD-SHELL
+              - 'curl -f http://localhost:3000/ || exit 1'
+            Interval: 30
+            Timeout: 5
+            Retries: 3
+            StartPeriod: 60
+          Essential: true
+          StopTimeout: 30
+
+  # Frontend ECS Service
+  FrontendECSService:
+    Type: AWS::ECS::Service
+    Condition: DeployFrontend
+    DependsOn: ALBListener
+    Properties:
+      ServiceName: !Sub '${ProjectName}-${Environment}-frontend-service'
+      Cluster: !Ref ECSCluster
+      TaskDefinition: !Ref FrontendECSTaskDefinition
+      DesiredCount: !Ref FrontendDesiredCount
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - !Ref ECSSecurityGroup
+          Subnets:
+            - !Ref ExistingPublicSubnet1Id
+            - !Ref ExistingPublicSubnet2Id
+            - !Ref ExistingPublicSubnet3Id
+      LoadBalancers:
+        - ContainerName: marketing-frontend
+          ContainerPort: 3000
+          TargetGroupArn: !Ref FrontendALBTargetGroup
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      HealthCheckGracePeriodSeconds: 60
+
   # Auto Scaling Role
   AutoScalingRole:
     Type: AWS::IAM::Role
@@ -551,6 +676,29 @@ Resources:
         - Key: Name
           Value: !Sub '${ProjectName}-${Environment}-tg'
 
+  # Frontend Target Group
+  FrontendALBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Condition: DeployFrontend
+    Properties:
+      Name: !Sub '${ProjectName}-${Environment}-frontend-tg'
+      Port: 3000
+      Protocol: HTTP
+      VpcId: !Ref ExistingVpcId
+      TargetType: ip
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 10
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 5
+      Matcher:
+        HttpCode: '200'
+      HealthCheckEnabled: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-frontend-tg'
+
   ALBListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
@@ -565,11 +713,30 @@ Resources:
               Path: '/#{path}'
               Query: '#{query}'
               StatusCode: HTTP_301
-          - Type: forward
-            TargetGroupArn: !Ref ALBTargetGroup
+          - !If
+            - DeployFrontend
+            - Type: forward
+              TargetGroupArn: !Ref FrontendALBTargetGroup
+            - Type: forward
+              TargetGroupArn: !Ref ALBTargetGroup
       LoadBalancerArn: !Ref ALB
       Port: 80
       Protocol: HTTP
+
+  # Listener Rule for API routes (when frontend is deployed - path-based routing)
+  ALBListenerRuleAPI:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Condition: DeployFrontend
+    Properties:
+      ListenerArn: !Ref ALBListener
+      Priority: 100
+      Conditions:
+        - Field: path-pattern
+          Values:
+            - '/api/*'
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref ALBTargetGroup
 
   # HTTPS Listener (if certificate provided)
   ALBHTTPSListener:
@@ -577,14 +744,76 @@ Resources:
     Condition: HasCertificate
     Properties:
       DefaultActions:
-        - Type: forward
-          TargetGroupArn: !Ref ALBTargetGroup
+        - !If
+          - DeployFrontend
+          - Type: forward
+            TargetGroupArn: !Ref FrontendALBTargetGroup
+          - Type: forward
+            TargetGroupArn: !Ref ALBTargetGroup
       LoadBalancerArn: !Ref ALB
       Port: 443
       Protocol: HTTPS
       Certificates:
         - CertificateArn: !Ref CertificateArn
       SslPolicy: ELBSecurityPolicy-TLS13-1-2-2021-06
+
+  # HTTPS Listener Rule for API routes (when frontend is deployed - path-based routing)
+  ALBHTTPSListenerRuleAPI:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Condition: DeployFrontend
+    Properties:
+      ListenerArn: !Ref ALBHTTPSListener
+      Priority: 100
+      Conditions:
+        - Field: path-pattern
+          Values:
+            - '/api/*'
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref ALBTargetGroup
+
+  # Frontend Auto Scaling Target
+  FrontendECSServiceAutoScalingTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Condition: DeployFrontend
+    DependsOn: FrontendECSService
+    Properties:
+      MaxCapacity: !Ref FrontendMaxCapacity
+      MinCapacity: !Ref FrontendMinCapacity
+      ResourceId: !Sub 'service/${ProjectName}-${Environment}-cluster/${ProjectName}-${Environment}-frontend-service'
+      RoleARN: !GetAtt AutoScalingRole.Arn
+      ScalableDimension: ecs:service:DesiredCount
+      ServiceNamespace: ecs
+
+  # Frontend Auto Scaling Policy - CPU
+  FrontendECSServiceScalingPolicyCPU:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Condition: DeployFrontend
+    Properties:
+      PolicyName: !Sub '${ProjectName}-${Environment}-frontend-cpu-scaling'
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref FrontendECSServiceAutoScalingTarget
+      TargetTrackingScalingPolicyConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ECSServiceAverageCPUUtilization
+        TargetValue: !Ref TargetCPUUtilization
+        ScaleInCooldown: 300
+        ScaleOutCooldown: 60
+
+  # Frontend Auto Scaling Policy - Memory
+  FrontendECSServiceScalingPolicyMemory:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Condition: DeployFrontend
+    Properties:
+      PolicyName: !Sub '${ProjectName}-${Environment}-frontend-memory-scaling'
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref FrontendECSServiceAutoScalingTarget
+      TargetTrackingScalingPolicyConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ECSServiceAverageMemoryUtilization
+        TargetValue: !Ref TargetMemoryUtilization
+        ScaleInCooldown: 300
+        ScaleOutCooldown: 60
 
   # IAM Roles
   ECSTaskExecutionRole:
@@ -795,3 +1024,23 @@ Outputs:
     Value: !Ref ExistingS3BucketName
     Export:
       Name: !Sub '${ProjectName}-${Environment}-S3-Bucket'
+
+  FrontendServiceName:
+    Description: Frontend ECS Service Name
+    Condition: DeployFrontend
+    Value: !Ref FrontendECSService
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-Frontend-Service'
+
+  FrontendTaskDefinition:
+    Description: Frontend ECS Task Definition ARN
+    Condition: DeployFrontend
+    Value: !Ref FrontendECSTaskDefinition
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-Frontend-Task-Definition'
+
+  ApiURL:
+    Description: API URL (path-based routing)
+    Value: !Sub 'https://${DomainName}/api'
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-API-URL'

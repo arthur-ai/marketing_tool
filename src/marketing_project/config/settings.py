@@ -6,6 +6,13 @@ This module provides centralized configuration to avoid circular imports.
 
 import os
 
+# Load environment variables from .env file (must be first)
+from dotenv import find_dotenv, load_dotenv
+
+dotenv_path = find_dotenv()
+if dotenv_path:
+    load_dotenv(dotenv_path=dotenv_path, override=True)
+
 import yaml
 
 

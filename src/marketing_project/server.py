@@ -44,6 +44,7 @@ from marketing_project.api import content
 from .api import api_router
 
 # Load config from centralized settings (MUST be before API imports to avoid circular dependency)
+# This also loads .env file via config/settings.py
 from .config.settings import PIPELINE_SPEC, PROMPTS_DIR, TEMPLATE_VERSION
 
 # Import middleware
@@ -226,7 +227,18 @@ app.add_middleware(
 )
 
 # 4. CORS middleware
-setup_cors(app)
+# Read CORS configuration from environment variables
+cors_origins_env = os.getenv("CORS_ORIGINS")
+cors_origins = None
+if cors_origins_env:
+    cors_origins = [
+        origin.strip() for origin in cors_origins_env.split(",") if origin.strip()
+    ]
+
+cors_allow_credentials_env = os.getenv("CORS_ALLOW_CREDENTIALS", "true")
+cors_allow_credentials = cors_allow_credentials_env.lower() in ("true", "1", "yes")
+
+setup_cors(app, allowed_origins=cors_origins, allow_credentials=cors_allow_credentials)
 
 # 5. Trusted host middleware (outermost) - with health check bypass
 app.add_middleware(

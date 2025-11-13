@@ -16,6 +16,20 @@ on:
         description: 'AWS region'
         required: false
         default: 'us-east-2'
+      frontend_image:
+        description: 'Frontend Docker image URI (optional - defaults to docker.arthur.ai/arthur/marketing-tool/marketing-frontend)'
+        required: false
+        type: string
+        default: 'docker.arthur.ai/arthur/marketing-tool/marketing-frontend'
+      frontend_version:
+        description: 'Frontend Docker image version/tag (optional - default: latest)'
+        required: false
+        type: string
+        default: 'latest'
+      frontend_backend_api_url:
+        description: 'Backend API URL for frontend (optional - auto-inferred as https://DomainName/api if not provided)'
+        required: false
+        type: string
   push:
     branches:
       - main
@@ -179,6 +193,9 @@ jobs:
           EXISTING_DATABASE_NAME: ${{ secrets.EXISTING_DATABASE_NAME }}
           EXISTING_REDIS_ENDPOINT: ${{ secrets.EXISTING_REDIS_ENDPOINT }}
           EXISTING_S3_BUCKET_NAME: ${{ secrets.EXISTING_S3_BUCKET_NAME }}
+          FRONTEND_CONTAINER_IMAGE: ${{ github.event.inputs.frontend_image || secrets.FRONTEND_CONTAINER_IMAGE || 'docker.arthur.ai/arthur/marketing-tool/marketing-frontend' }}
+          FRONTEND_DEPLOY_VERSION: ${{ github.event.inputs.frontend_version || 'latest' }}
+          FRONTEND_BACKEND_API_URL: ${{ github.event.inputs.frontend_backend_api_url || secrets.FRONTEND_BACKEND_API_URL }}
         run: |
           cd deploy/aws
           chmod +x deploy.sh
@@ -218,6 +235,16 @@ jobs:
             DEPLOY_CMD="$DEPLOY_CMD --existing-s3-bucket-name $EXISTING_S3_BUCKET_NAME"
           fi
 
+          # Add frontend parameters if provided
+          if [ -n "$FRONTEND_CONTAINER_IMAGE" ]; then
+            DEPLOY_CMD="$DEPLOY_CMD --frontend-image $FRONTEND_CONTAINER_IMAGE"
+            DEPLOY_CMD="$DEPLOY_CMD --frontend-version $FRONTEND_DEPLOY_VERSION"
+            # API URL is optional - will be auto-inferred from DomainName if not provided
+            if [ -n "$FRONTEND_BACKEND_API_URL" ]; then
+              DEPLOY_CMD="$DEPLOY_CMD --frontend-backend-api-url $FRONTEND_BACKEND_API_URL"
+            fi
+          fi
+
           # Execute deployment
           eval $DEPLOY_CMD
 
@@ -238,6 +265,30 @@ jobs:
             --cluster $CLUSTER_NAME \
             --services $SERVICE_NAME \
             --region ${{ env.AWS_REGION }}
+
+      - name: Update Frontend ECS service
+        env:
+          FRONTEND_CONTAINER_IMAGE: ${{ github.event.inputs.frontend_image || secrets.FRONTEND_CONTAINER_IMAGE || 'docker.arthur.ai/arthur/marketing-tool/marketing-frontend' }}
+        run: |
+          if [ -z "$FRONTEND_CONTAINER_IMAGE" ]; then
+            echo "Skipping frontend service update - no frontend image provided"
+            exit 0
+          fi
+          CLUSTER_NAME="${{ env.PROJECT_NAME }}-${{ env.ENVIRONMENT }}-cluster"
+          FRONTEND_SERVICE_NAME="${{ env.PROJECT_NAME }}-${{ env.ENVIRONMENT }}-frontend-service"
+
+          echo "Updating Frontend ECS service: $FRONTEND_SERVICE_NAME in cluster: $CLUSTER_NAME"
+          aws ecs update-service \
+            --cluster $CLUSTER_NAME \
+            --service $FRONTEND_SERVICE_NAME \
+            --force-new-deployment \
+            --region ${{ env.AWS_REGION }} || echo "Frontend service update skipped (may not exist yet)"
+
+          echo "Waiting for frontend service to stabilize..."
+          aws ecs wait services-stable \
+            --cluster $CLUSTER_NAME \
+            --services $FRONTEND_SERVICE_NAME \
+            --region ${{ env.AWS_REGION }} || echo "Frontend service stabilization check skipped"
 
       - name: Get deployment info
         id: deployment-info
@@ -289,6 +340,8 @@ jobs:
 
       - name: Create deployment summary
         if: always()
+        env:
+          FRONTEND_CONTAINER_IMAGE: ${{ github.event.inputs.frontend_image || secrets.FRONTEND_CONTAINER_IMAGE || 'docker.arthur.ai/arthur/marketing-tool/marketing-frontend' }}
         run: |
           cat >> $GITHUB_STEP_SUMMARY << EOF
           ## 🚀 AWS Deployment Summary
@@ -298,14 +351,27 @@ jobs:
           **Stack:** ${{ env.PROJECT_NAME }}-${{ env.ENVIRONMENT }}
 
           ### 📦 Deployment Details
-          - **Image Tags:** \`${{ steps.meta.outputs.tags }}\`
+          - **Backend Image Tags:** \`${{ steps.meta.outputs.tags }}\`
           - **ECR Repository:** \`${{ steps.deployment-info.outputs.ecr_uri }}\`
           - **Application URL:** ${{ steps.deployment-info.outputs.alb_url }}
+          - **API URL:** ${{ steps.deployment-info.outputs.alb_url }}/api
+          EOF
+
+          if [ -n "$FRONTEND_CONTAINER_IMAGE" ]; then
+            cat >> $GITHUB_STEP_SUMMARY << EOF
+
+          ### 🎨 Frontend Deployment
+          - **Frontend Image:** \`$FRONTEND_CONTAINER_IMAGE\`
+          - **Frontend URL:** ${{ steps.deployment-info.outputs.alb_url }}
+          EOF
+          fi
+
+          cat >> $GITHUB_STEP_SUMMARY << EOF
 
           ### 🔗 Quick Links
           - [CloudFormation Console](https://console.aws.amazon.com/cloudformation/home?region=${{ env.AWS_REGION }}#/stacks)
           - [ECS Console](https://console.aws.amazon.com/ecs/home?region=${{ env.AWS_REGION }}#/clusters)
-          - [Application](http://${{ steps.deployment-info.outputs.alb_url }})
+          - [Application](https://${{ steps.deployment-info.outputs.alb_url }})
           EOF
 
       - name: Notify on failure

@@ -19,7 +19,7 @@ def client():
     from fastapi import FastAPI
 
     app = FastAPI()
-    app.include_router(router)
+    app.include_router(router, prefix="/api/v1")
     return TestClient(app)
 
 
@@ -257,10 +257,10 @@ class TestStepResultsAPI:
                 "marketing_project.api.step_results.get_step_result_manager"
             ) as mock_step_manager,
             patch(
-                "marketing_project.api.step_results.get_job_manager"
+                "marketing_project.services.job_manager.get_job_manager"
             ) as mock_job_manager,
             patch(
-                "marketing_project.api.step_results.get_approval_manager"
+                "marketing_project.services.approval_manager.get_approval_manager"
             ) as mock_approval_manager,
         ):
             mock_job_manager_instance = AsyncMock()

@@ -66,8 +66,11 @@ class TestAnalyticsService:
         cached_data = {
             "total_content": 100,
             "total_jobs": 50,
-            "jobs_by_status": {"completed": 40},
-            "success_rate": 80.0,
+            "jobs_completed": 40,
+            "jobs_processing": 5,
+            "jobs_failed": 5,
+            "jobs_queued": 0,
+            "success_rate": 0.8,  # 80% as decimal (0-1)
         }
 
         with patch.object(analytics_service, "_get_cached") as mock_get_cache:
@@ -121,7 +124,7 @@ class TestAnalyticsService:
 
             activity = await analytics_service.get_recent_activity(days=7)
             assert isinstance(activity, RecentActivity)
-            assert activity.days == 7
+            assert activity.total == 0  # RecentActivity doesn't have days attribute
 
     async def test_get_trends_success(self, analytics_service):
         """Test successful trends retrieval."""

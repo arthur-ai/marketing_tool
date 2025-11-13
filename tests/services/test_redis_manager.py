@@ -330,6 +330,12 @@ class TestCloudWatchMetrics:
     )
     async def test_publish_metrics_when_enabled(self):
         """Test that metrics are published when CloudWatch is enabled."""
+        # Skip test if boto3 is not available
+        try:
+            import boto3
+        except ImportError:
+            pytest.skip("boto3 not available")
+
         # Patch boto3.client at the global level where it's used
         with patch("boto3.client") as mock_boto3_client:
             mock_client = MagicMock()

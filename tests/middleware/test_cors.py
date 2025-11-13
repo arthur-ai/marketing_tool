@@ -16,9 +16,8 @@ def test_setup_cors_default_origins():
     setup_cors(app)
 
     # Check that CORS middleware is added
-    assert any(
-        isinstance(middleware, CORSMiddleware) for middleware in app.user_middleware
-    )
+    # FastAPI stores middleware as Middleware objects with cls attribute
+    assert any(middleware.cls == CORSMiddleware for middleware in app.user_middleware)
 
 
 def test_setup_cors_custom_origins():
@@ -28,9 +27,8 @@ def test_setup_cors_custom_origins():
     setup_cors(app, allowed_origins=custom_origins)
 
     # Check that CORS middleware is added
-    assert any(
-        isinstance(middleware, CORSMiddleware) for middleware in app.user_middleware
-    )
+    # FastAPI stores middleware as Middleware objects with cls attribute
+    assert any(middleware.cls == CORSMiddleware for middleware in app.user_middleware)
 
 
 def test_setup_cors_with_credentials():
@@ -39,9 +37,8 @@ def test_setup_cors_with_credentials():
     setup_cors(app, allow_credentials=True)
 
     # Check that CORS middleware is added
-    assert any(
-        isinstance(middleware, CORSMiddleware) for middleware in app.user_middleware
-    )
+    # FastAPI stores middleware as Middleware objects with cls attribute
+    assert any(middleware.cls == CORSMiddleware for middleware in app.user_middleware)
 
 
 def test_cors_preflight_request():

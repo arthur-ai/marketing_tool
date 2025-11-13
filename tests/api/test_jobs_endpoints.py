@@ -18,7 +18,7 @@ def client():
     from fastapi import FastAPI
 
     app = FastAPI()
-    app.include_router(router)
+    app.include_router(router, prefix="/api/v1/jobs")
     return TestClient(app)
 
 

@@ -23,7 +23,7 @@ def client():
     from fastapi import FastAPI
 
     app = FastAPI()
-    app.include_router(router)
+    app.include_router(router, prefix="/api/v1/analytics")
     return TestClient(app)
 
 
@@ -41,9 +41,11 @@ class TestAnalyticsAPI:
             mock_stats = DashboardStats(
                 total_content=100,
                 total_jobs=50,
-                jobs_by_status={"completed": 40, "failed": 5, "processing": 5},
-                success_rate=80.0,
-                change_indicators={"jobs": "+10%", "success_rate": "+5%"},
+                jobs_completed=40,
+                jobs_processing=5,
+                jobs_failed=5,
+                jobs_queued=0,
+                success_rate=0.8,  # 80% as decimal (0-1)
             )
             mock_service_instance.get_dashboard_stats = AsyncMock(
                 return_value=mock_stats
@@ -54,7 +56,7 @@ class TestAnalyticsAPI:
             data = response.json()
             assert data["total_content"] == 100
             assert data["total_jobs"] == 50
-            assert data["success_rate"] == 80.0
+            assert data["success_rate"] == 0.8
 
     def test_get_dashboard_analytics_error(self, client):
         """Test dashboard analytics error handling."""
@@ -81,14 +83,12 @@ class TestAnalyticsAPI:
 
             mock_stats = PipelineStats(
                 total_runs=100,
-                runs_by_status={
-                    "completed": 80,
-                    "in_progress": 10,
-                    "failed": 5,
-                    "queued": 5,
-                },
-                average_duration=120.5,
-                success_rate=80.0,
+                completed=80,
+                in_progress=10,
+                failed=5,
+                queued=5,
+                avg_duration_seconds=120.5,
+                success_rate=0.8,  # 80% as decimal (0-1)
             )
             mock_service_instance.get_pipeline_stats = AsyncMock(
                 return_value=mock_stats
@@ -98,7 +98,7 @@ class TestAnalyticsAPI:
             assert response.status_code == 200
             data = response.json()
             assert data["total_runs"] == 100
-            assert data["average_duration"] == 120.5
+            assert data["avg_duration_seconds"] == 120.5
 
     def test_get_pipeline_analytics_error(self, client):
         """Test pipeline analytics error handling."""
@@ -122,9 +122,19 @@ class TestAnalyticsAPI:
             mock_service_instance = AsyncMock()
             mock_service.return_value = mock_service_instance
 
+            from marketing_project.models.analytics_models import ContentSourceStats
+
             mock_stats = ContentStats(
-                total_items=200,
-                items_by_source={"file": 100, "api": 50, "database": 50},
+                total_content=200,
+                by_source=[
+                    ContentSourceStats(
+                        source_name="file", total_items=100, active=True
+                    ),
+                    ContentSourceStats(source_name="api", total_items=50, active=True),
+                    ContentSourceStats(
+                        source_name="database", total_items=50, active=True
+                    ),
+                ],
                 active_sources=3,
             )
             mock_service_instance.get_content_stats = AsyncMock(return_value=mock_stats)
@@ -132,7 +142,7 @@ class TestAnalyticsAPI:
             response = client.get("/api/v1/analytics/content")
             assert response.status_code == 200
             data = response.json()
-            assert data["total_items"] == 200
+            assert data["total_content"] == 200
             assert data["active_sources"] == 3
 
     def test_get_content_analytics_error(self, client):
@@ -158,9 +168,8 @@ class TestAnalyticsAPI:
             mock_service.return_value = mock_service_instance
 
             mock_activity = RecentActivity(
-                items=[],
-                total_items=0,
-                days=7,
+                activities=[],
+                total=0,
             )
             mock_service_instance.get_recent_activity = AsyncMock(
                 return_value=mock_activity
@@ -169,7 +178,7 @@ class TestAnalyticsAPI:
             response = client.get("/api/v1/analytics/recent-activity?days=7")
             assert response.status_code == 200
             data = response.json()
-            assert data["days"] == 7
+            assert data["total"] == 0
 
     def test_get_recent_activity_with_custom_days(self, client):
         """Test recent activity with custom days parameter."""
@@ -180,9 +189,8 @@ class TestAnalyticsAPI:
             mock_service.return_value = mock_service_instance
 
             mock_activity = RecentActivity(
-                items=[],
-                total_items=0,
-                days=14,
+                activities=[],
+                total=0,
             )
             mock_service_instance.get_recent_activity = AsyncMock(
                 return_value=mock_activity
@@ -191,7 +199,7 @@ class TestAnalyticsAPI:
             response = client.get("/api/v1/analytics/recent-activity?days=14")
             assert response.status_code == 200
             data = response.json()
-            assert data["days"] == 14
+            assert data["total"] == 0
 
     def test_get_recent_activity_error(self, client):
         """Test recent activity error handling."""
@@ -216,8 +224,10 @@ class TestAnalyticsAPI:
             mock_service.return_value = mock_service_instance
 
             mock_trends = TrendData(
-                days=7,
                 data_points=[],
+                start_date="2024-01-01",
+                end_date="2024-01-07",
+                days=7,
             )
             mock_service_instance.get_trends = AsyncMock(return_value=mock_trends)
 
@@ -235,8 +245,10 @@ class TestAnalyticsAPI:
             mock_service.return_value = mock_service_instance
 
             mock_trends = TrendData(
-                days=30,
                 data_points=[],
+                start_date="2024-01-01",
+                end_date="2024-01-30",
+                days=30,
             )
             mock_service_instance.get_trends = AsyncMock(return_value=mock_trends)
 
