@@ -44,6 +44,13 @@ from .response_models import (
     PipelineResponse,
     RateLimitResponse,
 )
+from .step_models import (
+    StepExecutionRequest,
+    StepExecutionResponse,
+    StepInfo,
+    StepListResponse,
+    StepRequirementsResponse,
+)
 from .validation import validate_api_key_format, validate_content_length
 
 # Re-export everything for backward compatibility
@@ -87,6 +94,12 @@ __all__ = [
     # Auth models
     "APIKeyAuth",
     "TokenResponse",
+    # Step execution models
+    "StepExecutionRequest",
+    "StepExecutionResponse",
+    "StepInfo",
+    "StepListResponse",
+    "StepRequirementsResponse",
     # Validation helpers
     "validate_content_length",
     "validate_api_key_format",
