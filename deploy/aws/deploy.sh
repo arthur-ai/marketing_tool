@@ -13,7 +13,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Default values
-ENVIRONMENT="production"
+ENVIRONMENT="prod"
 PROJECT_NAME="marketing-tool"
 REGION="us-east-2"
 STACK_NAME=""
@@ -58,7 +58,7 @@ Usage: $0 [OPTIONS]
 Deploy Marketing Tool to AWS using CloudFormation
 
 OPTIONS:
-    -e, --environment ENV     Environment (development|staging|production) [default: production]
+    -e, --environment ENV     Environment (dev|stag|prod) [default: prod]
     -n, --project-name NAME   Project name [default: marketing-tool]
     -r, --region REGION       AWS region [default: us-east-2]
     -s, --stack-name NAME     CloudFormation stack name [default: marketing-tool-ENV]
@@ -93,13 +93,13 @@ OPTIONAL ENVIRONMENT VARIABLES:
 
 EXAMPLES:
     # Deploy to production
-    $0 -e production -r us-west-2
+    $0 -e prod -r us-west-2
 
     # Deploy with custom domain
-    $0 -e production -d api.mycompany.com -c arn:aws:acm:us-east-1:123456789012:certificate/12345678-1234-1234-1234-123456789012
+    $0 -e prod -d api.mycompany.com -c arn:aws:acm:us-east-1:123456789012:certificate/12345678-1234-1234-1234-123456789012
 
     # Dry run to see what would be deployed
-    $0 --dry-run -e staging
+    $0 --dry-run -e stag
 
 EOF
 }
@@ -213,8 +213,8 @@ if [[ -z "$STACK_NAME" ]]; then
 fi
 
 # Validate environment
-if [[ ! "$ENVIRONMENT" =~ ^(development|staging|production)$ ]]; then
-    print_error "Invalid environment: $ENVIRONMENT. Must be one of: development, staging, production"
+if [[ ! "$ENVIRONMENT" =~ ^(dev|stag|prod)$ ]]; then
+    print_error "Invalid environment: $ENVIRONMENT. Must be one of: dev, stag, prod"
     exit 1
 fi
 

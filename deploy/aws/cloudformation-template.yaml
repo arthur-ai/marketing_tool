@@ -256,7 +256,7 @@ Parameters:
 
 Conditions:
   HasCertificate: !Not [!Equals [!Ref CertificateArn, '']]
-  IsProduction: !Equals [!Ref Environment, 'production']
+  IsProduction: !Equals [!Ref Environment, 'prod']
   UseExistingMongoDB: !Not [!Equals [!Ref ExistingMongoDBEndpoint, '']]
   UseExistingRedis: !Not [!Equals [!Ref ExistingRedisEndpoint, '']]
   CreateNewRedis: !Equals [!Ref ExistingRedisEndpoint, '']

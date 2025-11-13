@@ -32,7 +32,7 @@ on:
 
 env:
   AWS_REGION: ${{ github.event.inputs.region || 'us-east-2' }}
-  ENVIRONMENT: ${{ github.event.inputs.environment || 'production' }}
+  ENVIRONMENT: ${{ github.event.inputs.environment || 'prod' }}
   PROJECT_NAME: marketing-tool
 
 jobs:
