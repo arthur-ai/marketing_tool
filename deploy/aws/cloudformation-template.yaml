@@ -698,19 +698,18 @@ Resources:
   ALBListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
-      DefaultActions:
-        Fn::If:
-          - HasCertificate
-          - - Type: redirect
-              RedirectConfig:
-                Protocol: HTTPS
-                Port: '443'
-                Host: '#{host}'
-                Path: '/#{path}'
-                Query: '#{query}'
-                StatusCode: HTTP_301
-          - - Type: forward
-              TargetGroupArn: !Ref FrontendALBTargetGroup
+      DefaultActions: !If
+        - HasCertificate
+        - - Type: redirect
+            RedirectConfig:
+              Protocol: HTTPS
+              Port: '443'
+              Host: '#{host}'
+              Path: '/#{path}'
+              Query: '#{query}'
+              StatusCode: HTTP_301
+        - - Type: forward
+            TargetGroupArn: !Ref FrontendALBTargetGroup
       LoadBalancerArn: !Ref ALB
       Port: 80
       Protocol: HTTP
