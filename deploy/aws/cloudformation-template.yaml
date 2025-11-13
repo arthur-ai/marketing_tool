@@ -266,7 +266,6 @@ Conditions:
   UseExistingRedis: !Not [!Equals [!Ref ExistingRedisEndpoint, '']]
   CreateNewRedis: !Equals [!Ref ExistingRedisEndpoint, '']
   UseS3Bucket: !Not [!Equals [!Ref ExistingS3BucketName, '']]
-  DeployFrontend: !Not [!Equals [!Ref FrontendContainerImage, '']]
 
 Resources:
   # Note: Using existing VPC and subnets - no networking resources created
@@ -509,7 +508,6 @@ Resources:
   # Frontend ECS Task Definition
   FrontendECSTaskDefinition:
     Type: AWS::ECS::TaskDefinition
-    Condition: DeployFrontend
     Properties:
       Family: !Sub '${ProjectName}-${Environment}-frontend-task'
       NetworkMode: awsvpc
@@ -555,7 +553,6 @@ Resources:
   # Frontend ECS Service
   FrontendECSService:
     Type: AWS::ECS::Service
-    Condition: DeployFrontend
     DependsOn: ALBListener
     Properties:
       ServiceName: !Sub '${ProjectName}-${Environment}-frontend-service'
@@ -679,7 +676,6 @@ Resources:
   # Frontend Target Group
   FrontendALBTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
-    Condition: DeployFrontend
     Properties:
       Name: !Sub '${ProjectName}-${Environment}-frontend-tg'
       Port: 3000
@@ -703,30 +699,25 @@ Resources:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
       DefaultActions:
-        - !If
+        Fn::If:
           - HasCertificate
-          - Type: redirect
-            RedirectConfig:
-              Protocol: HTTPS
-              Port: '443'
-              Host: '#{host}'
-              Path: '/#{path}'
-              Query: '#{query}'
-              StatusCode: HTTP_301
-          - !If
-            - DeployFrontend
-            - Type: forward
+          - - Type: redirect
+              RedirectConfig:
+                Protocol: HTTPS
+                Port: '443'
+                Host: '#{host}'
+                Path: '/#{path}'
+                Query: '#{query}'
+                StatusCode: HTTP_301
+          - - Type: forward
               TargetGroupArn: !Ref FrontendALBTargetGroup
-            - Type: forward
-              TargetGroupArn: !Ref ALBTargetGroup
       LoadBalancerArn: !Ref ALB
       Port: 80
       Protocol: HTTP
 
-  # Listener Rule for API routes (when frontend is deployed - path-based routing)
+  # Listener Rule for API routes (path-based routing)
   ALBListenerRuleAPI:
     Type: AWS::ElasticLoadBalancingV2::ListenerRule
-    Condition: DeployFrontend
     Properties:
       ListenerArn: !Ref ALBListener
       Priority: 100
@@ -744,12 +735,8 @@ Resources:
     Condition: HasCertificate
     Properties:
       DefaultActions:
-        - !If
-          - DeployFrontend
-          - Type: forward
-            TargetGroupArn: !Ref FrontendALBTargetGroup
-          - Type: forward
-            TargetGroupArn: !Ref ALBTargetGroup
+        - Type: forward
+          TargetGroupArn: !Ref FrontendALBTargetGroup
       LoadBalancerArn: !Ref ALB
       Port: 443
       Protocol: HTTPS
@@ -757,10 +744,9 @@ Resources:
         - CertificateArn: !Ref CertificateArn
       SslPolicy: ELBSecurityPolicy-TLS13-1-2-2021-06
 
-  # HTTPS Listener Rule for API routes (when frontend is deployed - path-based routing)
+  # HTTPS Listener Rule for API routes (path-based routing)
   ALBHTTPSListenerRuleAPI:
     Type: AWS::ElasticLoadBalancingV2::ListenerRule
-    Condition: DeployFrontend
     Properties:
       ListenerArn: !Ref ALBHTTPSListener
       Priority: 100
@@ -775,7 +761,6 @@ Resources:
   # Frontend Auto Scaling Target
   FrontendECSServiceAutoScalingTarget:
     Type: AWS::ApplicationAutoScaling::ScalableTarget
-    Condition: DeployFrontend
     DependsOn: FrontendECSService
     Properties:
       MaxCapacity: !Ref FrontendMaxCapacity
@@ -788,7 +773,6 @@ Resources:
   # Frontend Auto Scaling Policy - CPU
   FrontendECSServiceScalingPolicyCPU:
     Type: AWS::ApplicationAutoScaling::ScalingPolicy
-    Condition: DeployFrontend
     Properties:
       PolicyName: !Sub '${ProjectName}-${Environment}-frontend-cpu-scaling'
       PolicyType: TargetTrackingScaling
@@ -803,7 +787,6 @@ Resources:
   # Frontend Auto Scaling Policy - Memory
   FrontendECSServiceScalingPolicyMemory:
     Type: AWS::ApplicationAutoScaling::ScalingPolicy
-    Condition: DeployFrontend
     Properties:
       PolicyName: !Sub '${ProjectName}-${Environment}-frontend-memory-scaling'
       PolicyType: TargetTrackingScaling
@@ -1027,14 +1010,12 @@ Outputs:
 
   FrontendServiceName:
     Description: Frontend ECS Service Name
-    Condition: DeployFrontend
     Value: !Ref FrontendECSService
     Export:
       Name: !Sub '${ProjectName}-${Environment}-Frontend-Service'
 
   FrontendTaskDefinition:
     Description: Frontend ECS Task Definition ARN
-    Condition: DeployFrontend
     Value: !Ref FrontendECSTaskDefinition
     Export:
       Name: !Sub '${ProjectName}-${Environment}-Frontend-Task-Definition'
