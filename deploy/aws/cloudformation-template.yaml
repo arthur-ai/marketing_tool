@@ -739,8 +739,8 @@ Resources:
     Condition: HasCertificate
     Properties:
       DefaultActions:
-        - Type: forward
-          TargetGroupArn: !Ref FrontendALBTargetGroup
+          - Type: forward
+            TargetGroupArn: !Ref FrontendALBTargetGroup
       LoadBalancerArn: !Ref ALB
       Port: 443
       Protocol: HTTPS
