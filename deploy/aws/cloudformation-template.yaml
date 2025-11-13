@@ -477,7 +477,7 @@ Resources:
     Properties:
       MaxCapacity: !Ref MaxCapacity
       MinCapacity: !Ref MinCapacity
-      ResourceId: !Sub 'service/${ECSCluster}/${ECSService}'
+      ResourceId: !Sub 'service/${ProjectName}-${Environment}-cluster/${ProjectName}-${Environment}-service'
       RoleARN: !GetAtt AutoScalingRole.Arn
       ScalableDimension: ecs:service:DesiredCount
       ServiceNamespace: ecs
