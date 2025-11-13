@@ -1239,6 +1239,178 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
             logger.error(f"Resume pipeline failed: {e}")
             raise
 
+    async def execute_single_step(
+        self,
+        step_name: str,
+        content_json: str,
+        context: Dict[str, Any],
+        job_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Execute a single pipeline step independently.
 
-# Import asyncio for sleep in retry logic
-import asyncio
+        This method allows executing individual pipeline steps with user-provided
+        context, separate from the full pipeline execution.
+
+        Args:
+            step_name: Name of the step to execute (e.g., "seo_keywords")
+            content_json: Input content as JSON string
+            context: Dictionary containing all required context keys for the step
+            job_id: Optional job ID for tracking and result persistence
+
+        Returns:
+            Dictionary with step result and execution metadata
+
+        Raises:
+            ValueError: If step not found or required context keys are missing
+        """
+        import time
+
+        step_start = time.time()
+        logger.info("=" * 80)
+        logger.info(f"Starting Single Step Execution: {step_name} (job_id: {job_id})")
+        logger.info("=" * 80)
+
+        # Reset step info
+        self.step_info = []
+
+        # Parse input content
+        try:
+            content = json.loads(content_json)
+        except json.JSONDecodeError as e:
+            logger.error(f"Invalid JSON input: {e}")
+            raise ValueError(f"Invalid JSON input: {e}")
+
+        # Get plugin registry and validate step exists
+        registry = get_plugin_registry()
+        plugin = registry.get_plugin(step_name)
+
+        if not plugin:
+            available_steps = ", ".join(registry.get_all_plugins().keys())
+            raise ValueError(
+                f"Step '{step_name}' not found. Available steps: {available_steps}"
+            )
+
+        # Validate required context keys
+        required_keys = plugin.get_required_context_keys()
+        missing_keys = [key for key in required_keys if key not in context]
+
+        if missing_keys:
+            raise ValueError(
+                f"Missing required context keys for {step_name}: {missing_keys}. "
+                f"Required keys: {required_keys}"
+            )
+
+        # Build pipeline context
+        pipeline_context = {
+            "input_content": content,
+            "content_type": context.get("content_type", "blog_post"),
+            "output_content_type": context.get(
+                "output_content_type", context.get("content_type", "blog_post")
+            ),
+        }
+
+        # Add all provided context keys
+        for key, value in context.items():
+            if key not in ("content_type", "output_content_type"):
+                pipeline_context[key] = value
+
+        # Load internal docs configuration if available
+        internal_docs_config = None
+        try:
+            from marketing_project.services.internal_docs_manager import (
+                get_internal_docs_manager,
+            )
+
+            internal_docs_manager = await get_internal_docs_manager()
+            internal_docs_config = await internal_docs_manager.get_active_config()
+            if internal_docs_config:
+                logger.info("Loaded internal docs configuration")
+        except Exception as e:
+            logger.warning(
+                f"Failed to load internal docs configuration: {e} - continuing without it"
+            )
+
+        if internal_docs_config:
+            pipeline_context["internal_docs_config"] = internal_docs_config.model_dump(
+                mode="json"
+            )
+
+        # Load design kit configuration if available
+        design_kit_config = None
+        try:
+            from marketing_project.services.design_kit_manager import (
+                get_design_kit_manager,
+            )
+
+            design_kit_manager = await get_design_kit_manager()
+            design_kit_config = await design_kit_manager.get_active_config()
+            if design_kit_config:
+                logger.info("Loaded design kit configuration")
+        except Exception as e:
+            logger.warning(
+                f"Failed to load design kit configuration: {e} - continuing without it"
+            )
+
+        if design_kit_config:
+            pipeline_context["design_kit_config"] = design_kit_config.model_dump(
+                mode="json"
+            )
+
+        try:
+            # Execute step using plugin
+            logger.info(f"Executing step {plugin.step_number}: {step_name}")
+
+            step_result = await self._execute_step_with_plugin(
+                step_name=step_name,
+                pipeline_context=pipeline_context,
+                job_id=job_id,
+            )
+
+            # Convert result to dict
+            try:
+                result_dict = step_result.model_dump(mode="json")
+            except (TypeError, ValueError):
+                result_dict = step_result.model_dump()
+
+            step_end = time.time()
+            execution_time = step_end - step_start
+
+            logger.info("=" * 80)
+            logger.info(
+                f"Single Step Execution completed successfully in {execution_time:.2f}s"
+            )
+            logger.info("=" * 80)
+
+            # Calculate tokens used
+            total_tokens = sum(
+                step.tokens_used for step in self.step_info if step.tokens_used
+            )
+
+            return {
+                "step_name": step_name,
+                "step_number": plugin.step_number,
+                "result": result_dict,
+                "execution_time_seconds": execution_time,
+                "total_tokens_used": total_tokens,
+                "model": self.model,
+                "step_info": [
+                    (
+                        step.model_dump(mode="json")
+                        if hasattr(step, "model_dump")
+                        else (
+                            step.model_dump() if hasattr(step, "model_dump") else step
+                        )
+                    )
+                    for step in self.step_info
+                ],
+            }
+
+        except Exception as e:
+            step_end = time.time()
+            execution_time = step_end - step_start
+
+            logger.error(
+                f"Single step execution failed after {execution_time:.2f}s: {e}"
+            )
+            raise

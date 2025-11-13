@@ -25,8 +25,9 @@ from marketing_project.processors import (
     process_release_notes,
     process_transcript,
 )
+from marketing_project.services.function_pipeline import FunctionPipeline
 from marketing_project.services.internal_docs_scanner import get_internal_docs_scanner
-from marketing_project.services.job_manager import get_job_manager
+from marketing_project.services.job_manager import JobStatus, get_job_manager
 
 logger = logging.getLogger(__name__)
 
@@ -914,6 +915,90 @@ async def retry_step_job(
         raise
 
 
+async def execute_single_step_job(
+    ctx,
+    step_name: str,
+    content_json: str,
+    context: Dict[str, Any],
+    job_id: str,
+    **kwargs,
+) -> Dict:
+    """
+    Background job for executing a single pipeline step independently.
+
+    Args:
+        ctx: ARQ context
+        step_name: Name of the step to execute (e.g., "seo_keywords")
+        content_json: JSON string of input content
+        context: Dictionary containing all required context keys for the step
+        job_id: Job ID for tracking
+        **kwargs: Additional ARQ-specific parameters
+
+    Returns:
+        Step execution result dictionary
+    """
+    try:
+        logger.info(f"ARQ Worker: Executing single step '{step_name}' for job {job_id}")
+
+        # Update job manager
+        job_manager = get_job_manager()
+        await job_manager.update_job_status(job_id, JobStatus.PROCESSING)
+        await job_manager.update_job_progress(
+            job_id, 10, f"Executing step: {step_name}"
+        )
+
+        # Create pipeline instance
+        pipeline = FunctionPipeline()
+
+        # Execute the step
+        result = await pipeline.execute_single_step(
+            step_name=step_name,
+            content_json=content_json,
+            context=context,
+            job_id=job_id,
+        )
+
+        # Update job with result
+        await job_manager.update_job_progress(
+            job_id, 90, f"Step '{step_name}' completed"
+        )
+        await job_manager.update_job_status(job_id, JobStatus.COMPLETED)
+
+        # Store result in job
+        job = await job_manager.get_job(job_id)
+        if job:
+            job.result = result
+            job.current_step = step_name
+            await job_manager._save_job_to_redis(job)
+
+        await job_manager.update_job_progress(job_id, 100, "Completed")
+        logger.info(
+            f"ARQ Worker: Single step '{step_name}' execution completed successfully for job {job_id}"
+        )
+
+        return {
+            "status": "success",
+            "step_name": step_name,
+            "result": result,
+            "message": f"Step '{step_name}' executed successfully",
+        }
+
+    except Exception as e:
+        logger.error(
+            f"ARQ Worker: Single step '{step_name}' execution failed for job {job_id}: {e}"
+        )
+        job_manager = get_job_manager()
+        await job_manager.update_job_status(job_id, JobStatus.FAILED)
+        await job_manager.update_job_progress(
+            job_id, 0, f"Step execution failed: {str(e)}"
+        )
+        job = await job_manager.get_job(job_id)
+        if job:
+            job.error = str(e)
+            await job_manager._save_job_to_redis(job)
+        raise
+
+
 async def bulk_rescan_documents_job(ctx, urls: List[str], job_id: str) -> Dict:
     """
     Background job for bulk re-scanning documents.
@@ -1235,6 +1320,7 @@ class WorkerSettings:
         process_transcript_job,
         resume_pipeline_job,
         retry_step_job,
+        execute_single_step_job,
         bulk_rescan_documents_job,
         scan_from_url_job,
         scan_from_list_job,
