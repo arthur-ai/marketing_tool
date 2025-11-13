@@ -26,10 +26,6 @@ on:
         required: false
         type: string
         default: 'latest'
-      frontend_backend_api_url:
-        description: 'Backend API URL for frontend (optional - auto-inferred as https://DomainName/api if not provided)'
-        required: false
-        type: string
   push:
     branches:
       - main
@@ -195,7 +191,6 @@ jobs:
           EXISTING_S3_BUCKET_NAME: ${{ secrets.EXISTING_S3_BUCKET_NAME }}
           FRONTEND_CONTAINER_IMAGE: ${{ github.event.inputs.frontend_image || secrets.FRONTEND_CONTAINER_IMAGE || 'docker.arthur.ai/arthur/marketing-tool/marketing-frontend' }}
           FRONTEND_DEPLOY_VERSION: ${{ github.event.inputs.frontend_version || 'latest' }}
-          FRONTEND_BACKEND_API_URL: ${{ github.event.inputs.frontend_backend_api_url || secrets.FRONTEND_BACKEND_API_URL }}
         run: |
           cd deploy/aws
           chmod +x deploy.sh
@@ -239,10 +234,6 @@ jobs:
           if [ -n "$FRONTEND_CONTAINER_IMAGE" ]; then
             DEPLOY_CMD="$DEPLOY_CMD --frontend-image $FRONTEND_CONTAINER_IMAGE"
             DEPLOY_CMD="$DEPLOY_CMD --frontend-version $FRONTEND_DEPLOY_VERSION"
-            # API URL is optional - will be auto-inferred from DomainName if not provided
-            if [ -n "$FRONTEND_BACKEND_API_URL" ]; then
-              DEPLOY_CMD="$DEPLOY_CMD --frontend-backend-api-url $FRONTEND_BACKEND_API_URL"
-            fi
           fi
 
           # Execute deployment

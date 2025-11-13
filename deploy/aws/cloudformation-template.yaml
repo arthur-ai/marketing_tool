@@ -221,11 +221,6 @@ Parameters:
     Default: latest
     Description: Frontend Docker image version/tag (e.g., latest, v1.0.0, commit-hash)
 
-  FrontendBackendApiUrl:
-    Type: String
-    Default: ''
-    Description: Backend API URL for frontend environment variable (optional). If not provided and FrontendContainerImage is set, will be auto-inferred as https://DomainName/api
-
   FrontendTaskCPU:
     Type: String
     Default: '512'
@@ -527,10 +522,7 @@ Resources:
             - Name: NODE_ENV
               Value: !Ref Environment
             - Name: NEXT_PUBLIC_BACKEND_API_BASE_URL
-              Value: !If
-                - !Not [!Equals [!Ref FrontendBackendApiUrl, '']]
-                - !Ref FrontendBackendApiUrl
-                - !Sub 'https://${DomainName}/api'
+              Value: !Sub 'https://${DomainName}/api'
             - Name: NEXT_PUBLIC_BACKEND_WEBSOCKET_URL
               Value: !Sub 'wss://${DomainName}/api'
           LogConfiguration:
@@ -698,18 +690,19 @@ Resources:
   ALBListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
-      DefaultActions: !If
-        - HasCertificate
-        - - Type: redirect
-            RedirectConfig:
-              Protocol: HTTPS
-              Port: '443'
-              Host: '#{host}'
-              Path: '/#{path}'
-              Query: '#{query}'
-              StatusCode: HTTP_301
-        - - Type: forward
-            TargetGroupArn: !Ref FrontendALBTargetGroup
+      DefaultActions:
+        Fn::If:
+          - HasCertificate
+          - - Type: redirect
+              RedirectConfig:
+                Protocol: HTTPS
+                Port: '443'
+                Host: '#{host}'
+                Path: '/#{path}'
+                Query: '#{query}'
+                StatusCode: HTTP_301
+          - - Type: forward
+              TargetGroupArn: !Ref FrontendALBTargetGroup
       LoadBalancerArn: !Ref ALB
       Port: 80
       Protocol: HTTP
@@ -746,6 +739,7 @@ Resources:
   # HTTPS Listener Rule for API routes (path-based routing)
   ALBHTTPSListenerRuleAPI:
     Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Condition: HasCertificate
     Properties:
       ListenerArn: !Ref ALBHTTPSListener
       Priority: 100
