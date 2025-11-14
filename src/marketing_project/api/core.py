@@ -4,6 +4,7 @@ Core API endpoints for content analysis and pipeline processing.
 
 import json
 import logging
+import time
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 
@@ -15,14 +16,22 @@ from marketing_project.models import (
     PipelineRequest,
     PipelineResponse,
     ReleaseNotesContext,
+    StepExecutionRequest,
+    StepExecutionResponse,
+    StepInfo,
+    StepListResponse,
+    StepRequirementsResponse,
     TranscriptContext,
 )
 from marketing_project.plugins.content_analysis import analyze_content_for_pipeline
+from marketing_project.plugins.registry import get_plugin_registry
 from marketing_project.processors import (
     process_blog_post,
     process_release_notes,
     process_transcript,
 )
+from marketing_project.services.function_pipeline import FunctionPipeline
+from marketing_project.services.job_manager import JobStatus, get_job_manager
 
 logger = logging.getLogger("marketing_project.api.core")
 
@@ -171,3 +180,185 @@ async def run_pipeline(request: PipelineRequest, background_tasks: BackgroundTas
         raise HTTPException(
             status_code=500, detail=f"Pipeline execution failed: {str(e)}"
         )
+
+
+@router.get("/pipeline/steps", response_model=StepListResponse)
+async def list_pipeline_steps():
+    """
+    List all available pipeline steps.
+
+    Returns a list of all pipeline steps with their names, numbers, and descriptions.
+    """
+    try:
+        registry = get_plugin_registry()
+        plugins = registry.get_plugins_in_order()
+
+        steps = []
+        for plugin in plugins:
+            steps.append(
+                StepInfo(
+                    step_name=plugin.step_name,
+                    step_number=plugin.step_number,
+                    description=f"Step {plugin.step_number}: {plugin.step_name.replace('_', ' ').title()}",
+                )
+            )
+
+        return StepListResponse(steps=steps)
+
+    except Exception as e:
+        logger.error(f"Failed to list pipeline steps: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to list pipeline steps: {str(e)}"
+        )
+
+
+@router.get(
+    "/pipeline/steps/{step_name}/requirements", response_model=StepRequirementsResponse
+)
+async def get_step_requirements(step_name: str):
+    """
+    Get requirements for a specific pipeline step.
+
+    Returns the required context keys and their descriptions for the step.
+    """
+    try:
+        registry = get_plugin_registry()
+        plugin = registry.get_plugin(step_name)
+
+        if not plugin:
+            available_steps = ", ".join(registry.get_all_plugins().keys())
+            raise HTTPException(
+                status_code=404,
+                detail=f"Step '{step_name}' not found. Available steps: {available_steps}",
+            )
+
+        required_keys = plugin.get_required_context_keys()
+
+        # Generate descriptions for each required key
+        descriptions = {}
+        for key in required_keys:
+            if key == "input_content":
+                descriptions[key] = (
+                    "The input content to process (e.g., blog post, article)"
+                )
+            elif key == "content_type":
+                descriptions[key] = (
+                    "Type of content (e.g., 'blog_post', 'release_notes', 'transcript')"
+                )
+            elif key == "output_content_type":
+                descriptions[key] = (
+                    "Desired output content type (e.g., 'blog_post', 'press_release', 'case_study')"
+                )
+            elif key in registry.get_all_plugins():
+                # This is a step output
+                step_plugin = registry.get_plugin(key)
+                descriptions[key] = (
+                    f"Output from {key.replace('_', ' ')} step (step {step_plugin.step_number if step_plugin else 'N/A'})"
+                )
+            else:
+                descriptions[key] = f"Required context key: {key}"
+
+        return StepRequirementsResponse(
+            step_name=step_name,
+            step_number=plugin.step_number,
+            required_context_keys=required_keys,
+            descriptions=descriptions,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get requirements for step {step_name}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get step requirements: {str(e)}",
+        )
+
+
+@router.post(
+    "/pipeline/steps/{step_name}/execute", response_model=StepExecutionResponse
+)
+async def execute_pipeline_step(step_name: str, request: StepExecutionRequest):
+    """
+    Execute a single pipeline step independently.
+
+    This endpoint allows executing individual pipeline steps with user-provided
+    inputs, separate from the full pipeline execution. The step is executed
+    asynchronously and results are saved to the database.
+
+    Args:
+        step_name: Name of the step to execute (e.g., "seo_keywords")
+        request: StepExecutionRequest with content and context
+
+    Returns:
+        StepExecutionResponse with job_id for tracking
+    """
+    try:
+        # Validate step exists
+        registry = get_plugin_registry()
+        plugin = registry.get_plugin(step_name)
+
+        if not plugin:
+            available_steps = ", ".join(registry.get_all_plugins().keys())
+            raise HTTPException(
+                status_code=404,
+                detail=f"Step '{step_name}' not found. Available steps: {available_steps}",
+            )
+
+        # Validate required context keys
+        required_keys = plugin.get_required_context_keys()
+        missing_keys = [key for key in required_keys if key not in request.context]
+
+        if missing_keys:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Missing required context keys: {missing_keys}. Required keys: {required_keys}",
+            )
+
+        # Get job manager
+        job_manager = get_job_manager()
+
+        # Create content ID from content if available
+        content_id = request.content.get("id", f"step_{step_name}_{int(time.time())}")
+
+        # Create job
+        job = await job_manager.create_job(
+            job_type=f"step_{step_name}",
+            content_id=content_id,
+            metadata={
+                "step_name": step_name,
+                "step_number": plugin.step_number,
+                "content": request.content,
+                "context_keys": list(request.context.keys()),
+            },
+        )
+
+        # Convert content to JSON string
+        content_json = json.dumps(request.content)
+
+        # Submit job to ARQ for background processing
+        arq_job_id = await job_manager.submit_to_arq(
+            job.id,
+            "execute_single_step_job",  # ARQ function name
+            step_name,
+            content_json,
+            request.context,
+            job.id,
+        )
+
+        logger.info(
+            f"Step execution job {job.id} submitted to ARQ (arq_id: {arq_job_id}) for step {step_name}"
+        )
+
+        return StepExecutionResponse(
+            step_name=step_name,
+            job_id=job.id,
+            status=JobStatus.QUEUED.value,
+            message=f"Step '{step_name}' submitted for execution",
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to execute step {step_name}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to execute step: {str(e)}")

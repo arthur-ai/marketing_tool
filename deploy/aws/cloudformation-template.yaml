@@ -58,8 +58,8 @@ Metadata:
 Parameters:
   Environment:
     Type: String
-    Default: production
-    AllowedValues: [development, staging, production]
+    Default: prod
+    AllowedValues: [dev, stag, prod]
     Description: Environment name
 
   ProjectName:
@@ -221,11 +221,6 @@ Parameters:
     Default: latest
     Description: Frontend Docker image version/tag (e.g., latest, v1.0.0, commit-hash)
 
-  FrontendBackendApiUrl:
-    Type: String
-    Default: ''
-    Description: Backend API URL for frontend environment variable (optional). If not provided and FrontendContainerImage is set, will be auto-inferred as https://DomainName/api
-
   FrontendTaskCPU:
     Type: String
     Default: '512'
@@ -259,9 +254,19 @@ Parameters:
     MaxValue: 50
     Description: Maximum number of frontend ECS tasks for auto-scaling
 
+  FrontendDockerRegistryUsername:
+    Type: String
+    Description: Docker registry username (required for docker.arthur.ai)
+    NoEcho: true
+
+  FrontendDockerRegistryPassword:
+    Type: String
+    Description: Docker registry password (required for docker.arthur.ai)
+    NoEcho: true
+
 Conditions:
   HasCertificate: !Not [!Equals [!Ref CertificateArn, '']]
-  IsProduction: !Equals [!Ref Environment, 'production']
+  IsProduction: !Equals [!Ref Environment, 'prod']
   UseExistingMongoDB: !Not [!Equals [!Ref ExistingMongoDBEndpoint, '']]
   UseExistingRedis: !Not [!Equals [!Ref ExistingRedisEndpoint, '']]
   CreateNewRedis: !Equals [!Ref ExistingRedisEndpoint, '']
@@ -520,6 +525,8 @@ Resources:
       ContainerDefinitions:
         - Name: marketing-frontend
           Image: !Sub '${FrontendContainerImage}:${FrontendDeployVersion}'
+          RepositoryCredentials:
+            CredentialsParameter: !Ref FrontendDockerRegistrySecret
           PortMappings:
             - ContainerPort: 3000
               Protocol: tcp
@@ -527,10 +534,7 @@ Resources:
             - Name: NODE_ENV
               Value: !Ref Environment
             - Name: NEXT_PUBLIC_BACKEND_API_BASE_URL
-              Value: !If
-                - !Not [!Equals [!Ref FrontendBackendApiUrl, '']]
-                - !Ref FrontendBackendApiUrl
-                - !Sub 'https://${DomainName}/api'
+              Value: !Sub 'https://${DomainName}/api'
             - Name: NEXT_PUBLIC_BACKEND_WEBSOCKET_URL
               Value: !Sub 'wss://${DomainName}/api'
           LogConfiguration:
@@ -542,11 +546,11 @@ Resources:
           HealthCheck:
             Command:
               - CMD-SHELL
-              - 'curl -f http://localhost:3000/ || exit 1'
+              - 'curl -s --max-time 3 --output /dev/null http://127.0.0.1:3000 || exit 1'
             Interval: 30
-            Timeout: 5
+            Timeout: 10
             Retries: 3
-            StartPeriod: 60
+            StartPeriod: 90
           Essential: true
           StopTimeout: 30
 
@@ -677,7 +681,7 @@ Resources:
   FrontendALBTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
-      Name: !Sub '${ProjectName}-${Environment}-frontend-tg'
+      Name: !Sub '${ProjectName}-${Environment}-frontend'
       Port: 3000
       Protocol: HTTP
       VpcId: !Ref ExistingVpcId
@@ -735,8 +739,8 @@ Resources:
     Condition: HasCertificate
     Properties:
       DefaultActions:
-        - Type: forward
-          TargetGroupArn: !Ref FrontendALBTargetGroup
+          - Type: forward
+            TargetGroupArn: !Ref FrontendALBTargetGroup
       LoadBalancerArn: !Ref ALB
       Port: 443
       Protocol: HTTPS
@@ -747,6 +751,7 @@ Resources:
   # HTTPS Listener Rule for API routes (path-based routing)
   ALBHTTPSListenerRuleAPI:
     Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Condition: HasCertificate
     Properties:
       ListenerArn: !Ref ALBHTTPSListener
       Priority: 100
@@ -822,6 +827,7 @@ Resources:
                 Resource:
                   - !Ref OpenAISecret
                   - !Ref ApiKeySecret
+                  - !Ref FrontendDockerRegistrySecret
         - PolicyName: SSMParameterAccess
           PolicyDocument:
             Version: '2012-10-17'
@@ -886,6 +892,17 @@ Resources:
       Name: !Sub '${ProjectName}-${Environment}-api-key'
       Description: API authentication key for marketing tool
       SecretString: !Ref ApiKey
+
+  FrontendDockerRegistrySecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub '${ProjectName}-${Environment}-docker-registry-credentials'
+      Description: Docker registry credentials for frontend image pull
+      SecretString: !Sub |
+        {
+          "username": "${FrontendDockerRegistryUsername}",
+          "password": "${FrontendDockerRegistryPassword}"
+        }
 
   # Systems Manager Parameter for Redis Password (Option 1 - simpler than Secrets Manager)
   RedisPasswordParameter:

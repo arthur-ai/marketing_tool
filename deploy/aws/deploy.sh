@@ -13,7 +13,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Default values
-ENVIRONMENT="production"
+ENVIRONMENT="prod"
 PROJECT_NAME="marketing-tool"
 REGION="us-east-2"
 STACK_NAME=""
@@ -30,7 +30,8 @@ EXISTING_REDIS_ENDPOINT=""
 EXISTING_S3_BUCKET_NAME=""
 FRONTEND_CONTAINER_IMAGE=""
 FRONTEND_DEPLOY_VERSION="latest"
-FRONTEND_BACKEND_API_URL=""
+FRONTEND_DOCKER_REGISTRY_USERNAME=""
+FRONTEND_DOCKER_REGISTRY_PASSWORD=""
 DRY_RUN=false
 FORCE_UPDATE=false
 
@@ -59,7 +60,7 @@ Usage: $0 [OPTIONS]
 Deploy Marketing Tool to AWS using CloudFormation
 
 OPTIONS:
-    -e, --environment ENV     Environment (development|staging|production) [default: production]
+    -e, --environment ENV     Environment (dev|stag|prod) [default: prod]
     -n, --project-name NAME   Project name [default: marketing-tool]
     -r, --region REGION       AWS region [default: us-east-2]
     -s, --stack-name NAME     CloudFormation stack name [default: marketing-tool-ENV]
@@ -80,6 +81,8 @@ OPTIONS:
     --frontend-image URI                   Frontend Docker image URI from ECR (optional - e.g., 123456789.dkr.ecr.us-east-1.amazonaws.com/marketing-frontend:latest)
     --frontend-version VERSION            Frontend Docker image version/tag (optional - default: latest)
     --frontend-backend-api-url URL        Backend API URL for frontend (optional - auto-inferred as https://DomainName/api if not provided)
+    --frontend-docker-registry-username USERNAME Docker registry username (required when deploying frontend)
+    --frontend-docker-registry-password PASSWORD Docker registry password (required when deploying frontend)
     -f, --force               Force update even if no changes detected
     --dry-run                 Show what would be deployed without actually deploying
     -h, --help                Show this help message
@@ -95,13 +98,13 @@ OPTIONAL ENVIRONMENT VARIABLES:
 
 EXAMPLES:
     # Deploy to production
-    $0 -e production -r us-west-2
+    $0 -e prod -r us-west-2
 
     # Deploy with custom domain
-    $0 -e production -d api.mycompany.com -c arn:aws:acm:us-east-1:123456789012:certificate/12345678-1234-1234-1234-123456789012
+    $0 -e prod -d api.mycompany.com -c arn:aws:acm:us-east-1:123456789012:certificate/12345678-1234-1234-1234-123456789012
 
     # Dry run to see what would be deployed
-    $0 --dry-run -e staging
+    $0 --dry-run -e stag
 
 EOF
 }
@@ -193,6 +196,14 @@ while [[ $# -gt 0 ]]; do
             FRONTEND_BACKEND_API_URL="$2"
             shift 2
             ;;
+        --frontend-docker-registry-username)
+            FRONTEND_DOCKER_REGISTRY_USERNAME="$2"
+            shift 2
+            ;;
+        --frontend-docker-registry-password)
+            FRONTEND_DOCKER_REGISTRY_PASSWORD="$2"
+            shift 2
+            ;;
         -f|--force)
             FORCE_UPDATE=true
             shift
@@ -219,8 +230,8 @@ if [[ -z "$STACK_NAME" ]]; then
 fi
 
 # Validate environment
-if [[ ! "$ENVIRONMENT" =~ ^(development|staging|production)$ ]]; then
-    print_error "Invalid environment: $ENVIRONMENT. Must be one of: development, staging, production"
+if [[ ! "$ENVIRONMENT" =~ ^(dev|stag|prod)$ ]]; then
+    print_error "Invalid environment: $ENVIRONMENT. Must be one of: dev, stag, prod"
     exit 1
 fi
 
@@ -333,11 +344,7 @@ echo "  Existing S3 Bucket: ${EXISTING_S3_BUCKET_NAME:-'Will create new'}"
 echo "  Frontend Image: ${FRONTEND_CONTAINER_IMAGE:-'Not deploying frontend'}"
 if [[ -n "$FRONTEND_CONTAINER_IMAGE" ]]; then
     echo "  Frontend Version: ${FRONTEND_DEPLOY_VERSION}"
-    if [[ -n "$FRONTEND_BACKEND_API_URL" ]]; then
-        echo "  Frontend Backend API URL: $FRONTEND_BACKEND_API_URL"
-    else
-        echo "  Frontend Backend API URL: Auto-inferred as https://${DOMAIN_NAME:-'N/A'}/api"
-    fi
+    echo "  Frontend Backend API URL: Auto-inferred as https://${DOMAIN_NAME:-'N/A'}/api"
 fi
 echo "  Dry Run: $DRY_RUN"
 echo ""
@@ -395,6 +402,13 @@ if [[ -n "$FRONTEND_CONTAINER_IMAGE" ]]; then
     if [[ -n "$FRONTEND_BACKEND_API_URL" ]]; then
         PARAMETERS="$PARAMETERS ParameterKey=FrontendBackendApiUrl,ParameterValue=$FRONTEND_BACKEND_API_URL"
     fi
+    # Docker registry credentials - always required for docker.arthur.ai
+    if [[ -z "$FRONTEND_DOCKER_REGISTRY_USERNAME" ]] || [[ -z "$FRONTEND_DOCKER_REGISTRY_PASSWORD" ]]; then
+        print_error "Frontend Docker registry username and password are required when deploying frontend"
+        exit 1
+    fi
+    PARAMETERS="$PARAMETERS ParameterKey=FrontendDockerRegistryUsername,ParameterValue=$FRONTEND_DOCKER_REGISTRY_USERNAME"
+    PARAMETERS="$PARAMETERS ParameterKey=FrontendDockerRegistryPassword,ParameterValue=$FRONTEND_DOCKER_REGISTRY_PASSWORD"
 fi
 
 # Validate CloudFormation template

@@ -8,10 +8,10 @@ on:
         required: true
         type: choice
         options:
-          - development
-          - staging
-          - production
-        default: 'production'
+          - dev
+          - stag
+          - prod
+        default: 'prod'
       region:
         description: 'AWS region'
         required: false
@@ -26,8 +26,12 @@ on:
         required: false
         type: string
         default: 'latest'
-      frontend_backend_api_url:
-        description: 'Backend API URL for frontend (optional - auto-inferred as https://DomainName/api if not provided)'
+      frontend_docker_registry_username:
+        description: 'Docker registry username (optional - uses secret if not provided)'
+        required: false
+        type: string
+      frontend_docker_registry_password:
+        description: 'Docker registry password (optional - uses secret if not provided)'
         required: false
         type: string
   push:
@@ -36,7 +40,7 @@ on:
 
 env:
   AWS_REGION: ${{ github.event.inputs.region || 'us-east-2' }}
-  ENVIRONMENT: ${{ github.event.inputs.environment || 'production' }}
+  ENVIRONMENT: ${{ github.event.inputs.environment || 'prod' }}
   PROJECT_NAME: marketing-tool
 
 jobs:
@@ -195,7 +199,8 @@ jobs:
           EXISTING_S3_BUCKET_NAME: ${{ secrets.EXISTING_S3_BUCKET_NAME }}
           FRONTEND_CONTAINER_IMAGE: ${{ github.event.inputs.frontend_image || secrets.FRONTEND_CONTAINER_IMAGE || 'docker.arthur.ai/arthur/marketing-tool/marketing-frontend' }}
           FRONTEND_DEPLOY_VERSION: ${{ github.event.inputs.frontend_version || 'latest' }}
-          FRONTEND_BACKEND_API_URL: ${{ github.event.inputs.frontend_backend_api_url || secrets.FRONTEND_BACKEND_API_URL }}
+          FRONTEND_DOCKER_REGISTRY_USERNAME: ${{ github.event.inputs.frontend_docker_registry_username || secrets.FRONTEND_DOCKER_REGISTRY_USERNAME }}
+          FRONTEND_DOCKER_REGISTRY_PASSWORD: ${{ github.event.inputs.frontend_docker_registry_password || secrets.FRONTEND_DOCKER_REGISTRY_PASSWORD }}
         run: |
           cd deploy/aws
           chmod +x deploy.sh
@@ -239,9 +244,10 @@ jobs:
           if [ -n "$FRONTEND_CONTAINER_IMAGE" ]; then
             DEPLOY_CMD="$DEPLOY_CMD --frontend-image $FRONTEND_CONTAINER_IMAGE"
             DEPLOY_CMD="$DEPLOY_CMD --frontend-version $FRONTEND_DEPLOY_VERSION"
-            # API URL is optional - will be auto-inferred from DomainName if not provided
-            if [ -n "$FRONTEND_BACKEND_API_URL" ]; then
-              DEPLOY_CMD="$DEPLOY_CMD --frontend-backend-api-url $FRONTEND_BACKEND_API_URL"
+            # Docker registry credentials are required when deploying frontend
+            if [ -n "$FRONTEND_DOCKER_REGISTRY_USERNAME" ] && [ -n "$FRONTEND_DOCKER_REGISTRY_PASSWORD" ]; then
+              DEPLOY_CMD="$DEPLOY_CMD --frontend-docker-registry-username $FRONTEND_DOCKER_REGISTRY_USERNAME"
+              DEPLOY_CMD="$DEPLOY_CMD --frontend-docker-registry-password $FRONTEND_DOCKER_REGISTRY_PASSWORD"
             fi
           fi
 
