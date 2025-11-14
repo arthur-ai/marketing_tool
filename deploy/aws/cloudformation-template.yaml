@@ -546,11 +546,11 @@ Resources:
           HealthCheck:
             Command:
               - CMD-SHELL
-              - 'curl -s --max-time 3 --output /dev/null http://127.0.0.1:3000 || exit 1'
+              - 'curl -f http://localhost:3000 || exit 1'
             Interval: 30
-            Timeout: 5
+            Timeout: 10
             Retries: 3
-            StartPeriod: 90
+            StartPeriod: 60
           Essential: true
           StopTimeout: 30
 
