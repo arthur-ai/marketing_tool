@@ -688,7 +688,7 @@ Resources:
       UnhealthyThresholdCount: 5
       Matcher:
         HttpCode: '200'
-      HealthCheckEnabled: true
+      HealthCheckEnabled: false
       Tags:
         - Key: Name
           Value: !Sub '${ProjectName}-${Environment}-frontend-tg'
