@@ -680,6 +680,7 @@ Resources:
       Protocol: HTTP
       VpcId: !Ref ExistingVpcId
       TargetType: ip
+      HealthCheckEnabled: true
       HealthCheckPath: /
       HealthCheckProtocol: HTTP
       HealthCheckIntervalSeconds: 30
@@ -688,7 +689,6 @@ Resources:
       UnhealthyThresholdCount: 5
       Matcher:
         HttpCode: '200'
-      HealthCheckEnabled: false
       Tags:
         - Key: Name
           Value: !Sub '${ProjectName}-${Environment}-frontend-tg'
