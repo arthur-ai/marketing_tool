@@ -701,6 +701,130 @@ class StepResultManager:
             )
             raise
 
+    async def get_step_result_by_name(
+        self,
+        job_id: str,
+        step_name: str,
+        execution_context_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Get a specific step result by step name.
+
+        Args:
+            job_id: Job identifier (may be subjob, will find root)
+            step_name: Step name (e.g., "seo_keywords")
+            execution_context_id: Optional execution context ID to search in specific context
+
+        Returns:
+            Step result data
+        """
+        try:
+            from marketing_project.services.job_manager import get_job_manager
+
+            job_manager = get_job_manager()
+            job = await job_manager.get_job(job_id)
+
+            if not job:
+                raise FileNotFoundError(f"Job {job_id} not found")
+
+            # Find root job
+            root_job_id = job_id
+            if job.metadata.get("original_job_id"):
+                current = job
+                while current.metadata.get("original_job_id"):
+                    parent_id = current.metadata.get("original_job_id")
+                    current = await job_manager.get_job(parent_id)
+                    if not current:
+                        break
+                    if not current.metadata.get("original_job_id"):
+                        root_job_id = current.id
+                        break
+                else:
+                    root_job_id = job.metadata.get("original_job_id")
+
+            root_job_dir = self._get_job_dir(root_job_id)
+
+            # Normalize step name for matching
+            normalized_step_name = step_name.lower().replace(" ", "_").replace("-", "_")
+
+            # Try context directories first (new structure)
+            context_dirs = sorted(
+                [
+                    d
+                    for d in root_job_dir.iterdir()
+                    if d.is_dir() and d.name.startswith("context_")
+                ]
+            )
+
+            if context_dirs:
+                # Search in context directories
+                if execution_context_id:
+                    # Search in specific context
+                    context_dir = root_job_dir / f"context_{execution_context_id}"
+                    for step_file in context_dir.glob("*.json"):
+                        with open(step_file, "r", encoding="utf-8") as f:
+                            step_data = json.load(f)
+                            if (
+                                step_data.get("step_name", "")
+                                .lower()
+                                .replace(" ", "_")
+                                .replace("-", "_")
+                                == normalized_step_name
+                            ):
+                                return step_data
+                else:
+                    # Search all contexts (most recent first)
+                    for context_dir in reversed(context_dirs):
+                        for step_file in context_dir.glob("*.json"):
+                            with open(step_file, "r", encoding="utf-8") as f:
+                                step_data = json.load(f)
+                                if (
+                                    step_data.get("step_name", "")
+                                    .lower()
+                                    .replace(" ", "_")
+                                    .replace("-", "_")
+                                    == normalized_step_name
+                                ):
+                                    return step_data
+
+            # Fallback to old structure (backward compatibility)
+            for step_file in root_job_dir.glob("*.json"):
+                with open(step_file, "r", encoding="utf-8") as f:
+                    step_data = json.load(f)
+                    if (
+                        step_data.get("step_name", "")
+                        .lower()
+                        .replace(" ", "_")
+                        .replace("-", "_")
+                        == normalized_step_name
+                    ):
+                        return step_data
+
+            # Also try to get from job.result if available
+            if job.result and isinstance(job.result, dict):
+                step_results = job.result.get("result", {}).get("step_results", {})
+                if step_results:
+                    # Try exact match first
+                    if step_name in step_results:
+                        return step_results[step_name]
+                    # Try normalized match
+                    for key, value in step_results.items():
+                        if (
+                            key.lower().replace(" ", "_").replace("-", "_")
+                            == normalized_step_name
+                        ):
+                            return value
+
+            raise FileNotFoundError(
+                f"Step result not found: {step_name} for job {job_id}"
+            )
+
+        except FileNotFoundError:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to get step result {step_name} for job {job_id}: {e}")
+            raise
+
     async def get_step_file_path(
         self,
         job_id: str,

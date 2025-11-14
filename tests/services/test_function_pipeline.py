@@ -480,3 +480,98 @@ class TestFunctionPipelineStepExecution:
                 await pipeline._execute_step_with_plugin(
                     "nonexistent_step", {}, job_id="test-job"
                 )
+
+    @pytest.mark.asyncio
+    @patch("marketing_project.services.function_pipeline.AsyncOpenAI")
+    async def test_call_function(self, mock_openai_class):
+        """Test _call_function method."""
+        mock_client = AsyncMock()
+        mock_response = MagicMock()
+        mock_choice = MagicMock()
+        mock_choice.message.parsed = SEOKeywordsResult(
+            main_keyword="test",
+            primary_keywords=["test"],
+            search_intent="informational",
+        )
+        mock_response.choices = [mock_choice]
+        mock_client.beta.chat.completions.parse = AsyncMock(return_value=mock_response)
+        mock_openai_class.return_value = mock_client
+
+        pipeline = FunctionPipeline()
+        result = await pipeline._call_function(
+            prompt="Test prompt",
+            system_instruction="System instruction",
+            response_model=SEOKeywordsResult,
+            step_name="seo_keywords",
+            step_number=1,
+        )
+
+        assert isinstance(result, SEOKeywordsResult)
+        assert result.main_keyword == "test"
+
+    @pytest.mark.asyncio
+    @patch("marketing_project.services.function_pipeline.AsyncOpenAI")
+    async def test_resume_pipeline(self, mock_openai_class):
+        """Test resume_pipeline method."""
+        mock_client = AsyncMock()
+        mock_openai_class.return_value = mock_client
+
+        pipeline = FunctionPipeline()
+
+        with patch.object(
+            pipeline, "execute_pipeline", new_callable=AsyncMock
+        ) as mock_execute:
+            mock_execute.return_value = {"pipeline_status": "success"}
+
+            result = await pipeline.resume_pipeline(
+                content_json='{"title": "Test"}',
+                content_type="blog_post",
+                context={"seo_keywords": {}},
+                job_id="test-job",
+            )
+
+            assert result is not None
+            assert "pipeline_status" in result
+
+    @pytest.mark.asyncio
+    @patch("marketing_project.services.function_pipeline.AsyncOpenAI")
+    async def test_execute_single_step(self, mock_openai_class):
+        """Test execute_single_step method."""
+        mock_client = AsyncMock()
+        mock_openai_class.return_value = mock_client
+
+        pipeline = FunctionPipeline()
+
+        with patch.object(
+            pipeline, "_execute_step_with_plugin", new_callable=AsyncMock
+        ) as mock_execute:
+            mock_execute.return_value = SEOKeywordsResult(
+                main_keyword="test",
+                primary_keywords=["test"],
+                search_intent="informational",
+            )
+
+            result = await pipeline.execute_single_step(
+                step_name="seo_keywords",
+                context={"input_content": {"title": "Test"}},
+                job_id="test-job",
+            )
+
+            assert isinstance(result, SEOKeywordsResult)
+            mock_execute.assert_called_once()
+
+    @pytest.mark.asyncio
+    @patch("marketing_project.services.function_pipeline.AsyncOpenAI")
+    async def test_get_user_prompt(self, mock_openai_class):
+        """Test _get_user_prompt method."""
+        mock_client = AsyncMock()
+        mock_openai_class.return_value = mock_client
+
+        pipeline = FunctionPipeline()
+        context = {"input_content": {"title": "Test", "content": "Test content"}}
+
+        prompt = pipeline._get_user_prompt("seo_keywords", context)
+
+        assert prompt is not None
+        assert isinstance(prompt, str)
+        assert len(prompt) > 0

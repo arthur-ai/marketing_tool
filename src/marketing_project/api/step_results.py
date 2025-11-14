@@ -484,6 +484,45 @@ async def get_step_result(
         )
 
 
+@router.get("/jobs/{job_id}/steps/by-name/{step_name}")
+async def get_step_result_by_name(
+    job_id: str,
+    step_name: str,
+    execution_context_id: Optional[str] = Query(
+        None, description="Optional execution context ID to search in specific context"
+    ),
+):
+    """
+    Get the content of a specific step result by step name.
+
+    Args:
+        job_id: Job identifier (may be subjob, will find root)
+        step_name: Step name (e.g., "seo_keywords")
+        execution_context_id: Optional execution context ID to search in specific context
+
+    Returns:
+        Step result data as JSON
+    """
+    try:
+        step_manager = get_step_result_manager()
+        result = await step_manager.get_step_result_by_name(
+            job_id, step_name, execution_context_id
+        )
+
+        return result
+
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Step result not found: {step_name} for job {job_id}",
+        )
+    except Exception as e:
+        logger.error(f"Failed to get step result {step_name} for job {job_id}: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get step result: {str(e)}"
+        )
+
+
 @router.get("/jobs/{job_id}/steps/{step_filename}/download")
 async def download_step_result(
     job_id: str,

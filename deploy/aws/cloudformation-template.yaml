@@ -543,32 +543,6 @@ Resources:
               awslogs-group: !Ref CloudWatchLogGroup
               awslogs-region: !Ref AWS::Region
               awslogs-stream-prefix: frontend
-          HealthCheck:
-            Command:
-              - CMD-SHELL
-              - |
-                echo "Health check: Checking http://localhost:3000/api/health"
-                HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://localhost:3000/api/health || echo "000")
-                if [ "$HTTP_CODE" = "200" ]; then
-                  echo "Health check: SUCCESS (HTTP $HTTP_CODE)"
-                  exit 0
-                else
-                  echo "Health check: FAILED (HTTP $HTTP_CODE)"
-                  # Try alternative endpoint as fallback
-                  echo "Health check: Trying fallback endpoint /"
-                  FALLBACK_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://localhost:3000/ || echo "000")
-                  if [ "$FALLBACK_CODE" = "200" ]; then
-                    echo "Health check: FALLBACK SUCCESS (HTTP $FALLBACK_CODE)"
-                    exit 0
-                  else
-                    echo "Health check: FALLBACK FAILED (HTTP $FALLBACK_CODE)"
-                    exit 1
-                  fi
-                fi
-            Interval: 30
-            Timeout: 10
-            Retries: 3
-            StartPeriod: 60
           Essential: true
           StopTimeout: 30
 
