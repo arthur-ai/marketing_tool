@@ -95,16 +95,15 @@ class RedisManager:
             if self._pool is None:
                 # Parse connection from REDIS_URL or individual env vars
                 redis_url = os.getenv("REDIS_URL")
+                use_ssl = False
+
                 if redis_url:
-                    # Parse URL to extract components (only redis://, not rediss://)
+                    # Parse URL to extract components (supports both redis:// and rediss://)
                     from urllib.parse import urlparse
 
                     parsed = urlparse(redis_url)
-                    # Only accept redis:// URLs (not rediss://)
-                    if parsed.scheme == "rediss":
-                        raise ValueError(
-                            "SSL is not supported. Use redis:// instead of rediss://"
-                        )
+                    # Detect SSL from URL scheme (rediss://) or explicit SSL setting
+                    use_ssl = parsed.scheme == "rediss"
                     redis_host = parsed.hostname or os.getenv("REDIS_HOST", "localhost")
                     redis_port = parsed.port or int(os.getenv("REDIS_PORT", "6379"))
                     redis_db = (
@@ -119,11 +118,16 @@ class RedisManager:
                     redis_db = int(os.getenv("REDIS_DATABASE", "0"))
                     redis_password = os.getenv("REDIS_PASSWORD")
 
+                # Check for explicit SSL setting (for ElastiCache with transit encryption)
+                # This allows using redis:// URL but enabling SSL via env var
+                if os.getenv("REDIS_SSL", "").lower() in ("true", "1", "yes"):
+                    use_ssl = True
+
                 max_connections = int(os.getenv("REDIS_MAX_CONNECTIONS", "50"))
                 socket_timeout = float(os.getenv("REDIS_SOCKET_TIMEOUT", "5.0"))
                 connect_timeout = float(os.getenv("REDIS_CONNECT_TIMEOUT", "5.0"))
 
-                # Build connection pool parameters (no SSL support)
+                # Build connection pool parameters
                 pool_kwargs = {
                     "host": redis_host,
                     "port": redis_port,
@@ -136,15 +140,28 @@ class RedisManager:
                     "health_check_interval": 30,
                 }
 
+                # Add SSL configuration if needed (for ElastiCache transit encryption)
+                if use_ssl:
+                    import ssl
+
+                    # ElastiCache uses self-signed certificates, so we need to disable cert verification
+                    pool_kwargs["ssl"] = True
+                    pool_kwargs["ssl_cert_reqs"] = ssl.CERT_NONE
+                    pool_kwargs["ssl_check_hostname"] = False
+                    logger.info(
+                        "SSL/TLS enabled for Redis connection (transit encryption)"
+                    )
+
                 # Only add password if it's set (Redis allows no password)
                 if redis_password:
                     pool_kwargs["password"] = redis_password
 
                 self._pool = ConnectionPool(**pool_kwargs)
+                ssl_status = "with SSL" if use_ssl else "without SSL"
                 logger.info(
                     f"Created Redis connection pool: {redis_host}:{redis_port} "
                     f"(db={redis_db}, max_connections={max_connections}, "
-                    f"timeouts: socket={socket_timeout}s, connect={connect_timeout}s)"
+                    f"timeouts: socket={socket_timeout}s, connect={connect_timeout}s, {ssl_status})"
                 )
             return self._pool
 
