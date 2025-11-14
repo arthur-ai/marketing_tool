@@ -411,9 +411,6 @@ Resources:
               Value: !If [UseExistingRedis, !Ref ExistingRedisEndpoint, !GetAtt RedisCluster.PrimaryEndPoint.Address]
             - Name: REDIS_PORT
               Value: '6379'
-            # Enable SSL for ElastiCache with transit encryption
-            - Name: REDIS_SSL
-              Value: 'true'
             - Name: AWS_REGION
               Value: !Ref AWS::Region
             - Name: MONGODB_URL
@@ -951,7 +948,8 @@ Resources:
       SecurityGroupIds:
         - !Ref RedisSecurityGroup
       AtRestEncryptionEnabled: true
-      TransitEncryptionEnabled: true
+      TransitEncryptionEnabled: false
+      # Note: AuthToken is still required even without transit encryption
       AuthToken: !Ref RedisPassword
       AutomaticFailoverEnabled: false
       # Single node Redis (no replication for cost savings)
