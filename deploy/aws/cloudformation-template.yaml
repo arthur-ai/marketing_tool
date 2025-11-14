@@ -468,8 +468,8 @@ Resources:
             - Name: ARQ_JOB_TIMEOUT
               Value: '600'
           Secrets:
-            - Name: REDIS_PASSWORD
-              ValueFrom: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ProjectName}/${Environment}/redis/password'
+            # Note: REDIS_PASSWORD not needed when TransitEncryptionEnabled is false
+            # (AuthToken is only supported with transit encryption)
             - Name: OPENAI_API_KEY
               ValueFrom: !Ref OpenAISecret
             - Name: API_KEY
@@ -949,8 +949,8 @@ Resources:
         - !Ref RedisSecurityGroup
       AtRestEncryptionEnabled: true
       TransitEncryptionEnabled: false
-      # Note: AuthToken is still required even without transit encryption
-      AuthToken: !Ref RedisPassword
+      # Note: AuthToken is only supported when TransitEncryptionEnabled is true
+      # When transit encryption is disabled, Redis runs without password authentication
       AutomaticFailoverEnabled: false
       # Single node Redis (no replication for cost savings)
       NumCacheClusters: 1
