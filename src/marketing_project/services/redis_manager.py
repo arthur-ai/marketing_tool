@@ -341,6 +341,25 @@ class RedisManager:
             await self._publish_metrics_if_needed()
             raise
 
+    async def _reset_connection(self):
+        """Reset Redis connection and pool to force reconnection."""
+        if self._redis:
+            try:
+                await self._redis.aclose()
+            except Exception as close_error:
+                logger.debug(f"Error closing Redis client during reset: {close_error}")
+            self._redis = None
+
+        # Reset pool to force recreation on next use
+        if self._pool:
+            try:
+                await self._pool.aclose()
+            except Exception as pool_error:
+                logger.debug(
+                    f"Error closing connection pool during reset: {pool_error}"
+                )
+            self._pool = None
+
     async def _health_check_loop(self):
         """Periodic health check loop."""
         while True:
@@ -354,13 +373,41 @@ class RedisManager:
 
     async def health_check(self) -> bool:
         """Check Redis health and update status."""
+        # Use a shorter timeout for health checks to fail fast
+        health_check_timeout = float(os.getenv("REDIS_HEALTH_CHECK_TIMEOUT", "3.0"))
+
         try:
             redis_client = await self.get_redis()
-            await redis_client.ping()
+            # Add timeout wrapper to prevent health check from hanging
+            try:
+                await asyncio.wait_for(
+                    redis_client.ping(), timeout=health_check_timeout
+                )
+            except asyncio.TimeoutError:
+                raise redis.TimeoutError(
+                    f"Health check ping timed out after {health_check_timeout}s"
+                )
+
             self._health_status = True
             self._last_health_check = datetime.utcnow()
             self._record_circuit_breaker_success()
             return True
+        except (redis.TimeoutError, asyncio.TimeoutError) as e:
+            logger.warning(
+                f"Redis health check failed: TimeoutError: {e}",
+                extra={
+                    "health_check_error_type": "TimeoutError",
+                    "circuit_breaker_state": self._circuit_breaker_state,
+                    "circuit_breaker_failures": self._circuit_breaker_failures,
+                    "timeout_seconds": health_check_timeout,
+                },
+            )
+            self._health_status = False
+            self._last_health_check = datetime.utcnow()
+            self._record_circuit_breaker_failure()
+            # Force reconnection on next use
+            await self._reset_connection()
+            return False
         except Exception as e:
             logger.warning(
                 f"Redis health check failed: {type(e).__name__}: {e}",
@@ -374,14 +421,7 @@ class RedisManager:
             self._last_health_check = datetime.utcnow()
             self._record_circuit_breaker_failure()
             # Force reconnection on next use
-            if self._redis:
-                try:
-                    await self._redis.aclose()
-                except Exception as close_error:
-                    logger.debug(
-                        f"Error closing Redis client during health check failure: {close_error}"
-                    )
-                self._redis = None
+            await self._reset_connection()
             return False
 
     def get_health_status(self) -> Dict[str, Any]:

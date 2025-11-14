@@ -254,47 +254,25 @@ jobs:
           # Execute deployment
           eval $DEPLOY_CMD
 
-      - name: Update ECS service
+      - name: Wait for ECS services to stabilize
         run: |
+          # CloudFormation already updates ECS services when task definitions change
+          # We just need to wait for them to stabilize after the CloudFormation deployment
           CLUSTER_NAME="${{ env.PROJECT_NAME }}-${{ env.ENVIRONMENT }}-cluster"
           SERVICE_NAME="${{ env.PROJECT_NAME }}-${{ env.ENVIRONMENT }}-service"
+          FRONTEND_SERVICE_NAME="${{ env.PROJECT_NAME }}-${{ env.ENVIRONMENT }}-frontend-service"
 
-          echo "Updating ECS service: $SERVICE_NAME in cluster: $CLUSTER_NAME"
-          aws ecs update-service \
-            --cluster $CLUSTER_NAME \
-            --service $SERVICE_NAME \
-            --force-new-deployment \
-            --region ${{ env.AWS_REGION }}
-
-          echo "Waiting for service to stabilize..."
+          echo "Waiting for backend service to stabilize..."
           aws ecs wait services-stable \
             --cluster $CLUSTER_NAME \
             --services $SERVICE_NAME \
-            --region ${{ env.AWS_REGION }}
-
-      - name: Update Frontend ECS service
-        env:
-          FRONTEND_CONTAINER_IMAGE: ${{ github.event.inputs.frontend_image || secrets.FRONTEND_CONTAINER_IMAGE || 'docker.arthur.ai/arthur/marketing-tool/marketing-frontend' }}
-        run: |
-          if [ -z "$FRONTEND_CONTAINER_IMAGE" ]; then
-            echo "Skipping frontend service update - no frontend image provided"
-            exit 0
-          fi
-          CLUSTER_NAME="${{ env.PROJECT_NAME }}-${{ env.ENVIRONMENT }}-cluster"
-          FRONTEND_SERVICE_NAME="${{ env.PROJECT_NAME }}-${{ env.ENVIRONMENT }}-frontend-service"
-
-          echo "Updating Frontend ECS service: $FRONTEND_SERVICE_NAME in cluster: $CLUSTER_NAME"
-          aws ecs update-service \
-            --cluster $CLUSTER_NAME \
-            --service $FRONTEND_SERVICE_NAME \
-            --force-new-deployment \
-            --region ${{ env.AWS_REGION }} || echo "Frontend service update skipped (may not exist yet)"
+            --region ${{ env.AWS_REGION }} || echo "Backend service check skipped (may not exist yet)"
 
           echo "Waiting for frontend service to stabilize..."
           aws ecs wait services-stable \
             --cluster $CLUSTER_NAME \
             --services $FRONTEND_SERVICE_NAME \
-            --region ${{ env.AWS_REGION }} || echo "Frontend service stabilization check skipped"
+            --region ${{ env.AWS_REGION }} || echo "Frontend service check skipped (may not exist yet)"
 
       - name: Get deployment info
         id: deployment-info
@@ -302,20 +280,46 @@ jobs:
           STACK_NAME="${{ env.PROJECT_NAME }}-${{ env.ENVIRONMENT }}"
 
           echo "Fetching stack outputs..."
+
+          # Try to get ALB URL (uses DomainName if set)
           ALB_URL=$(aws cloudformation describe-stacks \
             --stack-name $STACK_NAME \
             --query 'Stacks[0].Outputs[?OutputKey==`ALBURL`].OutputValue' \
             --output text \
-            --region ${{ env.AWS_REGION }})
+            --region ${{ env.AWS_REGION }} 2>/dev/null || echo "")
+
+          # If ALB_URL is empty or just "https://", fall back to ALB DNS name
+          if [ -z "$ALB_URL" ] || [ "$ALB_URL" = "https://" ]; then
+            echo "ALBURL output is empty, falling back to ALBDNSName..."
+            ALB_DNS=$(aws cloudformation describe-stacks \
+              --stack-name $STACK_NAME \
+              --query 'Stacks[0].Outputs[?OutputKey==`ALBDNSName`].OutputValue' \
+              --output text \
+              --region ${{ env.AWS_REGION }} 2>/dev/null || echo "")
+
+            if [ -n "$ALB_DNS" ]; then
+              ALB_URL="https://$ALB_DNS"
+              echo "Using ALB DNS: $ALB_URL"
+            else
+              echo "⚠️  Could not retrieve ALB URL or DNS name"
+            fi
+          fi
 
           ECR_URI=$(aws cloudformation describe-stacks \
             --stack-name $STACK_NAME \
             --query 'Stacks[0].Outputs[?OutputKey==`ECRRepositoryURI`].OutputValue' \
             --output text \
-            --region ${{ env.AWS_REGION }})
+            --region ${{ env.AWS_REGION }} 2>/dev/null || echo "")
 
           echo "alb_url=$ALB_URL" >> $GITHUB_OUTPUT
           echo "ecr_uri=$ECR_URI" >> $GITHUB_OUTPUT
+
+          if [ -n "$ALB_URL" ]; then
+            echo "✅ Application URL: $ALB_URL"
+          fi
+          if [ -n "$ECR_URI" ]; then
+            echo "✅ ECR Repository: $ECR_URI"
+          fi
 
       - name: Health check
         run: |

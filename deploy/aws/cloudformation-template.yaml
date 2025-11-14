@@ -309,6 +309,13 @@ Resources:
           FromPort: 3000
           ToPort: 3000
           SourceSecurityGroupId: !Ref ALBSecurityGroup
+      SecurityGroupEgress:
+        # Allow all outbound traffic (default behavior, but explicit for clarity)
+        # Note: Security groups are stateful, so return traffic is automatically allowed
+        # The Redis and Database security groups control ingress from ECS tasks
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic
       Tags:
         - Key: Name
           Value: !Sub '${ProjectName}-${Environment}-ecs-sg'
@@ -914,6 +921,8 @@ Resources:
       Description: Redis authentication token for ElastiCache
 
   # ElastiCache Redis (only create if not using existing)
+  # Note: Redis should be in private subnets for security, but ECS tasks in public subnets
+  # can still access it via security group rules within the same VPC
   RedisSubnetGroup:
     Type: AWS::ElastiCache::SubnetGroup
     Condition: CreateNewRedis
@@ -921,9 +930,9 @@ Resources:
       Description: Subnet group for Redis cluster
       CacheSubnetGroupName: !Sub '${ProjectName}-${Environment}-redis-subnet'
       SubnetIds:
-        - !Ref ExistingPublicSubnet1Id
-        - !Ref ExistingPublicSubnet2Id
-        - !Ref ExistingPublicSubnet3Id
+        - !Ref ExistingDatabaseSubnet1Id
+        - !Ref ExistingDatabaseSubnet2Id
+        - !Ref ExistingDatabaseSubnet3Id
 
   RedisCluster:
     Type: AWS::ElastiCache::ReplicationGroup
