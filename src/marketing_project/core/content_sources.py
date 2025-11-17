@@ -32,6 +32,7 @@ class ContentSourceType(str, Enum):
     WEBHOOK = "webhook"
     RSS = "rss"
     SOCIAL_MEDIA = "social_media"
+    S3 = "s3"
 
 
 class ContentSourceStatus(str, Enum):
@@ -141,6 +142,22 @@ class SocialMediaSourceConfig(ContentSourceConfig):
     max_posts: int = 100
 
 
+class S3SourceConfig(ContentSourceConfig):
+    """Configuration for S3-based content sources."""
+
+    source_type: ContentSourceType = ContentSourceType.S3
+    bucket_name: Optional[str] = None  # Defaults to AWS_S3_BUCKET env var
+    region: Optional[str] = None  # Defaults to AWS_S3_REGION or AWS_REGION env var
+    prefix: str = "content/"  # S3 key prefix
+    file_patterns: List[str] = Field(
+        default_factory=lambda: ["**/*.json", "**/*.md", "**/*.txt"]
+    )  # glob patterns for S3 keys
+    supported_formats: List[str] = Field(
+        default_factory=lambda: [".txt", ".md", ".json", ".yaml", ".yml"]
+    )
+    encoding: str = "utf-8"
+
+
 # Union type for all source configurations
 SourceConfig = Union[
     FileSourceConfig,
@@ -150,6 +167,7 @@ SourceConfig = Union[
     WebhookSourceConfig,
     RSSSourceConfig,
     SocialMediaSourceConfig,
+    S3SourceConfig,
 ]
 
 

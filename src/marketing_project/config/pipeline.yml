@@ -105,11 +105,21 @@ content_sources:
   default_sources:
     - name: "local_content"
       type: "file"
-      enabled: true
+      enabled: false  # Disabled by default on AWS - use s3_content instead
       config:
         file_paths: ["content/"]
         file_patterns: ["content/**/*.md", "content/**/*.json", "content/**/*.txt"]
         watch_directory: true
+        supported_formats: [".md", ".json", ".txt", ".yaml", ".yml"]
+
+    - name: "s3_content"
+      type: "s3"
+      enabled: true  # Enabled by default - uses AWS_S3_BUCKET env var
+      config:
+        bucket_name: "${AWS_S3_BUCKET}"  # Uses env var if not set
+        region: "${AWS_S3_REGION}"  # Uses env var if not set
+        prefix: "content/"
+        file_patterns: ["**/*.json", "**/*.md", "**/*.txt"]
         supported_formats: [".md", ".json", ".txt", ".yaml", ".yml"]
 
     - name: "content_api"

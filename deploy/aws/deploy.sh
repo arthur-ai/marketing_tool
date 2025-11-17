@@ -397,6 +397,11 @@ fi
 # Frontend parameters
 if [[ -n "$FRONTEND_CONTAINER_IMAGE" ]]; then
     PARAMETERS="$PARAMETERS ParameterKey=FrontendContainerImage,ParameterValue=$FRONTEND_CONTAINER_IMAGE"
+    # Use backend version if frontend version not specified
+    if [[ -z "$FRONTEND_DEPLOY_VERSION" ]] || [[ "$FRONTEND_DEPLOY_VERSION" = "latest" ]]; then
+        FRONTEND_DEPLOY_VERSION="$DEPLOY_VERSION"
+        print_info "Using backend version ($DEPLOY_VERSION) for frontend"
+    fi
     PARAMETERS="$PARAMETERS ParameterKey=FrontendDeployVersion,ParameterValue=$FRONTEND_DEPLOY_VERSION"
     # API URL is optional - will be auto-inferred from DomainName if not provided
     if [[ -n "$FRONTEND_BACKEND_API_URL" ]]; then

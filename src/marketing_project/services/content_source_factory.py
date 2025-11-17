@@ -22,6 +22,7 @@ from marketing_project.core.content_sources import (
     ContentSourceType,
     DatabaseSourceConfig,
     FileSourceConfig,
+    S3SourceConfig,
     SourceConfig,
 )
 from marketing_project.core.models import (
@@ -46,6 +47,7 @@ from marketing_project.services.file_source import (
     FileContentSource,
     UploadedFileSource,
 )
+from marketing_project.services.s3_source import S3ContentSource
 from marketing_project.services.web_scraping_source import (
     BeautifulSoupScrapingSource,
     SeleniumScrapingSource,
@@ -113,6 +115,15 @@ class ContentSourceFactory:
                     return SeleniumScrapingSource(config)
                 else:
                     return BeautifulSoupScrapingSource(config)
+
+            elif config.source_type == ContentSourceType.S3:
+                # Ensure we have an S3SourceConfig
+                if not isinstance(config, S3SourceConfig):
+                    logger.error(
+                        f"Expected S3SourceConfig for S3 source, got {type(config)}"
+                    )
+                    return None
+                return S3ContentSource(config)
 
             else:
                 logger.error(f"Unsupported content source type: {config.source_type}")

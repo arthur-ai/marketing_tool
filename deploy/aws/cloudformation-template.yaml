@@ -218,8 +218,8 @@ Parameters:
 
   FrontendDeployVersion:
     Type: String
-    Default: latest
-    Description: Frontend Docker image version/tag (e.g., latest, v1.0.0, commit-hash)
+    Default: ''
+    Description: Frontend Docker image version/tag (e.g., latest, v1.0.0). If empty, uses the same version as backend (DeployVersion).
 
   FrontendTaskCPU:
     Type: String
@@ -271,6 +271,12 @@ Conditions:
   UseExistingRedis: !Not [!Equals [!Ref ExistingRedisEndpoint, '']]
   CreateNewRedis: !Equals [!Ref ExistingRedisEndpoint, '']
   UseS3Bucket: !Not [!Equals [!Ref ExistingS3BucketName, '']]
+  HasDockerRegistryCredentials: !And
+    - !Not [!Equals [!Ref FrontendDockerRegistryUsername, '']]
+    - !Not [!Equals [!Ref FrontendDockerRegistryPassword, '']]
+  FrontendVersionEmpty: !Or
+    - !Equals [!Ref FrontendDeployVersion, '']
+    - !Equals [!Ref FrontendDeployVersion, 'latest']
 
 Resources:
   # Note: Using existing VPC and subnets - no networking resources created
@@ -354,6 +360,109 @@ Resources:
 
   # ECR Repository is created by GitHub Actions workflow, not CloudFormation
   # Repository name: ${ProjectName}-${Environment}
+
+  # Lambda Role for CloudWatch Log Group Resource Policy
+  CloudWatchLogPolicyLambdaRole:
+    Type: AWS::IAM::Role
+    Condition: CreateNewRedis
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: CloudWatchLogsResourcePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:PutResourcePolicy
+                  - logs:DescribeResourcePolicies
+                  - logs:DeleteResourcePolicy
+                Resource: '*'
+
+  # Lambda Function to Attach Resource Policy to CloudWatch Log Group for ElastiCache
+  CloudWatchLogPolicyFunction:
+    Type: AWS::Lambda::Function
+    Condition: CreateNewRedis
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-cloudwatch-log-policy'
+      Runtime: python3.11
+      Handler: index.handler
+      Role: !GetAtt CloudWatchLogPolicyLambdaRole.Arn
+      Timeout: 60
+      Code:
+        ZipFile: |
+          import cfnresponse
+          import json
+          import boto3
+
+          def handler(event, context):
+              logs_client = boto3.client('logs')
+
+              try:
+                  request_type = event['RequestType']
+                  log_group_name = event['ResourceProperties']['LogGroupName']
+
+                  if request_type == 'Delete':
+                      # Remove resource policy on delete
+                      try:
+                          policy_name = f'ElastiCacheLogDelivery-{log_group_name.replace("/", "-")}'
+                          logs_client.delete_resource_policy(policyName=policy_name)
+                          print(f"Deleted resource policy for log group: {log_group_name}")
+                      except Exception as delete_error:
+                          # Policy may not exist, which is fine
+                          print(f"Resource policy not found or already deleted: {str(delete_error)}")
+                      cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+                      return
+
+                  # Create resource policy that allows ElastiCache to write logs
+                  policy_document = {
+                      "Version": "2012-10-17",
+                      "Statement": [
+                          {
+                              "Sid": "ElastiCacheLogDelivery",
+                              "Effect": "Allow",
+                              "Principal": {
+                                  "Service": "delivery.logs.amazonaws.com"
+                              },
+                              "Action": [
+                                  "logs:CreateLogStream",
+                                  "logs:PutLogEvents",
+                                  "logs:DescribeLogStreams"
+                              ],
+                              "Resource": f"arn:aws:logs:*:*:log-group:{log_group_name}:*"
+                          }
+                      ]
+                  }
+
+                  policy_name = f'ElastiCacheLogDelivery-{log_group_name.replace("/", "-")}'
+
+                  # Put resource policy
+                  logs_client.put_resource_policy(
+                      policyName=policy_name,
+                      policyDocument=json.dumps(policy_document)
+                  )
+
+                  print(f"Successfully attached resource policy to log group: {log_group_name}")
+
+                  response_data = {
+                      'PolicyName': policy_name
+                  }
+
+                  cfnresponse.send(event, context, cfnresponse.SUCCESS, response_data)
+
+              except Exception as e:
+                  print(f"Error managing resource policy: {str(e)}")
+                  import traceback
+                  traceback.print_exc()
+                  cfnresponse.send(event, context, cfnresponse.FAILED, {})
 
   # ECS Cluster
   ECSCluster:
@@ -535,9 +644,16 @@ Resources:
       TaskRoleArn: !Ref ECSTaskRole
       ContainerDefinitions:
         - Name: marketing-frontend
-          Image: !Sub '${FrontendContainerImage}:${FrontendDeployVersion}'
-          RepositoryCredentials:
-            CredentialsParameter: !Ref FrontendDockerRegistrySecret
+          Image: !Sub
+            - '${FrontendContainerImage}:${Version}'
+            - Version: !If
+                - FrontendVersionEmpty
+                - !Ref DeployVersion
+                - !Ref FrontendDeployVersion
+          RepositoryCredentials: !If
+            - HasDockerRegistryCredentials
+            - CredentialsParameter: !Ref FrontendDockerRegistrySecret
+            - !Ref 'AWS::NoValue'
           PortMappings:
             - ContainerPort: 3000
               Protocol: tcp
@@ -937,6 +1053,7 @@ Resources:
   RedisCluster:
     Type: AWS::ElastiCache::ReplicationGroup
     Condition: CreateNewRedis
+    DependsOn: RedisLogGroupPolicyResource
     Properties:
       ReplicationGroupId: !Sub '${ProjectName}-${Environment}-redis'
       ReplicationGroupDescription: Redis cluster for ARQ job queue and job state persistence
@@ -981,6 +1098,17 @@ Resources:
     Properties:
       LogGroupName: !Sub '/aws/elasticache/${ProjectName}-${Environment}-redis'
       RetentionInDays: !If [IsProduction, 30, 7]
+
+  # Custom Resource to Attach Resource Policy to Redis Log Group
+  RedisLogGroupPolicyResource:
+    Type: AWS::CloudFormation::CustomResource
+    Condition: CreateNewRedis
+    Properties:
+      ServiceToken: !GetAtt CloudWatchLogPolicyFunction.Arn
+      LogGroupName: !Sub '/aws/elasticache/${ProjectName}-${Environment}-redis'
+    DependsOn:
+      - RedisLogGroup
+      - CloudWatchLogPolicyFunction
 
   # CloudWatch Log Group
   CloudWatchLogGroup:

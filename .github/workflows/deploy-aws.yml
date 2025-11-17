@@ -22,10 +22,10 @@ on:
         type: string
         default: 'docker.arthur.ai/arthur/marketing-tool/marketing-frontend'
       frontend_version:
-        description: 'Frontend Docker image version/tag (optional - default: latest)'
+        description: 'Frontend Docker image version/tag (optional - defaults to backend version if empty)'
         required: false
         type: string
-        default: 'latest'
+        default: ''
       frontend_docker_registry_username:
         description: 'Docker registry username (optional - uses secret if not provided)'
         required: false
@@ -197,10 +197,11 @@ jobs:
           EXISTING_DATABASE_NAME: ${{ secrets.EXISTING_DATABASE_NAME }}
           EXISTING_REDIS_ENDPOINT: ${{ secrets.EXISTING_REDIS_ENDPOINT }}
           EXISTING_S3_BUCKET_NAME: ${{ secrets.EXISTING_S3_BUCKET_NAME }}
-          FRONTEND_CONTAINER_IMAGE: ${{ github.event.inputs.frontend_image || secrets.FRONTEND_CONTAINER_IMAGE || 'docker.arthur.ai/arthur/marketing-tool/marketing-frontend' }}
-          FRONTEND_DEPLOY_VERSION: ${{ github.event.inputs.frontend_version || 'latest' }}
-          FRONTEND_DOCKER_REGISTRY_USERNAME: ${{ github.event.inputs.frontend_docker_registry_username || secrets.FRONTEND_DOCKER_REGISTRY_USERNAME }}
-          FRONTEND_DOCKER_REGISTRY_PASSWORD: ${{ github.event.inputs.frontend_docker_registry_password || secrets.FRONTEND_DOCKER_REGISTRY_PASSWORD }}
+          FRONTEND_CONTAINER_IMAGE: ${{ github.event.inputs.frontend_image || '' }}
+          FRONTEND_DEPLOY_VERSION: ${{ github.event.inputs.frontend_version || '' }}
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          FRONTEND_DOCKER_REGISTRY_USERNAME: ${{ github.event.inputs.frontend_docker_registry_username || secrets.FRONTEND_DOCKER_REGISTRY_USERNAME || secrets.NEXUS_USERNAME || '' }}
+          FRONTEND_DOCKER_REGISTRY_PASSWORD: ${{ github.event.inputs.frontend_docker_registry_password || secrets.FRONTEND_DOCKER_REGISTRY_PASSWORD || secrets.NEXUS_PASSWORD || '' }}
         run: |
           cd deploy/aws
           chmod +x deploy.sh
@@ -240,15 +241,21 @@ jobs:
             DEPLOY_CMD="$DEPLOY_CMD --existing-s3-bucket-name $EXISTING_S3_BUCKET_NAME"
           fi
 
-          # Add frontend parameters if provided
-          if [ -n "$FRONTEND_CONTAINER_IMAGE" ]; then
-            DEPLOY_CMD="$DEPLOY_CMD --frontend-image $FRONTEND_CONTAINER_IMAGE"
+          # Add frontend parameters
+          # If not explicitly provided, use Nexus registry with backend version
+          if [ -z "$FRONTEND_CONTAINER_IMAGE" ] || [ "$FRONTEND_CONTAINER_IMAGE" = "" ]; then
+            # Use Nexus registry, version will default to backend version in deploy.sh
+            FRONTEND_CONTAINER_IMAGE="docker.arthur.ai/arthur/marketing-tool/marketing-frontend"
+            FRONTEND_DEPLOY_VERSION=""
+          fi
+          DEPLOY_CMD="$DEPLOY_CMD --frontend-image $FRONTEND_CONTAINER_IMAGE"
+          if [ -n "$FRONTEND_DEPLOY_VERSION" ]; then
             DEPLOY_CMD="$DEPLOY_CMD --frontend-version $FRONTEND_DEPLOY_VERSION"
-            # Docker registry credentials are required when deploying frontend
-            if [ -n "$FRONTEND_DOCKER_REGISTRY_USERNAME" ] && [ -n "$FRONTEND_DOCKER_REGISTRY_PASSWORD" ]; then
-              DEPLOY_CMD="$DEPLOY_CMD --frontend-docker-registry-username $FRONTEND_DOCKER_REGISTRY_USERNAME"
-              DEPLOY_CMD="$DEPLOY_CMD --frontend-docker-registry-password $FRONTEND_DOCKER_REGISTRY_PASSWORD"
-            fi
+          fi
+          # Docker registry credentials are required when deploying frontend from Nexus
+          if [ -n "$FRONTEND_DOCKER_REGISTRY_USERNAME" ] && [ -n "$FRONTEND_DOCKER_REGISTRY_PASSWORD" ]; then
+            DEPLOY_CMD="$DEPLOY_CMD --frontend-docker-registry-username $FRONTEND_DOCKER_REGISTRY_USERNAME"
+            DEPLOY_CMD="$DEPLOY_CMD --frontend-docker-registry-password $FRONTEND_DOCKER_REGISTRY_PASSWORD"
           fi
 
           # Execute deployment

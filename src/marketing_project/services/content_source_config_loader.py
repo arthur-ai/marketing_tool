@@ -17,6 +17,7 @@ from marketing_project.core.content_sources import (
     DatabaseSourceConfig,
     FileSourceConfig,
     RSSSourceConfig,
+    S3SourceConfig,
     SocialMediaSourceConfig,
     WebhookSourceConfig,
     WebScrapingSourceConfig,
@@ -259,6 +260,15 @@ class ContentSourceConfigLoader:
                         source_type=ContentSourceType.SOCIAL_MEDIA,
                         **config_data,
                     )
+                elif source_type == "s3":
+                    source_config = S3SourceConfig(
+                        name=config["name"],
+                        source_type=ContentSourceType.S3,
+                        **config_data,
+                    )
+                    logger.info(f"  Bucket: {source_config.bucket_name or 'from env'}")
+                    logger.info(f"  Prefix: {source_config.prefix}")
+                    logger.info(f"  File patterns: {source_config.file_patterns}")
                 else:
                     logger.warning(f"Unknown source type: {source_type}")
                     continue

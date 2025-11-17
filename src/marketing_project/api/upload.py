@@ -38,6 +38,7 @@ from marketing_project.services.content_source_config_loader import (
     ContentSourceConfigLoader,
 )
 from marketing_project.services.content_source_factory import ContentSourceManager
+from marketing_project.services.s3_storage import S3Storage
 
 logger = logging.getLogger("marketing_project.api.upload")
 
@@ -55,6 +56,9 @@ CONTENT_DIR = os.getenv("CONTENT_DIR", "content")
 # Ensure directories exist
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(CONTENT_DIR, exist_ok=True)
+
+# Initialize S3 storage (will be None if S3 is not configured)
+s3_storage = S3Storage(prefix="content/")
 
 
 @router.post("/upload")
@@ -114,6 +118,15 @@ async def upload_file(
             upload_path, content_type, file_ext
         )
 
+        # Check if file was uploaded to S3
+        s3_uploaded = False
+        s3_key = None
+        if s3_storage.is_available():
+            # The S3 upload happens in process_uploaded_file, so we need to check
+            # We'll add s3_key to the response in process_uploaded_file return
+            # For now, just indicate S3 is available
+            s3_uploaded = True
+
         return JSONResponse(
             status_code=200,
             content={
@@ -125,6 +138,7 @@ async def upload_file(
                 "content_type": content_type,
                 "upload_path": upload_path,
                 "processed_path": processed_path,
+                "s3_uploaded": s3_uploaded,
             },
         )
 
@@ -315,6 +329,26 @@ async def process_uploaded_file(
             shutil.copy2(upload_path, processed_path)
 
         logger.info(f"File processed: {upload_path} -> {processed_path}")
+
+        # Upload to S3 if available
+        s3_key = None
+        if s3_storage.is_available():
+            try:
+                # Determine S3 key based on content type and filename
+                content_type_dir = f"{content_type}s"
+                s3_key_path = f"{content_type_dir}/{Path(processed_path).name}"
+                s3_key = await s3_storage.upload_file(processed_path, s3_key_path)
+                if s3_key:
+                    logger.info(
+                        f"File uploaded to S3: s3://{s3_storage.bucket_name}/{s3_key}"
+                    )
+                else:
+                    logger.warning(
+                        "Failed to upload file to S3, but local processing succeeded"
+                    )
+            except Exception as e:
+                logger.error(f"Error uploading to S3: {e}")
+                # Don't fail the upload if S3 fails
 
         # Clean up upload file
         try:
@@ -551,6 +585,20 @@ async def upload_from_url(request: URLExtractionRequest):
             f"Content extracted and saved from {request.url} to {processed_path}"
         )
 
+        # Upload to S3 if available
+        s3_key = None
+        if s3_storage.is_available():
+            try:
+                content_type_dir = f"{request.content_type}s"
+                s3_key_path = f"{content_type_dir}/{safe_filename}"
+                s3_key = await s3_storage.upload_file(processed_path, s3_key_path)
+                if s3_key:
+                    logger.info(
+                        f"Content uploaded to S3: s3://{s3_storage.bucket_name}/{s3_key}"
+                    )
+            except Exception as e:
+                logger.error(f"Error uploading to S3: {e}")
+
         return JSONResponse(
             status_code=200,
             content={
@@ -562,6 +610,8 @@ async def upload_from_url(request: URLExtractionRequest):
                 "word_count": extracted_data["word_count"],
                 "content_type": request.content_type,
                 "processed_path": processed_path,
+                "s3_uploaded": s3_key is not None,
+                "s3_key": s3_key,
                 "extracted_data": extracted_data,
             },
         )

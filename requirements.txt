@@ -49,6 +49,12 @@ attrs==25.4.0
     #   trio
 beautifulsoup4==4.14.2
     # via -r requirements.in
+boto3==1.40.74
+    # via -r requirements.in
+botocore==1.40.74
+    # via
+    #   boto3
+    #   s3transfer
 certifi==2025.11.12
     # via
     #   httpcore
@@ -66,7 +72,6 @@ click==8.3.0
     #   arq
     #   rich-toolkit
     #   typer
-    #   typer-slim
     #   uvicorn
 cryptography==46.0.3
     # via pyjwt
@@ -156,6 +161,10 @@ jinja2==3.1.6
     #   torch
 jiter==0.12.0
     # via openai
+jmespath==1.0.1
+    # via
+    #   boto3
+    #   botocore
 joblib==1.5.2
     # via scikit-learn
 jsonpatch==1.33
@@ -325,7 +334,9 @@ pysocks==1.7.1
 pytesseract==0.3.13
     # via -r requirements.in
 python-dateutil==2.9.0.post0
-    # via dateparser
+    # via
+    #   botocore
+    #   dateparser
 python-docx==1.2.0
     # via -r requirements.in
 python-dotenv==1.2.1
@@ -392,6 +403,8 @@ rpds-py==0.28.0
     # via
     #   jsonschema
     #   referencing
+s3transfer==0.14.0
+    # via boto3
 safetensors==0.6.2
     # via transformers
 scikit-learn==1.7.2
@@ -411,9 +424,7 @@ sentry-sdk==2.44.0
 sgmllib3k==1.0.0
     # via feedparser
 shellingham==1.5.4
-    # via
-    #   huggingface-hub
-    #   typer
+    # via typer
 six==1.17.0
     # via
     #   langdetect
@@ -501,7 +512,6 @@ typing-extensions==4.15.0
     #   starlette
     #   torch
     #   typer
-    #   typer-slim
     #   typing-inspect
     #   typing-inspection
 typing-inspect==0.9.0
@@ -516,6 +526,7 @@ tzlocal==5.3.1
     #   dateparser
 urllib3[socks]==2.5.0
     # via
+    #   botocore
     #   requests
     #   selenium
     #   sentry-sdk
