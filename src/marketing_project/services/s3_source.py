@@ -71,25 +71,51 @@ class S3ContentSource(ContentSource):
             logger.error(f"Failed to initialize S3 source '{self.config.name}': {e}")
             return False
 
-    def _matches_pattern(self, s3_key: str, patterns: List[str]) -> bool:
-        """Check if S3 key matches any of the patterns."""
+    def _matches_pattern_with_prefix(
+        self, s3_key: str, patterns: List[str], prefix: str
+    ) -> bool:
+        """Check if S3 key matches any of the patterns with a given prefix."""
         if not patterns:
             return True
 
         # Remove prefix from key for pattern matching
         key_without_prefix = s3_key
-        if self.config.prefix and s3_key.startswith(self.config.prefix):
-            key_without_prefix = s3_key[len(self.config.prefix) :]
+        if prefix and s3_key.startswith(prefix):
+            key_without_prefix = s3_key[len(prefix) :]
 
         for pattern in patterns:
-            # Convert glob pattern to match S3 key structure
-            # Replace ** with * for simple matching (S3 doesn't have true directory structure)
-            pattern_normalized = pattern.replace("**/", "").replace("**", "*")
-            if fnmatch.fnmatch(
-                key_without_prefix, pattern_normalized
-            ) or fnmatch.fnmatch(s3_key, pattern_normalized):
-                return True
+            # Handle ** patterns - they should match any number of directories
+            if "**" in pattern:
+                # For patterns like **/*.json, extract the file part (e.g., *.json)
+                if "/" in pattern:
+                    # Extract the file pattern part after **/
+                    file_pattern = (
+                        pattern.split("/", 1)[-1] if "/" in pattern else pattern
+                    )
+                    # Match if the key (or any part of it) matches the file pattern
+                    # This allows **/*.json to match blog_posts/filename.json
+                    if fnmatch.fnmatch(key_without_prefix, file_pattern):
+                        return True
+                    # Also check if any suffix of the path matches
+                    parts = key_without_prefix.split("/")
+                    for i in range(len(parts)):
+                        suffix = "/".join(parts[i:])
+                        if fnmatch.fnmatch(suffix, file_pattern):
+                            return True
+                else:
+                    # Pattern is just ** - matches everything
+                    return True
+            else:
+                # Simple pattern matching (no **)
+                if fnmatch.fnmatch(key_without_prefix, pattern) or fnmatch.fnmatch(
+                    s3_key, pattern
+                ):
+                    return True
         return False
+
+    def _matches_pattern(self, s3_key: str, patterns: List[str]) -> bool:
+        """Check if S3 key matches any of the patterns using the configured prefix."""
+        return self._matches_pattern_with_prefix(s3_key, patterns, self.config.prefix)
 
     def _is_supported_format(self, s3_key: str) -> bool:
         """Check if file format is supported."""
@@ -110,23 +136,39 @@ class S3ContentSource(ContentSource):
                     error_message="S3 storage is not available",
                 )
 
-            # List all files in S3
+            # List all files in S3 with the configured prefix
             all_files = await self.s3_storage.list_files()
             logger.info(
-                f"Found {len(all_files)} files in S3 bucket for source '{self.config.name}'"
+                f"Found {len(all_files)} files in S3 bucket with prefix '{self.config.prefix}' for source '{self.config.name}'"
             )
+
+            if all_files:
+                logger.info(f"Sample S3 files found: {all_files[:5]}")
 
             # Filter files by pattern and format
             filtered_files = []
             for s3_key in all_files:
-                if self._is_supported_format(s3_key) and self._matches_pattern(
+                is_supported = self._is_supported_format(s3_key)
+                matches_pattern = self._matches_pattern(
                     s3_key, self.config.file_patterns
-                ):
+                )
+
+                if not is_supported:
+                    logger.debug(f"Skipping {s3_key}: unsupported format")
+                elif not matches_pattern:
+                    logger.debug(
+                        f"Skipping {s3_key}: doesn't match patterns {self.config.file_patterns}"
+                    )
+
+                if is_supported and matches_pattern:
                     filtered_files.append(s3_key)
 
             logger.info(
-                f"Filtered to {len(filtered_files)} matching files for source '{self.config.name}'"
+                f"Filtered to {len(filtered_files)} matching files for source '{self.config.name}' (from {len(all_files)} total files)"
             )
+
+            if filtered_files:
+                logger.info(f"Sample filtered files: {filtered_files[:5]}")
 
             # Apply limit
             if limit:
@@ -136,16 +178,22 @@ class S3ContentSource(ContentSource):
             content_items = []
             for s3_key in filtered_files:
                 try:
+                    logger.debug(f"Reading S3 file: {s3_key}")
                     content_item = await self._read_s3_file(s3_key)
                     if content_item:
                         content_items.append(content_item)
                         self.file_cache[s3_key] = datetime.now()
+                        logger.debug(f"Successfully parsed content from {s3_key}")
+                    else:
+                        logger.warning(
+                            f"Failed to parse content from {s3_key}: returned None"
+                        )
                 except Exception as e:
-                    logger.warning(f"Failed to read file {s3_key}: {e}")
+                    logger.warning(f"Failed to read file {s3_key}: {e}", exc_info=True)
                     continue
 
             logger.info(
-                f"Successfully fetched {len(content_items)} content items from S3 source '{self.config.name}'"
+                f"Successfully fetched {len(content_items)} content items from S3 source '{self.config.name}' (attempted {len(filtered_files)} files)"
             )
 
             return ContentSourceResult(
@@ -169,12 +217,15 @@ class S3ContentSource(ContentSource):
         """Read and parse a single file from S3."""
         try:
             # Get file content from S3
+            logger.debug(f"Fetching content from S3 for key: {s3_key}")
             content_bytes = await self.s3_storage.get_file_content(s3_key)
             if not content_bytes:
+                logger.warning(f"No content bytes returned for S3 key: {s3_key}")
                 return None
 
             # Decode content
             content = content_bytes.decode(self.config.encoding)
+            logger.debug(f"Decoded {len(content)} characters from {s3_key}")
 
             # Parse based on file extension
             file_ext = Path(s3_key).suffix.lower()

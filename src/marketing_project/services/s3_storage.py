@@ -102,6 +102,12 @@ class S3Storage:
                 # Use the filename with prefix
                 filename = Path(local_path).name
                 s3_key = self._get_s3_key(filename)
+            else:
+                # Remove leading slash if present
+                s3_key = s3_key.lstrip("/")
+                # Apply prefix only if prefix is configured and not already present
+                if self.prefix and not s3_key.startswith(self.prefix):
+                    s3_key = self._get_s3_key(s3_key)
 
             logger.info(f"Uploading {local_path} to s3://{self.bucket_name}/{s3_key}")
 

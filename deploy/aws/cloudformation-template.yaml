@@ -630,6 +630,94 @@ Resources:
     # Note: During stack deletion, ECS service will automatically scale down tasks
     # Network interfaces will be released once all tasks are stopped
 
+  # ARQ Worker Task Definition
+  ARQWorkerTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub '${ProjectName}-${Environment}-arq-worker-task'
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: '256'
+      Memory: '512'
+      ExecutionRoleArn: !Ref ECSTaskExecutionRole
+      TaskRoleArn: !Ref ECSTaskRole
+      ContainerDefinitions:
+        - Name: arq-worker
+          Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ProjectName}-${Environment}:${DeployVersion}'
+          Environment:
+            - Name: ENVIRONMENT
+              Value: !Ref Environment
+            - Name: DEBUG
+              Value: !If [IsProduction, 'false', 'true']
+            - Name: LOG_LEVEL
+              Value: !If [IsProduction, 'INFO', 'DEBUG']
+            - Name: TEMPLATE_VERSION
+              Value: 'v1'
+            - Name: PYTHONPATH
+              Value: '/app/src'
+            # Redis connection for ARQ
+            - Name: REDIS_URL
+              Value: !If [UseExistingRedis, !Sub 'redis://${ExistingRedisEndpoint}:6379', !Sub 'redis://${RedisCluster.PrimaryEndPoint.Address}:6379']
+            - Name: REDIS_HOST
+              Value: !If [UseExistingRedis, !Ref ExistingRedisEndpoint, !GetAtt RedisCluster.PrimaryEndPoint.Address]
+            - Name: REDIS_PORT
+              Value: '6379'
+            - Name: REDIS_DATABASE
+              Value: '0'
+            - Name: AWS_REGION
+              Value: !Ref AWS::Region
+            - Name: POSTGRES_URL
+              Value: !Sub 'postgresql://postgres:${DatabasePassword}@${ExistingDatabaseEndpoint}:5432/${ExistingDatabaseName}'
+            - Name: PIPELINE_CONFIG_PATH
+              Value: '/app/src/marketing_project/config/pipeline.yml'
+            - Name: PROMPTS_DIR
+              Value: '/app/src/marketing_project/prompts'
+            # ARQ worker settings
+            - Name: ARQ_MAX_JOBS
+              Value: '10'
+            - Name: ARQ_JOB_TIMEOUT
+              Value: '1800'
+          Secrets:
+            - Name: OPENAI_API_KEY
+              ValueFrom: !Ref OpenAISecret
+            - Name: API_KEY
+              ValueFrom: !Ref ApiKeySecret
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref CloudWatchLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: arq-worker
+          Command:
+            - arq
+            - marketing_project.worker.WorkerSettings
+          Essential: true
+          StopTimeout: 30
+
+  # ARQ Worker ECS Service
+  ARQWorkerService:
+    Type: AWS::ECS::Service
+    Properties:
+      ServiceName: !Sub '${ProjectName}-${Environment}-arq-worker-service'
+      Cluster: !Ref ECSCluster
+      TaskDefinition: !Ref ARQWorkerTaskDefinition
+      DesiredCount: 1
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - !Ref ECSSecurityGroup
+          Subnets:
+            - !Ref ExistingPublicSubnet1Id
+            - !Ref ExistingPublicSubnet2Id
+            - !Ref ExistingPublicSubnet3Id
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+    # Note: ARQ workers don't need load balancer - they process jobs from Redis queue
+
   # Frontend ECS Task Definition
   FrontendECSTaskDefinition:
     Type: AWS::ECS::TaskDefinition

@@ -58,7 +58,7 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(CONTENT_DIR, exist_ok=True)
 
 # Initialize S3 storage (will be None if S3 is not configured)
-s3_storage = S3Storage(prefix="content/")
+s3_storage = S3Storage(prefix="")
 
 
 @router.post("/upload")

@@ -437,6 +437,17 @@ class JobManager:
                         logger.debug(f"Job {job_id} is in progress")
                         await self._save_job_to_redis(job)
 
+                    elif arq_status == ArqJobStatus.queued:
+                        # Job is queued and waiting for a worker
+                        job.status = JobStatus.QUEUED
+                        if (
+                            not job.current_step
+                            or job.current_step == "Retrying after failure"
+                        ):
+                            job.current_step = "Waiting for worker"
+                        logger.debug(f"Job {job_id} is queued in ARQ")
+                        await self._save_job_to_redis(job)
+
                     elif arq_status == ArqJobStatus.deferred:
                         # Job is waiting to retry after failure
                         job.status = JobStatus.QUEUED

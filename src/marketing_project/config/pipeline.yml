@@ -118,7 +118,7 @@ content_sources:
       config:
         bucket_name: "${AWS_S3_BUCKET}"  # Uses env var if not set
         region: "${AWS_S3_REGION}"  # Uses env var if not set
-        prefix: "content/"
+        prefix: ""  # No prefix - files stored directly in blog_posts/, etc.
         file_patterns: ["**/*.json", "**/*.md", "**/*.txt"]
         supported_formats: [".md", ".json", ".txt", ".yaml", ".yml"]
 

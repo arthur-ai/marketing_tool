@@ -19,6 +19,7 @@ from marketing_project.core.content_sources import (
 )
 from marketing_project.core.content_sources import (
     ContentSourceResult,
+    ContentSourceStatus,
     ContentSourceType,
     DatabaseSourceConfig,
     FileSourceConfig,
@@ -430,6 +431,48 @@ class ContentSourceManager(BaseContentSourceManager):
     def set_cache_ttl(self, ttl_seconds: int) -> None:
         """Set cache time-to-live in seconds."""
         self.cache_ttl = ttl_seconds
+
+    async def list_sources(self) -> List[Dict[str, Any]]:
+        """
+        List all content sources with their status and item counts.
+
+        Returns:
+            List of dictionaries containing source information:
+            - name: Source name
+            - active: Whether the source is active
+            - item_count: Number of content items from this source
+            - type: Source type
+            - status: Source status
+        """
+        sources_list = []
+
+        # Get content from all sources to count items
+        results = await self.fetch_all_content()
+
+        # Create a mapping of source name to item count
+        source_item_counts: Dict[str, int] = {}
+        for result in results:
+            if result.success:
+                source_item_counts[result.source_name] = result.total_count
+
+        # Build the list of source information
+        for name, source in self.sources.items():
+            status = source.get_status()
+            # Compare against enum value for safety
+            is_active = source.status == ContentSourceStatus.ACTIVE
+            item_count = source_item_counts.get(name, 0)
+
+            sources_list.append(
+                {
+                    "name": name,
+                    "active": is_active,
+                    "item_count": item_count,
+                    "type": status.get("type", "unknown"),
+                    "status": status.get("status", "unknown"),
+                }
+            )
+
+        return sources_list
 
     async def cleanup(self) -> None:
         """Cleanup all resources."""
