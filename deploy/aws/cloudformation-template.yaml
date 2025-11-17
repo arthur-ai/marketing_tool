@@ -960,6 +960,27 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub '${ProjectName}-${Environment}-redis'
+      LogDeliveryConfigurations:
+        - DestinationDetails:
+            CloudWatchLogsDetails:
+              LogGroup: !Sub '/aws/elasticache/${ProjectName}-${Environment}-redis'
+          DestinationType: cloudwatch-logs
+          LogFormat: json
+          LogType: slow-log
+        - DestinationDetails:
+            CloudWatchLogsDetails:
+              LogGroup: !Sub '/aws/elasticache/${ProjectName}-${Environment}-redis'
+          DestinationType: cloudwatch-logs
+          LogFormat: json
+          LogType: engine-log
+
+  # CloudWatch Log Group for Redis
+  RedisLogGroup:
+    Type: AWS::Logs::LogGroup
+    Condition: CreateNewRedis
+    Properties:
+      LogGroupName: !Sub '/aws/elasticache/${ProjectName}-${Environment}-redis'
+      RetentionInDays: !If [IsProduction, 30, 7]
 
   # CloudWatch Log Group
   CloudWatchLogGroup:
