@@ -1278,10 +1278,39 @@ async def startup(ctx):
     logger.info("ARQ Worker starting up...")
     logger.info(f"Redis connection: {ctx['redis']}")
 
+    # Initialize database connection
+    try:
+        # Import models to register them with SQLAlchemy Base
+        from marketing_project.models import db_models  # noqa: F401
+        from marketing_project.services.database import get_database_manager
+
+        db_manager = get_database_manager()
+        if await db_manager.initialize():
+            # Create tables if they don't exist
+            await db_manager.create_tables()
+            logger.info("✓ Database connection initialized and tables created")
+        else:
+            logger.warning(
+                "⚠ Database not configured (DATABASE_URL or POSTGRES_URL not set). Configuration persistence will be disabled."
+            )
+    except Exception as e:
+        logger.warning(f"⚠ Failed to initialize database connection: {e}")
+
 
 async def shutdown(ctx):
     """Called when worker shuts down."""
     logger.info("ARQ Worker shutting down...")
+
+    # Clean up database connection
+    try:
+        from marketing_project.services.database import get_database_manager
+
+        db_manager = get_database_manager()
+        if db_manager.is_initialized:
+            await db_manager.cleanup()
+            logger.info("✓ Database connection cleaned up")
+    except Exception as e:
+        logger.warning(f"Error cleaning up database connection: {e}")
 
 
 # ARQ Worker Settings

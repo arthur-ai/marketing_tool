@@ -340,7 +340,7 @@ class InternalDocsScanner:
         metadata.anchor_text_patterns = [
             link.get("anchor_text", "")
             for link in internal_links
-            if link.get("anchor_text")
+            if link and link.get("anchor_text")
         ]
         metadata.outbound_link_count = len(internal_links)
 

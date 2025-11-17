@@ -765,7 +765,7 @@ class ScannedDocumentDatabase:
         doc_link_targets = {
             link.get("target_url")
             for link in (document.metadata.internal_links_found or [])
-            if link.get("target_url")
+            if link and link.get("target_url")
         }
 
         for other_doc in all_docs:
@@ -778,7 +778,7 @@ class ScannedDocumentDatabase:
             other_link_targets = {
                 link.get("target_url")
                 for link in (other_doc.metadata.internal_links_found or [])
-                if link.get("target_url")
+                if link and link.get("target_url")
             }
 
             # Calculate Jaccard similarities
@@ -824,6 +824,17 @@ class ScannedDocumentDatabase:
             if row["related_documents_json"]
             else []
         )
+
+        # Sanitize internal_links_found to remove None values
+        if (
+            "internal_links_found" in metadata_dict
+            and metadata_dict["internal_links_found"]
+        ):
+            metadata_dict["internal_links_found"] = [
+                link
+                for link in metadata_dict["internal_links_found"]
+                if link is not None and isinstance(link, dict)
+            ]
 
         return ScannedDocumentDB(
             id=row["id"],
