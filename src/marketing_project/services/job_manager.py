@@ -15,7 +15,7 @@ import json
 import logging
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
@@ -62,7 +62,7 @@ class Job(BaseModel):
         default=JobStatus.PENDING, description="Current job status"
     )
     content_id: str = Field(..., description="Content ID being processed")
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     progress: int = Field(default=0, description="Job progress percentage (0-100)")
@@ -99,6 +99,25 @@ class JobManager:
     async def get_redis(self) -> redis.Redis:
         """Get Redis client from RedisManager."""
         return await self._redis_manager.get_redis()
+
+    def _normalize_datetime_to_utc(self, dt: Optional[datetime]) -> Optional[datetime]:
+        """
+        Normalize a datetime to UTC timezone-aware.
+
+        Args:
+            dt: Datetime to normalize (can be None, naive, or timezone-aware)
+
+        Returns:
+            UTC timezone-aware datetime, or None if input was None
+        """
+        if dt is None:
+            return None
+        if dt.tzinfo is None:
+            # Naive datetime - assume UTC
+            return dt.replace(tzinfo=timezone.utc)
+        else:
+            # Timezone-aware datetime - convert to UTC
+            return dt.astimezone(timezone.utc)
 
     async def _save_job_to_database(self, job: Job) -> None:
         """Save job to PostgreSQL database for permanent storage."""
@@ -362,7 +381,7 @@ class JobManager:
         job = await self.get_job(job_id)
         if job:
             job.status = JobStatus.PROCESSING
-            job.started_at = datetime.utcnow()
+            job.started_at = datetime.now(timezone.utc)
             await self._save_job(job)
             logger.debug(f"Job {job_id} marked as started")
 
@@ -371,7 +390,7 @@ class JobManager:
         job = await self.get_job(job_id)
         if job:
             job.status = JobStatus.COMPLETED
-            job.completed_at = datetime.utcnow()
+            job.completed_at = datetime.now(timezone.utc)
             job.progress = 100
             job.result = result
             await self._save_job(job)
@@ -382,7 +401,7 @@ class JobManager:
         job = await self.get_job(job_id)
         if job:
             job.status = JobStatus.FAILED
-            job.completed_at = datetime.utcnow()
+            job.completed_at = datetime.now(timezone.utc)
             job.error = error
             await self._save_job(job)
             logger.error(f"Job {job_id} marked as failed: {error}")
@@ -413,6 +432,16 @@ class JobManager:
                     if db_job:
                         # Convert database model to Pydantic Job
                         job_dict = db_job.to_dict()
+                        # Normalize datetime fields to ensure they're UTC timezone-aware
+                        job_dict["created_at"] = self._normalize_datetime_to_utc(
+                            job_dict.get("created_at")
+                        )
+                        job_dict["started_at"] = self._normalize_datetime_to_utc(
+                            job_dict.get("started_at")
+                        )
+                        job_dict["completed_at"] = self._normalize_datetime_to_utc(
+                            job_dict.get("completed_at")
+                        )
                         job = Job(**job_dict)
                         # Also update in-memory cache
                         self._jobs[job_id] = job
@@ -435,6 +464,10 @@ class JobManager:
                 if job_json:
                     # Parse job from Redis
                     job = Job.model_validate_json(job_json)
+                    # Normalize datetime fields to ensure they're UTC timezone-aware
+                    job.created_at = self._normalize_datetime_to_utc(job.created_at)
+                    job.started_at = self._normalize_datetime_to_utc(job.started_at)
+                    job.completed_at = self._normalize_datetime_to_utc(job.completed_at)
                     # Also update in-memory cache
                     self._jobs[job_id] = job
                     logger.debug(f"Job {job_id} loaded from Redis")
@@ -444,6 +477,12 @@ class JobManager:
                     # Not in Redis, try memory fallback
                     job = self._jobs.get(job_id)
                     if job:
+                        # Normalize datetime fields to ensure they're UTC timezone-aware
+                        job.created_at = self._normalize_datetime_to_utc(job.created_at)
+                        job.started_at = self._normalize_datetime_to_utc(job.started_at)
+                        job.completed_at = self._normalize_datetime_to_utc(
+                            job.completed_at
+                        )
                         logger.debug(f"Job {job_id} found in memory (not in Redis)")
 
             except Exception as e:
@@ -457,25 +496,35 @@ class JobManager:
                 )
                 # Fall back to in-memory
                 job = self._jobs.get(job_id)
+                if job:
+                    # Normalize datetime fields to ensure they're UTC timezone-aware
+                    job.created_at = self._normalize_datetime_to_utc(job.created_at)
+                    job.started_at = self._normalize_datetime_to_utc(job.started_at)
+                    job.completed_at = self._normalize_datetime_to_utc(job.completed_at)
 
         if not job:
             return None
 
         # Check if job is too old and likely expired from ARQ
         if job.status in [JobStatus.QUEUED, JobStatus.PROCESSING]:
-            age_seconds = (datetime.utcnow() - job.created_at).total_seconds()
+            # Normalize datetimes to ensure both are UTC timezone-aware
+            now = datetime.now(timezone.utc)
+            created_at = self._normalize_datetime_to_utc(job.created_at)
+            if created_at is None:
+                # If created_at is None, skip age check
+                logger.warning(f"Job {job_id} has no created_at timestamp")
+            else:
+                age_seconds = (now - created_at).total_seconds()
 
-            if age_seconds > JOB_MAX_AGE:
-                logger.warning(
-                    f"Job {job_id} is {age_seconds:.0f}s old (>{JOB_MAX_AGE}s), "
-                    f"ARQ result likely expired"
-                )
-                job.error = (
-                    f"Job exceeded maximum age ({JOB_MAX_AGE}s) - ARQ result expired"
-                )
-                job.status = JobStatus.FAILED
-                job.completed_at = datetime.utcnow()
-                return job
+                if age_seconds > JOB_MAX_AGE:
+                    logger.warning(
+                        f"Job {job_id} is {age_seconds:.0f}s old (>{JOB_MAX_AGE}s), "
+                        f"ARQ result likely expired"
+                    )
+                    job.error = f"Job exceeded maximum age ({JOB_MAX_AGE}s) - ARQ result expired"
+                    job.status = JobStatus.FAILED
+                    job.completed_at = datetime.now(timezone.utc)
+                    return job
 
         # If job is queued or processing, check ARQ for updates
         if job.status in [JobStatus.QUEUED, JobStatus.PROCESSING]:
@@ -493,7 +542,7 @@ class JobManager:
                         try:
                             result = await arq_job.result()
                             job.status = JobStatus.COMPLETED
-                            job.completed_at = datetime.utcnow()
+                            job.completed_at = datetime.now(timezone.utc)
                             job.progress = 100
                             job.result = result
                             job.current_step = "Completed"
@@ -521,7 +570,9 @@ class JobManager:
 
                                         original_job.result = pipeline_result
                                         original_job.status = JobStatus.COMPLETED
-                                        original_job.completed_at = datetime.utcnow()
+                                        original_job.completed_at = datetime.now(
+                                            timezone.utc
+                                        )
                                         original_job.progress = 100
                                         original_job.current_step = "Completed"
                                         # Update metadata to indicate all subjobs are complete
@@ -544,7 +595,7 @@ class JobManager:
                             )
                             job.error = f"Job execution failed: {error_msg}"
                             job.status = JobStatus.FAILED
-                            job.completed_at = datetime.utcnow()
+                            job.completed_at = datetime.now(timezone.utc)
                             await self._save_job(job)
                         except Exception as e:
                             # Other errors when getting result
@@ -554,13 +605,13 @@ class JobManager:
                             )
                             job.error = f"Error retrieving job result: {str(e)}"
                             job.status = JobStatus.FAILED
-                            job.completed_at = datetime.utcnow()
+                            job.completed_at = datetime.now(timezone.utc)
                             await self._save_job(job)
 
                     elif arq_status == ArqJobStatus.in_progress:
                         job.status = JobStatus.PROCESSING
                         if not job.started_at:
-                            job.started_at = datetime.utcnow()
+                            job.started_at = datetime.now(timezone.utc)
                         logger.debug(f"Job {job_id} is in progress")
                         await self._save_job(job)
 
@@ -590,7 +641,7 @@ class JobManager:
                         )
                         job.error = "Job not found in ARQ - result may have expired"
                         job.status = JobStatus.FAILED
-                        job.completed_at = datetime.utcnow()
+                        job.completed_at = datetime.now(timezone.utc)
                         await self._save_job(job)
 
                     else:
@@ -642,7 +693,7 @@ class JobManager:
             job.metadata["status"] = status.value
             if status == JobStatus.WAITING_FOR_APPROVAL:
                 # Mark as completed time if waiting for approval (job is "done" but waiting)
-                job.completed_at = datetime.utcnow()
+                job.completed_at = datetime.now(timezone.utc)
             await self._save_job(job)
             logger.info(f"Updated job {job_id} status to {status.value}")
 
@@ -685,7 +736,7 @@ class JobManager:
                 # All subjobs completed
                 if parent_job.status != JobStatus.COMPLETED:
                     parent_job.status = JobStatus.COMPLETED
-                    parent_job.completed_at = datetime.utcnow()
+                    parent_job.completed_at = datetime.now(timezone.utc)
                     parent_job.current_step = "All subjobs completed"
                     parent_job.progress = 100
                     parent_job.metadata["status"] = "all_subjobs_completed"
@@ -988,6 +1039,16 @@ class JobManager:
                     # Convert to Pydantic Job models
                     for db_job in db_jobs:
                         job_dict = db_job.to_dict()
+                        # Normalize datetime fields to ensure they're UTC timezone-aware
+                        job_dict["created_at"] = self._normalize_datetime_to_utc(
+                            job_dict.get("created_at")
+                        )
+                        job_dict["started_at"] = self._normalize_datetime_to_utc(
+                            job_dict.get("started_at")
+                        )
+                        job_dict["completed_at"] = self._normalize_datetime_to_utc(
+                            job_dict.get("completed_at")
+                        )
                         job = Job(**job_dict)
                         jobs.append(job)
                         # Also update in-memory cache
@@ -1202,7 +1263,7 @@ class JobManager:
         # Note: ARQ doesn't support cancelling queued jobs
         # We can only mark it as cancelled in our tracking
         job.status = JobStatus.CANCELLED
-        job.completed_at = datetime.utcnow()
+        job.completed_at = datetime.now(timezone.utc)
 
         # Save to Redis and database
         await self._save_job(job)
@@ -1224,7 +1285,7 @@ class JobManager:
         """
         from datetime import timedelta
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         cutoff = now - timedelta(hours=max_age_hours)
 
         jobs_to_remove = []
@@ -1234,8 +1295,11 @@ class JobManager:
                 JobStatus.FAILED,
                 JobStatus.CANCELLED,
             ]:
-                if job.completed_at and job.completed_at < cutoff:
-                    jobs_to_remove.append(job_id)
+                if job.completed_at:
+                    # Normalize completed_at to UTC timezone-aware
+                    completed_at = self._normalize_datetime_to_utc(job.completed_at)
+                    if completed_at and completed_at < cutoff:
+                        jobs_to_remove.append(job_id)
 
         for job_id in jobs_to_remove:
             del self._jobs[job_id]

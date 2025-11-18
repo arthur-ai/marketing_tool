@@ -414,14 +414,14 @@ async def cancel_job(job_id: str):
             if approvals:
                 # Job exists in approval system but not in job manager
                 # Create a minimal job record to mark as cancelled
-                from datetime import datetime
+                from datetime import datetime, timezone
 
                 job = Job(
                     id=job_id,
                     type="unknown",  # We don't know the type if job expired
                     content_id="unknown",
                     status=JobStatus.WAITING_FOR_APPROVAL,
-                    created_at=datetime.utcnow(),
+                    created_at=datetime.now(timezone.utc),
                     metadata={},
                 )
                 # Mark all pending approvals as cancelled/rejected
@@ -442,7 +442,9 @@ async def cancel_job(job_id: str):
 
                 # Mark job as cancelled
                 job.status = JobStatus.CANCELLED
-                job.completed_at = datetime.utcnow()
+                from datetime import timezone
+
+                job.completed_at = datetime.now(timezone.utc)
                 await manager._save_job(job)
 
                 logger.info(
