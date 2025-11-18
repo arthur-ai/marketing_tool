@@ -505,7 +505,32 @@ class JobManager:
         if not job:
             return None
 
+        # If job is already completed, return it immediately (result should be in database)
+        if job.status == JobStatus.COMPLETED:
+            logger.debug(f"Job {job_id} is already completed, returning from database")
+            return job
+
+        # If job has a result in the database but status is not COMPLETED,
+        # update status and return (result was saved but status wasn't updated)
+        if job.result is not None and job.result != {}:
+            if job.status not in [
+                JobStatus.COMPLETED,
+                JobStatus.FAILED,
+                JobStatus.CANCELLED,
+            ]:
+                logger.info(
+                    f"Job {job_id} has result in database but status is {job.status}, "
+                    f"updating to COMPLETED"
+                )
+                job.status = JobStatus.COMPLETED
+                if not job.completed_at:
+                    job.completed_at = datetime.now(timezone.utc)
+                job.progress = 100
+                await self._save_job(job)
+            return job
+
         # Check if job is too old and likely expired from ARQ
+        # Only do this if job doesn't have a result (we already checked above)
         if job.status in [JobStatus.QUEUED, JobStatus.PROCESSING]:
             # Normalize datetimes to ensure both are UTC timezone-aware
             now = datetime.now(timezone.utc)
