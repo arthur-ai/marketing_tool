@@ -62,7 +62,7 @@ async def process_blog_job(ctx, content_json: str, job_id: str, **kwargs) -> Dic
                 # Also extract and store title for easier access
                 if "title" in content_dict:
                     job.metadata["title"] = content_dict["title"]
-                await job_manager._save_job_to_redis(job)
+                await job_manager._save_job(job)
         except Exception as e:
             logger.warning(f"Failed to store input content for job {job_id}: {e}")
 
@@ -116,7 +116,7 @@ async def process_release_notes_job(
                 # Also extract and store title for easier access
                 if "title" in content_dict:
                     job.metadata["title"] = content_dict["title"]
-                await job_manager._save_job_to_redis(job)
+                await job_manager._save_job(job)
         except Exception as e:
             logger.warning(f"Failed to store input content for job {job_id}: {e}")
 
@@ -168,7 +168,7 @@ async def process_transcript_job(ctx, content_json: str, job_id: str, **kwargs) 
                 # Also extract and store title for easier access
                 if "title" in content_dict:
                     job.metadata["title"] = content_dict["title"]
-                await job_manager._save_job_to_redis(job)
+                await job_manager._save_job(job)
         except Exception as e:
             logger.warning(f"Failed to store input content for job {job_id}: {e}")
 
@@ -786,7 +786,7 @@ async def resume_pipeline_job(
                 # Also extract and store title for easier access
                 if isinstance(input_content, dict) and "title" in input_content:
                     job.metadata["title"] = input_content["title"]
-                await job_manager._save_job_to_redis(job)
+                await job_manager._save_job(job)
 
         # Import pipeline
         from marketing_project.services.function_pipeline import FunctionPipeline
@@ -969,7 +969,7 @@ async def execute_single_step_job(
         if job:
             job.result = result
             job.current_step = step_name
-            await job_manager._save_job_to_redis(job)
+            await job_manager._save_job(job)
 
         await job_manager.update_job_progress(job_id, 100, "Completed")
         logger.info(
@@ -995,7 +995,7 @@ async def execute_single_step_job(
         job = await job_manager.get_job(job_id)
         if job:
             job.error = str(e)
-            await job_manager._save_job_to_redis(job)
+            await job_manager._save_job(job)
         raise
 
 

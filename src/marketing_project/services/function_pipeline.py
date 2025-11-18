@@ -12,6 +12,7 @@ Key Benefits:
 - Full type safety
 """
 
+import asyncio
 import json
 import logging
 import time
@@ -601,7 +602,7 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                     # Also extract and store title for easier access
                     if isinstance(content, dict) and "title" in content:
                         job.metadata["title"] = content["title"]
-                    await job_manager._save_job_to_redis(job)
+                    await job_manager._save_job(job)
             except Exception as e:
                 logger.warning(
                     f"Failed to store input content in job metadata for {job_id}: {e}"

@@ -201,7 +201,7 @@ def prepare_approval_data(
         else:
             try:
                 return {"content": str(data)}
-            except:
+            except Exception:
                 return {"content": "<Unable to serialize>"}
 
     return prepare_dict(input_content), prepare_dict(output_content)

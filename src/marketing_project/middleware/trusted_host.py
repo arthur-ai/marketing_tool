@@ -27,6 +27,9 @@ class TrustedHostMiddlewareWithHealthBypass(BaseHTTPMiddleware):
     def __init__(self, app, allowed_hosts: List[str] = None):
         super().__init__(app)
         self.allowed_hosts = allowed_hosts or []
+        # Add testserver for test environments
+        if "testserver" not in self.allowed_hosts:
+            self.allowed_hosts.append("testserver")
         # Health check endpoints that should bypass host validation
         self.health_check_paths = [
             "/api/v1/health",

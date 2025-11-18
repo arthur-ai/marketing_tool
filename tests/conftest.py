@@ -407,6 +407,16 @@ def mock_plugin_registry():
     return registry
 
 
+@pytest.fixture
+def mock_retry_service():
+    """Create a mock retry service for testing."""
+    from unittest.mock import AsyncMock
+
+    service = AsyncMock()
+    service.retry_step = AsyncMock()
+    return service
+
+
 # Markers for different test types
 def pytest_configure(config):
     """Configure pytest with custom markers."""

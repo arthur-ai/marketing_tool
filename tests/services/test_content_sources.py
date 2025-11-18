@@ -14,49 +14,64 @@ from marketing_project.services.web_scraping_source import WebScrapingContentSou
 @pytest.fixture
 def api_source_config():
     """Sample API source configuration."""
-    return {
-        "name": "test_api",
-        "type": "api",
-        "url": "https://api.example.com/content",
-        "headers": {"Authorization": "Bearer token"},
-    }
+    from marketing_project.core.content_sources import (
+        APISourceConfig,
+        ContentSourceType,
+    )
+
+    return APISourceConfig(
+        name="test_api",
+        source_type=ContentSourceType.API,
+        base_url="https://api.example.com/content",
+        headers={"Authorization": "Bearer token"},
+    )
 
 
 @pytest.fixture
 def database_source_config():
     """Sample database source configuration."""
-    return {
-        "name": "test_db",
-        "type": "database",
-        "connection_string": "postgresql://user:pass@localhost/db",
-        "query": "SELECT * FROM content",
-    }
+    from marketing_project.core.content_sources import (
+        ContentSourceType,
+        DatabaseSourceConfig,
+    )
+
+    return DatabaseSourceConfig(
+        name="test_db",
+        source_type=ContentSourceType.DATABASE,
+        connection_string="postgresql://user:pass@localhost/db",
+        query="SELECT * FROM content",
+    )
 
 
 @pytest.fixture
 def web_scraping_source_config():
     """Sample web scraping source configuration."""
-    return {
-        "name": "test_scraper",
-        "type": "web_scraping",
-        "url": "https://example.com",
-        "selectors": {"title": "h1", "content": ".content"},
-    }
+    from marketing_project.core.content_sources import (
+        ContentSourceType,
+        WebScrapingSourceConfig,
+    )
+
+    return WebScrapingSourceConfig(
+        name="test_scraper",
+        source_type=ContentSourceType.WEB_SCRAPING,
+        base_url="https://example.com",
+        selectors={"title": "h1", "content": ".content"},
+    )
 
 
 @pytest.mark.asyncio
 async def test_api_content_source_initialization(api_source_config):
     """Test APIContentSource initialization."""
-    source = APIContentSource(**api_source_config)
+    source = APIContentSource(api_source_config)
 
-    assert source.name == "test_api"
-    assert source.url == "https://api.example.com/content"
+    assert source.config.name == "test_api"
+    assert source.config.base_url == "https://api.example.com/content"
 
 
 @pytest.mark.asyncio
 async def test_api_content_source_get_status(api_source_config):
     """Test APIContentSource get_status."""
-    source = APIContentSource(**api_source_config)
+    source = APIContentSource(api_source_config)
 
     status = source.get_status()
 
@@ -68,7 +83,7 @@ async def test_api_content_source_get_status(api_source_config):
 @pytest.mark.asyncio
 async def test_api_content_source_fetch_content(api_source_config):
     """Test APIContentSource fetch_content."""
-    source = APIContentSource(**api_source_config)
+    source = APIContentSource(api_source_config)
 
     with patch("httpx.AsyncClient") as mock_client_class:
         mock_client = AsyncMock()
@@ -87,7 +102,7 @@ async def test_api_content_source_fetch_content(api_source_config):
 @pytest.mark.asyncio
 async def test_api_content_source_health_check(api_source_config):
     """Test APIContentSource health_check."""
-    source = APIContentSource(**api_source_config)
+    source = APIContentSource(api_source_config)
 
     with patch("httpx.AsyncClient") as mock_client_class:
         mock_client = AsyncMock()
@@ -104,7 +119,7 @@ async def test_api_content_source_health_check(api_source_config):
 @pytest.mark.asyncio
 async def test_database_content_source_initialization(database_source_config):
     """Test DatabaseContentSource initialization."""
-    source = DatabaseContentSource(**database_source_config)
+    source = DatabaseContentSource(database_source_config)
 
     assert source.name == "test_db"
     assert source.connection_string == "postgresql://user:pass@localhost/db"
@@ -113,7 +128,7 @@ async def test_database_content_source_initialization(database_source_config):
 @pytest.mark.asyncio
 async def test_database_content_source_get_status(database_source_config):
     """Test DatabaseContentSource get_status."""
-    source = DatabaseContentSource(**database_source_config)
+    source = DatabaseContentSource(database_source_config)
 
     status = source.get_status()
 
@@ -125,7 +140,7 @@ async def test_database_content_source_get_status(database_source_config):
 @pytest.mark.asyncio
 async def test_database_content_source_fetch_content(database_source_config):
     """Test DatabaseContentSource fetch_content."""
-    source = DatabaseContentSource(**database_source_config)
+    source = DatabaseContentSource(database_source_config)
 
     with patch("sqlalchemy.create_engine") as mock_engine:
         with patch("pandas.read_sql") as mock_read_sql:
@@ -142,7 +157,7 @@ async def test_database_content_source_fetch_content(database_source_config):
 @pytest.mark.asyncio
 async def test_database_content_source_health_check(database_source_config):
     """Test DatabaseContentSource health_check."""
-    source = DatabaseContentSource(**database_source_config)
+    source = DatabaseContentSource(database_source_config)
 
     with patch("sqlalchemy.create_engine") as mock_engine:
         mock_eng = MagicMock()
@@ -159,7 +174,7 @@ async def test_database_content_source_health_check(database_source_config):
 @pytest.mark.asyncio
 async def test_web_scraping_content_source_initialization(web_scraping_source_config):
     """Test WebScrapingContentSource initialization."""
-    source = WebScrapingContentSource(**web_scraping_source_config)
+    source = WebScrapingContentSource(web_scraping_source_config)
 
     assert source.name == "test_scraper"
     assert source.url == "https://example.com"
@@ -168,7 +183,7 @@ async def test_web_scraping_content_source_initialization(web_scraping_source_co
 @pytest.mark.asyncio
 async def test_web_scraping_content_source_get_status(web_scraping_source_config):
     """Test WebScrapingContentSource get_status."""
-    source = WebScrapingContentSource(**web_scraping_source_config)
+    source = WebScrapingContentSource(web_scraping_source_config)
 
     status = source.get_status()
 
@@ -180,7 +195,7 @@ async def test_web_scraping_content_source_get_status(web_scraping_source_config
 @pytest.mark.asyncio
 async def test_web_scraping_content_source_fetch_content(web_scraping_source_config):
     """Test WebScrapingContentSource fetch_content."""
-    source = WebScrapingContentSource(**web_scraping_source_config)
+    source = WebScrapingContentSource(web_scraping_source_config)
 
     with patch("httpx.AsyncClient") as mock_client_class:
         mock_client = AsyncMock()
@@ -206,7 +221,7 @@ async def test_web_scraping_content_source_fetch_content(web_scraping_source_con
 @pytest.mark.asyncio
 async def test_web_scraping_content_source_health_check(web_scraping_source_config):
     """Test WebScrapingContentSource health_check."""
-    source = WebScrapingContentSource(**web_scraping_source_config)
+    source = WebScrapingContentSource(web_scraping_source_config)
 
     with patch("httpx.AsyncClient") as mock_client_class:
         mock_client = AsyncMock()
@@ -223,7 +238,7 @@ async def test_web_scraping_content_source_health_check(web_scraping_source_conf
 @pytest.mark.asyncio
 async def test_api_content_source_error_handling(api_source_config):
     """Test APIContentSource error handling."""
-    source = APIContentSource(**api_source_config)
+    source = APIContentSource(api_source_config)
 
     with patch("httpx.AsyncClient") as mock_client_class:
         mock_client = AsyncMock()
@@ -241,7 +256,7 @@ async def test_api_content_source_error_handling(api_source_config):
 @pytest.mark.asyncio
 async def test_database_content_source_error_handling(database_source_config):
     """Test DatabaseContentSource error handling."""
-    source = DatabaseContentSource(**database_source_config)
+    source = DatabaseContentSource(database_source_config)
 
     with patch("sqlalchemy.create_engine", side_effect=Exception("Connection error")):
         result = await source.fetch_content(limit=10)

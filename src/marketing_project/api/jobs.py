@@ -443,7 +443,7 @@ async def cancel_job(job_id: str):
                 # Mark job as cancelled
                 job.status = JobStatus.CANCELLED
                 job.completed_at = datetime.utcnow()
-                await manager._save_job_to_redis(job)
+                await manager._save_job(job)
 
                 logger.info(
                     f"Job {job_id} cancelled (was waiting for approval, job record was expired)"

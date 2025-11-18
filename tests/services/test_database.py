@@ -100,12 +100,17 @@ async def test_initialize_already_initialized(db_manager):
 @pytest.mark.asyncio
 async def test_initialize_success(db_manager):
     """Test successful database initialization."""
+    from contextlib import asynccontextmanager
+
     mock_engine = MagicMock(spec=AsyncEngine)
-    mock_engine.begin = AsyncMock()
     mock_conn = AsyncMock()
-    mock_engine.begin.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
-    mock_engine.begin.return_value.__aexit__ = AsyncMock(return_value=None)
     mock_conn.execute = AsyncMock()
+
+    @asynccontextmanager
+    async def mock_begin():
+        yield mock_conn
+
+    mock_engine.begin = MagicMock(return_value=mock_begin())
 
     with patch.dict(
         os.environ, {"DATABASE_URL": "postgresql+asyncpg://user:pass@localhost/db"}
@@ -150,12 +155,17 @@ async def test_create_tables_not_initialized(db_manager):
 @pytest.mark.asyncio
 async def test_create_tables_success(db_manager):
     """Test successful table creation."""
+    from contextlib import asynccontextmanager
+
     mock_engine = MagicMock(spec=AsyncEngine)
-    mock_engine.begin = AsyncMock()
     mock_conn = AsyncMock()
-    mock_engine.begin.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
-    mock_engine.begin.return_value.__aexit__ = AsyncMock(return_value=None)
     mock_conn.run_sync = AsyncMock()
+
+    @asynccontextmanager
+    async def mock_begin():
+        yield mock_conn
+
+    mock_engine.begin = MagicMock(return_value=mock_begin())
 
     db_manager._initialized = True
     db_manager._engine = mock_engine
@@ -176,14 +186,18 @@ async def test_get_session_not_initialized(db_manager):
 @pytest.mark.asyncio
 async def test_get_session_success(db_manager):
     """Test successful session retrieval."""
+    from contextlib import asynccontextmanager
+
     mock_session = AsyncMock(spec=AsyncSession)
     mock_session.commit = AsyncMock()
     mock_session.rollback = AsyncMock()
     mock_session.close = AsyncMock()
 
-    mock_session_factory = AsyncMock()
-    mock_session_factory.return_value.__aenter__ = AsyncMock(return_value=mock_session)
-    mock_session_factory.return_value.__aexit__ = AsyncMock(return_value=None)
+    @asynccontextmanager
+    async def mock_session_context():
+        yield mock_session
+
+    mock_session_factory = MagicMock(return_value=mock_session_context())
 
     db_manager._initialized = True
     db_manager._session_factory = mock_session_factory
@@ -197,14 +211,18 @@ async def test_get_session_success(db_manager):
 @pytest.mark.asyncio
 async def test_get_session_rollback_on_error(db_manager):
     """Test that session rolls back on error."""
+    from contextlib import asynccontextmanager
+
     mock_session = AsyncMock(spec=AsyncSession)
     mock_session.commit = AsyncMock()
     mock_session.rollback = AsyncMock()
     mock_session.close = AsyncMock()
 
-    mock_session_factory = AsyncMock()
-    mock_session_factory.return_value.__aenter__ = AsyncMock(return_value=mock_session)
-    mock_session_factory.return_value.__aexit__ = AsyncMock(return_value=None)
+    @asynccontextmanager
+    async def mock_session_context():
+        yield mock_session
+
+    mock_session_factory = MagicMock(return_value=mock_session_context())
 
     db_manager._initialized = True
     db_manager._session_factory = mock_session_factory
@@ -227,12 +245,17 @@ async def test_health_check_not_initialized(db_manager):
 @pytest.mark.asyncio
 async def test_health_check_success(db_manager):
     """Test successful health check."""
+    from contextlib import asynccontextmanager
+
     mock_engine = MagicMock(spec=AsyncEngine)
-    mock_engine.begin = AsyncMock()
     mock_conn = AsyncMock()
-    mock_engine.begin.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
-    mock_engine.begin.return_value.__aexit__ = AsyncMock(return_value=None)
     mock_conn.execute = AsyncMock()
+
+    @asynccontextmanager
+    async def mock_begin():
+        yield mock_conn
+
+    mock_engine.begin = MagicMock(return_value=mock_begin())
 
     db_manager._initialized = True
     db_manager._engine = mock_engine

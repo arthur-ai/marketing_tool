@@ -64,7 +64,9 @@ async def test_lifespan_startup():
     """Test lifespan startup sequence."""
     mock_app = MagicMock()
 
-    with patch("marketing_project.server.get_database_manager") as mock_db_manager:
+    with patch(
+        "marketing_project.services.database.get_database_manager"
+    ) as mock_db_manager:
         with patch(
             "marketing_project.server.content.initialize_content_sources",
             new_callable=AsyncMock,
@@ -93,7 +95,9 @@ async def test_lifespan_startup_no_database():
     """Test lifespan startup when database is not configured."""
     mock_app = MagicMock()
 
-    with patch("marketing_project.server.get_database_manager") as mock_db_manager:
+    with patch(
+        "marketing_project.services.database.get_database_manager"
+    ) as mock_db_manager:
         with patch(
             "marketing_project.server.content.initialize_content_sources",
             new_callable=AsyncMock,
@@ -121,7 +125,7 @@ async def test_lifespan_startup_database_error():
     mock_app = MagicMock()
 
     with patch(
-        "marketing_project.server.get_database_manager",
+        "marketing_project.services.database.get_database_manager",
         side_effect=Exception("DB Error"),
     ):
         with patch(
@@ -162,7 +166,8 @@ async def test_lifespan_shutdown():
     mock_internal_docs_mgr.cleanup = AsyncMock()
 
     with patch(
-        "marketing_project.server.get_database_manager", return_value=mock_db_mgr
+        "marketing_project.services.database.get_database_manager",
+        return_value=mock_db_mgr,
     ):
         with patch(
             "marketing_project.server.get_redis_manager", return_value=mock_redis_mgr
@@ -211,7 +216,8 @@ async def test_lifespan_shutdown_handles_errors():
     mock_db_mgr.cleanup = AsyncMock(side_effect=Exception("Cleanup error"))
 
     with patch(
-        "marketing_project.server.get_database_manager", return_value=mock_db_mgr
+        "marketing_project.services.database.get_database_manager",
+        return_value=mock_db_mgr,
     ):
         with patch(
             "marketing_project.server.get_redis_manager",

@@ -23,10 +23,16 @@ def client():
 @pytest.fixture
 def sample_design_kit_config():
     """Sample design kit configuration."""
+    from datetime import datetime
+
     return DesignKitConfig(
         color_scheme={"primary": "#000000"},
         typography={"font_family": "Arial"},
         components=[],
+        version="1.0.0",
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
+        is_active=True,
     )
 
 

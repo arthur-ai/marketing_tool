@@ -787,7 +787,7 @@ async def decide_approval(approval_id: str, decision: ApprovalDecisionRequest):
                     job.metadata["resume_job_id"] = resume_job_id
                     job.metadata["approved_at"] = datetime.utcnow().isoformat()
                     job.metadata["status"] = "approved_and_resumed"
-                    await job_manager._save_job_to_redis(job)
+                    await job_manager._save_job(job)
 
                     logger.info(
                         f"Auto-resumed pipeline for approval {approval_id} "
@@ -858,7 +858,7 @@ async def decide_approval(approval_id: str, decision: ApprovalDecisionRequest):
                     job.error = (
                         f"Approval rejected: {decision.comment or 'No reason provided'}"
                     )
-                    await job_manager._save_job_to_redis(job)
+                    await job_manager._save_job(job)
                     logger.info(
                         f"Job {approval.job_id} marked as FAILED due to approval rejection (auto_retry=False)"
                     )

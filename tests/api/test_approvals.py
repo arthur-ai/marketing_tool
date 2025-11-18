@@ -60,7 +60,7 @@ async def test_get_pending_approvals(client, mock_approval_manager, sample_appro
         return_value=AsyncMock(return_value=mock_approval_manager),
     ):
         with patch(
-            "marketing_project.api.approvals.get_job_manager"
+            "marketing_project.services.job_manager.get_job_manager"
         ) as mock_job_manager:
             mock_job_mgr = MagicMock()
             mock_job = MagicMock()
@@ -93,7 +93,7 @@ async def test_get_pending_approvals_with_job_id(
         return_value=AsyncMock(return_value=mock_approval_manager),
     ):
         with patch(
-            "marketing_project.api.approvals.get_job_manager"
+            "marketing_project.services.job_manager.get_job_manager"
         ) as mock_job_manager:
             mock_job_mgr = MagicMock()
             from marketing_project.services.job_manager import JobStatus
@@ -324,7 +324,7 @@ async def test_get_job_approvals(client, mock_approval_manager, sample_approval)
         return_value=AsyncMock(return_value=mock_approval_manager),
     ):
         with patch(
-            "marketing_project.api.approvals.get_job_manager"
+            "marketing_project.services.job_manager.get_job_manager"
         ) as mock_job_manager:
             mock_job_mgr = MagicMock()
             from marketing_project.services.job_manager import JobStatus

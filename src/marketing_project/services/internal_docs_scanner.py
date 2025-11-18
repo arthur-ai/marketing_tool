@@ -535,7 +535,7 @@ class InternalDocsScanner:
         if last_mod:
             try:
                 return datetime.fromisoformat(last_mod.get("content", ""))
-            except:
+            except Exception:
                 pass
         return None
 

@@ -68,7 +68,7 @@ async def test_scan_internal_docs(client):
         "marketing_project.api.internal_docs.get_internal_docs_manager"
     ) as mock_manager:
         with patch(
-            "marketing_project.api.internal_docs.get_job_manager"
+            "marketing_project.services.job_manager.get_job_manager"
         ) as mock_job_manager:
             mock_mgr = AsyncMock()
             mock_manager.return_value = mock_mgr

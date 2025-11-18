@@ -44,7 +44,9 @@ class JobStatus(str, Enum):
 # Constants
 ARQ_RESULT_TTL = 3600  # ARQ keeps results for 1 hour
 JOB_MAX_AGE = 3600  # Consider jobs older than 1 hour as expired
-JOB_REDIS_TTL = 7200  # Keep job state in Redis for 2 hours (longer than ARQ)
+# Redis TTL for active job tracking (jobs are primarily stored in PostgreSQL)
+# Redis is used for ARQ queue coordination and active job status
+JOB_REDIS_TTL = 86400  # 24 hours - only for active jobs in Redis cache
 JOB_KEY_PREFIX = "job:"  # Redis key prefix for jobs
 JOB_INDEX_KEY = "jobs:index"  # Redis set for job indexing
 
@@ -98,8 +100,98 @@ class JobManager:
         """Get Redis client from RedisManager."""
         return await self._redis_manager.get_redis()
 
+    async def _save_job_to_database(self, job: Job) -> None:
+        """Save job to PostgreSQL database for permanent storage."""
+        try:
+            from marketing_project.models.db_models import JobModel
+            from marketing_project.services.database import get_database_manager
+
+            db_manager = get_database_manager()
+            if not db_manager.is_initialized:
+                logger.warning("Database not initialized, skipping database save")
+                return
+
+            async with db_manager.get_session() as session:
+                from sqlalchemy import select
+
+                # Check if job exists
+                stmt = select(JobModel).where(JobModel.job_id == job.id)
+                result = await session.execute(stmt)
+                existing_job = result.scalar_one_or_none()
+
+                # Convert job to dict for JSONB storage
+                job_data = {
+                    "id": job.id,
+                    "type": job.type,
+                    "status": job.status.value,
+                    "content_id": job.content_id,
+                    "created_at": (
+                        job.created_at.isoformat() if job.created_at else None
+                    ),
+                    "started_at": (
+                        job.started_at.isoformat() if job.started_at else None
+                    ),
+                    "completed_at": (
+                        job.completed_at.isoformat() if job.completed_at else None
+                    ),
+                    "progress": job.progress,
+                    "current_step": job.current_step,
+                    "result": job.result,
+                    "error": job.error,
+                    "metadata": job.metadata,
+                }
+
+                if existing_job:
+                    # Update existing job
+                    existing_job.status = job.status.value
+                    existing_job.content_id = job.content_id
+                    existing_job.progress = job.progress
+                    existing_job.current_step = job.current_step
+                    existing_job.result = job.result
+                    existing_job.error = job.error
+                    existing_job.metadata = job.metadata
+                    if job.started_at:
+                        existing_job.started_at = job.started_at
+                    if job.completed_at:
+                        existing_job.completed_at = job.completed_at
+                    await session.commit()
+                    logger.debug(f"Updated job {job.id} in database")
+                else:
+                    # Create new job
+                    db_job = JobModel(
+                        job_id=job.id,
+                        job_type=job.type,
+                        status=job.status.value,
+                        content_id=job.content_id,
+                        progress=job.progress,
+                        current_step=job.current_step,
+                        result=job.result,
+                        error=job.error,
+                        metadata=job.metadata,
+                        created_at=job.created_at,
+                        started_at=job.started_at,
+                        completed_at=job.completed_at,
+                    )
+                    session.add(db_job)
+                    await session.commit()
+                    logger.debug(f"Saved job {job.id} to database")
+
+        except Exception as e:
+            logger.error(
+                f"Failed to save job {job.id} to database: {type(e).__name__}: {e}",
+                exc_info=True,
+            )
+            # Don't fail if database save fails - Redis is still available
+
+    async def _save_job(self, job: Job) -> None:
+        """Save job to both Redis (cache) and database (permanent storage)."""
+        # Save to database first (permanent storage)
+        await self._save_job_to_database(job)
+        # Then save to Redis (for active job tracking)
+        await self._save_job_to_redis(job)
+
     async def _save_job_to_redis(self, job: Job) -> None:
-        """Helper method to save job state to Redis."""
+        """Helper method to save job state to Redis (for active job tracking and ARQ coordination)."""
         try:
             job_key = f"{JOB_KEY_PREFIX}{job.id}"
             job_json = job.model_dump_json()
@@ -176,9 +268,12 @@ class JobManager:
             # Also keep in memory for backward compatibility
             self._jobs[job_id] = job
 
+            # Save to database for permanent storage
+            await self._save_job_to_database(job)
+
             logger.info(
                 f"Created job {job_id} for {job_type} processing of content {content_id} "
-                f"(stored in Redis with {JOB_REDIS_TTL}s TTL)"
+                f"(stored in Redis and database)"
             )
 
         except Exception as e:
@@ -245,8 +340,8 @@ class JobManager:
             job.metadata["max_retries"] = max_retries
             job.metadata["retry_delay"] = retry_delay
 
-            # Save updated job status to Redis
-            await self._save_job_to_redis(job)
+            # Save updated job status to Redis and database
+            await self._save_job(job)
 
             logger.info(
                 f"Submitted job {job_id} to ARQ as {arq_job.job_id} "
@@ -258,78 +353,110 @@ class JobManager:
             job.status = JobStatus.FAILED
             job.error = f"Failed to submit to ARQ: {str(e)}"
             # Save failed status to Redis
-            await self._save_job_to_redis(job)
+            await self._save_job(job)
             logger.error(f"Failed to submit job {job_id} to ARQ: {e}")
             raise
 
-    def mark_job_started(self, job_id: str) -> None:
+    async def mark_job_started(self, job_id: str) -> None:
         """Mark a job as started (called by ARQ worker)."""
-        job = self._jobs.get(job_id)
+        job = await self.get_job(job_id)
         if job:
             job.status = JobStatus.PROCESSING
             job.started_at = datetime.utcnow()
+            await self._save_job(job)
             logger.debug(f"Job {job_id} marked as started")
 
-    def mark_job_completed(self, job_id: str, result: Dict[str, Any]) -> None:
+    async def mark_job_completed(self, job_id: str, result: Dict[str, Any]) -> None:
         """Mark a job as completed (called by ARQ worker)."""
-        job = self._jobs.get(job_id)
+        job = await self.get_job(job_id)
         if job:
             job.status = JobStatus.COMPLETED
             job.completed_at = datetime.utcnow()
             job.progress = 100
             job.result = result
+            await self._save_job(job)
             logger.info(f"Job {job_id} marked as completed")
 
-    def mark_job_failed(self, job_id: str, error: str) -> None:
+    async def mark_job_failed(self, job_id: str, error: str) -> None:
         """Mark a job as failed (called by ARQ worker)."""
-        job = self._jobs.get(job_id)
+        job = await self.get_job(job_id)
         if job:
             job.status = JobStatus.FAILED
             job.completed_at = datetime.utcnow()
             job.error = error
+            await self._save_job(job)
             logger.error(f"Job {job_id} marked as failed: {error}")
 
     async def get_job(self, job_id: str) -> Optional[Job]:
         """
-        Get job by ID from Redis, then poll ARQ for latest status.
+        Get job by ID from database (primary) or Redis (cache), then poll ARQ for latest status.
 
         Queries ARQ for the latest status and result if job is queued/processing.
         Handles job expiration and all ARQ job states.
         """
         job = None
 
-        # Try to get from Redis first
+        # Try to get from database first (permanent storage)
         try:
-            job_key = f"{JOB_KEY_PREFIX}{job_id}"
+            from marketing_project.models.db_models import JobModel
+            from marketing_project.services.database import get_database_manager
 
-            async def get_operation(redis_client: redis.Redis):
-                return await redis_client.get(job_key)
+            db_manager = get_database_manager()
+            if db_manager.is_initialized:
+                async with db_manager.get_session() as session:
+                    from sqlalchemy import select
 
-            job_json = await self._redis_manager.execute(get_operation)
+                    stmt = select(JobModel).where(JobModel.job_id == job_id)
+                    result = await session.execute(stmt)
+                    db_job = result.scalar_one_or_none()
 
-            if job_json:
-                # Parse job from Redis
-                job = Job.model_validate_json(job_json)
-                # Also update in-memory cache
-                self._jobs[job_id] = job
-                logger.debug(f"Job {job_id} loaded from Redis")
-            else:
-                # Not in Redis, try memory fallback
-                job = self._jobs.get(job_id)
-                if job:
-                    logger.debug(f"Job {job_id} found in memory (not in Redis)")
-
+                    if db_job:
+                        # Convert database model to Pydantic Job
+                        job_dict = db_job.to_dict()
+                        job = Job(**job_dict)
+                        # Also update in-memory cache
+                        self._jobs[job_id] = job
+                        logger.debug(f"Job {job_id} loaded from database")
         except Exception as e:
-            logger.error(
-                f"Error reading job {job_id} from Redis (key: {job_key}): {type(e).__name__}: {e}",
-                extra={
-                    "job_id": job_id,
-                    "redis_key": job_key,
-                    "error_type": type(e).__name__,
-                },
+            logger.debug(
+                f"Error reading job {job_id} from database: {type(e).__name__}: {e}"
             )
-            # Fall back to in-memory
-            job = self._jobs.get(job_id)
+
+        # If not in database, try Redis (for active jobs)
+        if not job:
+            try:
+                job_key = f"{JOB_KEY_PREFIX}{job_id}"
+
+                async def get_operation(redis_client: redis.Redis):
+                    return await redis_client.get(job_key)
+
+                job_json = await self._redis_manager.execute(get_operation)
+
+                if job_json:
+                    # Parse job from Redis
+                    job = Job.model_validate_json(job_json)
+                    # Also update in-memory cache
+                    self._jobs[job_id] = job
+                    logger.debug(f"Job {job_id} loaded from Redis")
+                    # Also save to database for persistence
+                    await self._save_job_to_database(job)
+                else:
+                    # Not in Redis, try memory fallback
+                    job = self._jobs.get(job_id)
+                    if job:
+                        logger.debug(f"Job {job_id} found in memory (not in Redis)")
+
+            except Exception as e:
+                logger.error(
+                    f"Error reading job {job_id} from Redis (key: {job_key}): {type(e).__name__}: {e}",
+                    extra={
+                        "job_id": job_id,
+                        "redis_key": job_key,
+                        "error_type": type(e).__name__,
+                    },
+                )
+                # Fall back to in-memory
+                job = self._jobs.get(job_id)
 
         if not job:
             return None
@@ -371,8 +498,8 @@ class JobManager:
                             job.result = result
                             job.current_step = "Completed"
                             logger.info(f"Job {job_id} completed with result from ARQ")
-                            # Save updated status to Redis
-                            await self._save_job_to_redis(job)
+                            # Save updated status to Redis and database
+                            await self._save_job(job)
 
                             # If this is a resume job and it's the final subjob, copy result to original job
                             if job.type == "resume_pipeline" and job.metadata.get(
@@ -404,7 +531,7 @@ class JobManager:
                                         original_job.metadata["final_subjob_id"] = (
                                             job_id
                                         )
-                                        await self._save_job_to_redis(original_job)
+                                        await self._save_job(original_job)
                                         logger.info(
                                             f"Copied final result from subjob {job_id} to original job {original_job_id}"
                                         )
@@ -418,7 +545,7 @@ class JobManager:
                             job.error = f"Job execution failed: {error_msg}"
                             job.status = JobStatus.FAILED
                             job.completed_at = datetime.utcnow()
-                            await self._save_job_to_redis(job)
+                            await self._save_job(job)
                         except Exception as e:
                             # Other errors when getting result
                             logger.error(
@@ -428,14 +555,14 @@ class JobManager:
                             job.error = f"Error retrieving job result: {str(e)}"
                             job.status = JobStatus.FAILED
                             job.completed_at = datetime.utcnow()
-                            await self._save_job_to_redis(job)
+                            await self._save_job(job)
 
                     elif arq_status == ArqJobStatus.in_progress:
                         job.status = JobStatus.PROCESSING
                         if not job.started_at:
                             job.started_at = datetime.utcnow()
                         logger.debug(f"Job {job_id} is in progress")
-                        await self._save_job_to_redis(job)
+                        await self._save_job(job)
 
                     elif arq_status == ArqJobStatus.queued:
                         # Job is queued and waiting for a worker
@@ -446,14 +573,14 @@ class JobManager:
                         ):
                             job.current_step = "Waiting for worker"
                         logger.debug(f"Job {job_id} is queued in ARQ")
-                        await self._save_job_to_redis(job)
+                        await self._save_job(job)
 
                     elif arq_status == ArqJobStatus.deferred:
                         # Job is waiting to retry after failure
                         job.status = JobStatus.QUEUED
                         job.current_step = "Retrying after failure"
                         logger.info(f"Job {job_id} is deferred (will retry)")
-                        await self._save_job_to_redis(job)
+                        await self._save_job(job)
 
                     elif arq_status == ArqJobStatus.not_found:
                         # ARQ job not found - might have expired or been cleaned up
@@ -464,7 +591,7 @@ class JobManager:
                         job.error = "Job not found in ARQ - result may have expired"
                         job.status = JobStatus.FAILED
                         job.completed_at = datetime.utcnow()
-                        await self._save_job_to_redis(job)
+                        await self._save_job(job)
 
                     else:
                         # Catch-all for any other status
@@ -498,7 +625,7 @@ class JobManager:
             job.progress = progress
             if current_step:
                 job.current_step = current_step
-            await self._save_job_to_redis(job)
+            await self._save_job(job)
 
     async def update_job_status(self, job_id: str, status: JobStatus) -> None:
         """
@@ -516,7 +643,7 @@ class JobManager:
             if status == JobStatus.WAITING_FOR_APPROVAL:
                 # Mark as completed time if waiting for approval (job is "done" but waiting)
                 job.completed_at = datetime.utcnow()
-            await self._save_job_to_redis(job)
+            await self._save_job(job)
             logger.info(f"Updated job {job_id} status to {status.value}")
 
             # If this is a subjob, update parent job status
@@ -562,7 +689,7 @@ class JobManager:
                     parent_job.current_step = "All subjobs completed"
                     parent_job.progress = 100
                     parent_job.metadata["status"] = "all_subjobs_completed"
-                    await self._save_job_to_redis(parent_job)
+                    await self._save_job(parent_job)
                     logger.info(
                         f"Updated parent job {parent_job_id} status to completed (all subjobs done)"
                     )
@@ -583,7 +710,7 @@ class JobManager:
                 if parent_job.status != JobStatus.PROCESSING:
                     parent_job.status = JobStatus.PROCESSING
                     parent_job.metadata["status"] = "processing_with_subjobs"
-                    await self._save_job_to_redis(parent_job)
+                    await self._save_job(parent_job)
                     logger.info(
                         f"Updated parent job {parent_job_id} status to processing ({processing_count}/{total_count} subjobs)"
                     )
@@ -598,7 +725,7 @@ class JobManager:
                 if parent_job.status != JobStatus.WAITING_FOR_APPROVAL:
                     parent_job.status = JobStatus.WAITING_FOR_APPROVAL
                     parent_job.metadata["status"] = "waiting_for_subjob_approval"
-                    await self._save_job_to_redis(parent_job)
+                    await self._save_job(parent_job)
                     logger.info(
                         f"Updated parent job {parent_job_id} status to waiting_for_approval (subjob {waiting_count})"
                     )
@@ -609,7 +736,7 @@ class JobManager:
                 if parent_job.status != JobStatus.FAILED:
                     parent_job.status = JobStatus.FAILED
                     parent_job.metadata["status"] = "failed_with_subjobs"
-                    await self._save_job_to_redis(parent_job)
+                    await self._save_job(parent_job)
                     logger.info(
                         f"Updated parent job {parent_job_id} status to failed ({failed_count} subjobs failed)"
                     )
@@ -738,7 +865,7 @@ class JobManager:
                         "all_job_ids": chain_data["all_job_ids"],
                         "chain_status": chain_data["chain_status"],
                     }
-                    await self._save_job_to_redis(job)
+                    await self._save_job(job)
         except Exception as e:
             logger.error(f"Failed to update job chain metadata for {job_id}: {e}")
 
@@ -821,7 +948,7 @@ class JobManager:
         limit: int = 50,
     ) -> List[Job]:
         """
-        List jobs from Redis with optional filters.
+        List jobs from database (primary) or Redis (fallback) with optional filters.
 
         Args:
             job_type: Filter by job type
@@ -833,38 +960,79 @@ class JobManager:
         """
         jobs = []
 
+        # Try to get from database first
         try:
+            from marketing_project.models.db_models import JobModel
+            from marketing_project.services.database import get_database_manager
 
-            async def list_operation(redis_client: redis.Redis):
-                return await redis_client.smembers(JOB_INDEX_KEY)
+            db_manager = get_database_manager()
+            if db_manager.is_initialized:
+                async with db_manager.get_session() as session:
+                    from sqlalchemy import desc, select
 
-            job_ids = await self._redis_manager.execute(list_operation)
+                    # Build query
+                    stmt = select(JobModel)
 
-            # Fetch each job
-            for job_id in job_ids:
-                job = await self.get_job(job_id)
-                if job:
-                    jobs.append(job)
+                    # Apply filters
+                    if job_type:
+                        stmt = stmt.where(JobModel.job_type == job_type)
+                    if status:
+                        stmt = stmt.where(JobModel.status == status.value)
 
-            logger.debug(f"Loaded {len(jobs)} jobs from Redis")
+                    # Order by created_at descending and limit
+                    stmt = stmt.order_by(desc(JobModel.created_at)).limit(limit)
 
+                    result = await session.execute(stmt)
+                    db_jobs = result.scalars().all()
+
+                    # Convert to Pydantic Job models
+                    for db_job in db_jobs:
+                        job_dict = db_job.to_dict()
+                        job = Job(**job_dict)
+                        jobs.append(job)
+                        # Also update in-memory cache
+                        self._jobs[job.id] = job
+
+                    logger.debug(f"Loaded {len(jobs)} jobs from database")
         except Exception as e:
-            logger.error(f"Error listing jobs from Redis: {e}")
-            # Fall back to in-memory
-            jobs = list(self._jobs.values())
-            logger.debug(f"Loaded {len(jobs)} jobs from memory (Redis unavailable)")
+            logger.debug(f"Error listing jobs from database: {type(e).__name__}: {e}")
 
-        # Apply filters
-        if job_type:
-            jobs = [j for j in jobs if j.type == job_type]
-        if status:
-            jobs = [j for j in jobs if j.status == status]
+        # If no jobs from database, fall back to Redis
+        if not jobs:
+            try:
 
-        # Sort by creation time (newest first)
-        jobs.sort(key=lambda j: j.created_at, reverse=True)
+                async def list_operation(redis_client: redis.Redis):
+                    return await redis_client.smembers(JOB_INDEX_KEY)
 
-        # Apply limit
-        return jobs[:limit]
+                job_ids = await self._redis_manager.execute(list_operation)
+
+                # Fetch each job
+                for job_id in job_ids:
+                    job = await self.get_job(job_id)
+                    if job:
+                        jobs.append(job)
+
+                logger.debug(f"Loaded {len(jobs)} jobs from Redis")
+
+            except Exception as e:
+                logger.error(f"Error listing jobs from Redis: {e}")
+                # Fall back to in-memory
+                jobs = list(self._jobs.values())
+                logger.debug(f"Loaded {len(jobs)} jobs from memory (Redis unavailable)")
+
+            # Apply filters (if not already applied from database query)
+            if job_type:
+                jobs = [j for j in jobs if j.type == job_type]
+            if status:
+                jobs = [j for j in jobs if j.status == status]
+
+            # Sort by creation time (newest first)
+            jobs.sort(key=lambda j: j.created_at, reverse=True)
+
+            # Apply limit
+            jobs = jobs[:limit]
+
+        return jobs
 
     async def clear_all_arq_jobs(self) -> int:
         """
@@ -1036,8 +1204,8 @@ class JobManager:
         job.status = JobStatus.CANCELLED
         job.completed_at = datetime.utcnow()
 
-        # Save to Redis
-        await self._save_job_to_redis(job)
+        # Save to Redis and database
+        await self._save_job(job)
 
         logger.warning(
             f"Marked job {job_id} as cancelled (ARQ worker may still process it)"

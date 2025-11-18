@@ -279,7 +279,23 @@ async def test_decide_approval_approve(approval_manager, sample_approval):
 @pytest.mark.asyncio
 async def test_decide_approval_reject(approval_manager, sample_approval):
     """Test decide_approval with reject decision."""
-    approval_manager._approvals["test-approval-1"] = sample_approval
+    # Create an approval with a step that supports rejection (not seo_keywords)
+    from datetime import datetime
+
+    from marketing_project.models.approval_models import ApprovalRequest
+
+    rejection_approval = ApprovalRequest(
+        id="test-approval-2",
+        job_id="test-job-1",
+        agent_name="article_generation",
+        step_name="Step 3: Article Generation",
+        status="pending",
+        input_data={"content": {"title": "Test"}},
+        output_data={"article": "Test article"},
+        pipeline_step="article_generation",  # This step supports rejection
+        created_at=datetime.utcnow(),
+    )
+    approval_manager._approvals["test-approval-2"] = rejection_approval
 
     decision = ApprovalDecisionRequest(
         decision="reject",
@@ -294,7 +310,7 @@ async def test_decide_approval_reject(approval_manager, sample_approval):
         mock_redis.set = AsyncMock(return_value=True)
         mock_get_redis.return_value = mock_redis
 
-        result = await approval_manager.decide_approval("test-approval-1", decision)
+        result = await approval_manager.decide_approval("test-approval-2", decision)
 
         assert result is not None
         assert result.status == "rejected"
@@ -302,20 +318,15 @@ async def test_decide_approval_reject(approval_manager, sample_approval):
 
 @pytest.mark.asyncio
 async def test_delete_approval(approval_manager, sample_approval):
-    """Test delete_approval method."""
+    """Test delete_approval method - using clear_job_approvals instead."""
     approval_manager._approvals["test-approval-1"] = sample_approval
+    approval_manager._job_approvals["test-job-1"] = ["test-approval-1"]
 
-    with patch.object(
-        approval_manager, "get_redis", new_callable=AsyncMock
-    ) as mock_get_redis:
-        mock_redis = MagicMock()
-        mock_redis.delete = AsyncMock(return_value=1)
-        mock_redis.srem = AsyncMock(return_value=1)
-        mock_get_redis.return_value = mock_redis
+    # Use clear_job_approvals which is the actual method available
+    approval_manager.clear_job_approvals("test-job-1")
 
-        result = await approval_manager.delete_approval("test-approval-1")
-
-        assert result is True
+    assert "test-approval-1" not in approval_manager._approvals
+    assert "test-job-1" not in approval_manager._job_approvals
 
 
 @pytest.mark.asyncio
@@ -323,13 +334,37 @@ async def test_delete_all_approvals(approval_manager, sample_approval):
     """Test delete_all_approvals method."""
     approval_manager._approvals["test-approval-1"] = sample_approval
 
+    # Mock the redis_manager.execute to avoid circuit breaker errors
     with patch.object(
-        approval_manager, "get_redis", new_callable=AsyncMock
-    ) as mock_get_redis:
-        mock_redis = MagicMock()
-        mock_redis.delete = AsyncMock(return_value=1)
-        mock_redis.smembers = AsyncMock(return_value=set(["test-approval-1"]))
-        mock_get_redis.return_value = mock_redis
+        approval_manager._redis_manager, "execute", new_callable=AsyncMock
+    ) as mock_execute:
+        # Mock the get_ids_operation result
+        mock_execute.return_value = set(["test-approval-1"])
+
+        # Also need to mock subsequent calls for delete operations
+        call_count = 0
+
+        async def mock_execute_side_effect(operation):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                # First call: get_ids_operation
+                return set(["test-approval-1"])
+            elif call_count == 2:
+                # Second call: delete_batch_operation
+                return 1
+            elif call_count == 3:
+                # Third call: clear_list_operation
+                return 1
+            elif call_count == 4:
+                # Fourth call: get_job_keys_operation
+                return set()
+            elif call_count == 5:
+                # Fifth call: get_context_keys_operation
+                return set()
+            return 0
+
+        mock_execute.side_effect = mock_execute_side_effect
 
         result = await approval_manager.delete_all_approvals()
 
@@ -348,11 +383,14 @@ async def test_save_settings_to_redis(approval_manager):
     with patch.object(
         approval_manager._redis_manager, "execute", new_callable=AsyncMock
     ) as mock_execute:
-        mock_execute.return_value = True
+        mock_execute.return_value = None
 
+        # save_settings_to_redis doesn't return a value
         result = await approval_manager.save_settings_to_redis(settings)
 
-        assert result is True
+        # Method doesn't return anything, just verify it was called
+        assert result is None
+        mock_execute.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -363,7 +401,8 @@ async def test_get_stats(approval_manager, sample_approval):
     result = await approval_manager.get_stats()
 
     assert result is not None
-    assert hasattr(result, "total") or isinstance(result, dict)
+    # ApprovalStats has total_requests, not total
+    assert hasattr(result, "total_requests") or isinstance(result, dict)
 
 
 def test_approval_manager_settings_property(approval_manager):

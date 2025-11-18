@@ -8,7 +8,7 @@ import json
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-from sqlalchemy import Boolean, Column, DateTime, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql import func
 
@@ -134,4 +134,84 @@ class InternalDocsConfigModel(Base):
             "is_active": self.is_active,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+class JobModel(Base):
+    """Database model for job storage and tracking."""
+
+    __tablename__ = "jobs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    job_id = Column(
+        String, nullable=False, unique=True, index=True
+    )  # UUID job identifier
+    job_type = Column(
+        String, nullable=False, index=True
+    )  # blog, release_notes, transcript, etc.
+    status = Column(
+        String, nullable=False, index=True
+    )  # pending, queued, processing, completed, failed, etc.
+    content_id = Column(String, nullable=False)  # Content identifier
+    progress = Column(Integer, default=0, nullable=False)  # 0-100
+    current_step = Column(String, nullable=True)  # Current step name
+    result = Column(JSONB, nullable=True)  # Job result data
+    error = Column(Text, nullable=True)  # Error message if failed
+    metadata = Column(JSONB, nullable=False, default={})  # Additional metadata
+    created_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
+    )
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    # Indexes for common queries
+    __table_args__ = (
+        Index("idx_jobs_status_created", "status", "created_at"),
+        Index("idx_jobs_type_status", "job_type", "status"),
+    )
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert model to dictionary matching Job Pydantic model."""
+        # Parse status string to JobStatus enum value
+        from marketing_project.services.job_manager import JobStatus
+
+        try:
+            status_enum = JobStatus(self.status)
+        except ValueError:
+            # If status doesn't match enum, use as-is (will be handled by Pydantic)
+            status_enum = self.status
+
+        return {
+            "id": self.job_id,
+            "type": self.job_type,
+            "status": status_enum,
+            "content_id": self.content_id,
+            "created_at": self.created_at,
+            "started_at": self.started_at,
+            "completed_at": self.completed_at,
+            "progress": self.progress,
+            "current_step": self.current_step,
+            "result": (
+                self.result
+                if isinstance(self.result, dict)
+                else (
+                    json.loads(self.result)
+                    if isinstance(self.result, str)
+                    else self.result
+                )
+            ),
+            "error": self.error,
+            "metadata": (
+                self.metadata
+                if isinstance(self.metadata, dict)
+                else (
+                    json.loads(self.metadata) if isinstance(self.metadata, str) else {}
+                )
+            ),
         }
