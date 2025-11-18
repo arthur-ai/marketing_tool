@@ -149,7 +149,7 @@ class JobManager:
                     existing_job.current_step = job.current_step
                     existing_job.result = job.result
                     existing_job.error = job.error
-                    existing_job.metadata = job.metadata
+                    existing_job.job_metadata = job.metadata
                     if job.started_at:
                         existing_job.started_at = job.started_at
                     if job.completed_at:
@@ -167,7 +167,7 @@ class JobManager:
                         current_step=job.current_step,
                         result=job.result,
                         error=job.error,
-                        metadata=job.metadata,
+                        job_metadata=job.metadata,
                         created_at=job.created_at,
                         started_at=job.started_at,
                         completed_at=job.completed_at,

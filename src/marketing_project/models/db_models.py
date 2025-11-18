@@ -157,7 +157,9 @@ class JobModel(Base):
     current_step = Column(String, nullable=True)  # Current step name
     result = Column(JSONB, nullable=True)  # Job result data
     error = Column(Text, nullable=True)  # Error message if failed
-    metadata = Column(JSONB, nullable=False, default={})  # Additional metadata
+    job_metadata = Column(
+        JSONB, nullable=False, default={}
+    )  # Additional metadata (renamed from 'metadata' to avoid SQLAlchemy reserved name)
     created_at = Column(
         DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
     )
@@ -208,10 +210,12 @@ class JobModel(Base):
             ),
             "error": self.error,
             "metadata": (
-                self.metadata
-                if isinstance(self.metadata, dict)
+                self.job_metadata
+                if isinstance(self.job_metadata, dict)
                 else (
-                    json.loads(self.metadata) if isinstance(self.metadata, str) else {}
+                    json.loads(self.job_metadata)
+                    if isinstance(self.job_metadata, str)
+                    else {}
                 )
             ),
         }
