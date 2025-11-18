@@ -508,8 +508,10 @@ class StepResultManager:
             chain_metrics = {
                 "total_execution_time_seconds": performance_metrics.get(
                     "execution_time_seconds", 0
-                ),
-                "total_tokens_used": performance_metrics.get("total_tokens_used", 0),
+                )
+                or 0,
+                "total_tokens_used": performance_metrics.get("total_tokens_used", 0)
+                or 0,
                 "total_steps": len(steps),
                 "jobs_in_chain": 1 + len(subjob_ids),
                 "average_time_per_step": 0,
@@ -530,18 +532,18 @@ class StepResultManager:
 
                         if subjob_exec_time:
                             performance_metrics["execution_time_seconds"] = (
-                                performance_metrics.get("execution_time_seconds", 0)
-                                + subjob_exec_time
-                            )
-                            chain_metrics[
-                                "total_execution_time_seconds"
-                            ] += subjob_exec_time
+                                performance_metrics.get("execution_time_seconds") or 0
+                            ) + subjob_exec_time
+                            chain_metrics["total_execution_time_seconds"] = (
+                                chain_metrics.get("total_execution_time_seconds") or 0
+                            ) + subjob_exec_time
                         if subjob_tokens:
                             performance_metrics["total_tokens_used"] = (
-                                performance_metrics.get("total_tokens_used", 0)
-                                + subjob_tokens
-                            )
-                            chain_metrics["total_tokens_used"] += subjob_tokens
+                                performance_metrics.get("total_tokens_used") or 0
+                            ) + subjob_tokens
+                            chain_metrics["total_tokens_used"] = (
+                                chain_metrics.get("total_tokens_used") or 0
+                            ) + subjob_tokens
 
                         subjob_warnings = subjob_job.result.get("quality_warnings", [])
                         if subjob_warnings:
@@ -549,16 +551,15 @@ class StepResultManager:
 
             # Calculate chain-level metrics
             if chain_metrics["total_steps"] > 0:
+                total_exec_time = chain_metrics.get("total_execution_time_seconds") or 0
                 chain_metrics["average_time_per_step"] = (
-                    chain_metrics["total_execution_time_seconds"]
-                    / chain_metrics["total_steps"]
+                    total_exec_time / chain_metrics["total_steps"]
                 )
 
             # Estimate cost (rough calculation: $0.01 per 1K tokens for GPT-4o-mini)
             # This is a simplified estimate - actual costs vary by model
-            chain_metrics["estimated_cost_usd"] = (
-                chain_metrics["total_tokens_used"] / 1000
-            ) * 0.01
+            total_tokens = chain_metrics.get("total_tokens_used") or 0
+            chain_metrics["estimated_cost_usd"] = (total_tokens / 1000) * 0.01
 
             # Add chain metrics to performance_metrics
             performance_metrics["chain_metrics"] = chain_metrics

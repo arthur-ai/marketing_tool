@@ -207,9 +207,9 @@ async def get_job_chain(job_id: str):
                     "completed_at": (
                         job.completed_at.isoformat() if job.completed_at else None
                     ),
-                    "progress": job.progress,
-                    "current_step": job.current_step,
-                    "metadata": job.metadata,
+                    "progress": job.progress if job.progress is not None else 0,
+                    "current_step": job.current_step or None,
+                    "metadata": job.metadata or {},
                 }
             )
 
