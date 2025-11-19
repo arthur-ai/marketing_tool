@@ -18,7 +18,7 @@ from marketing_project.core.content_sources import (
     ContentSourceType,
     FileSourceConfig,
 )
-from marketing_project.core.models import BlogPostContext, TranscriptContext
+from marketing_project.models.content_models import BlogPostContext, TranscriptContext
 from marketing_project.services.content_source_config_loader import (
     ContentSourceConfigLoader,
 )

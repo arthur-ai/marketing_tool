@@ -20,21 +20,19 @@ Usage:
     )
 """
 
-from .content_sources import ContentSource, ContentSourceManager
-from .models import (
-    AppContext,
-    BaseContentContext,
+# Re-export API models instead of deprecated core.models versions
+from marketing_project.models.content_models import (
     BlogPostContext,
-    ContentContext,
-    EmailContext,
     ReleaseNotesContext,
     TranscriptContext,
 )
+
+from .content_sources import ContentSource, ContentSourceManager
+from .models import AppContext, ContentContext, EmailContext
 from .utils import convert_dict_to_content_context
 
 __all__ = [
     # Models
-    "BaseContentContext",
     "TranscriptContext",
     "BlogPostContext",
     "ReleaseNotesContext",

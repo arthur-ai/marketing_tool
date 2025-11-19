@@ -1,104 +1,28 @@
 """
 Pydantic models for Marketing Project application context.
 
-This module defines data models for representing various content types and application context using Pydantic BaseModel classes.
+This module defines application context models that use the API content models.
+The content models themselves (BlogPostContext, TranscriptContext, ReleaseNotesContext)
+are now defined in marketing_project.models.content_models.
 
 Classes:
-    BaseContentContext: Base model for all content types with common fields.
-    TranscriptContext: Represents the structure of a transcript (podcast, video, meeting).
-    BlogPostContext: Represents the structure of a blog post or article.
-    ReleaseNotesContext: Represents the structure of software release notes.
-    ContentContext: Union type that can hold any of the content types.
+    ContentContext: Union type that can hold any of the content types (from API models).
     AppContext: Represents the application context, including the content, labels, and extracted information.
+    EmailContext: Legacy email context model (for backward compatibility).
 """
 
-from datetime import datetime
-from typing import Dict, List, Optional, Union
+from typing import Dict, Union
 
 from pydantic import BaseModel, Field
 
+# Import API models for the Union type
+from marketing_project.models.content_models import (
+    BlogPostContext,
+    ReleaseNotesContext,
+    TranscriptContext,
+)
 
-class BaseContentContext(BaseModel):
-    """
-    Base model for all content types with common fields.
-
-    Attributes:
-        id (str): Unique identifier for the content.
-        title (str): Title of the content.
-        content (str): Full content text.
-        snippet (str): Short snippet or preview of the content.
-        created_at (Optional[datetime]): When the content was created.
-        source_url (Optional[str]): URL where the content was found.
-        metadata (Dict[str, str]): Additional metadata about the content.
-    """
-
-    id: str
-    title: str
-    content: str
-    snippet: str
-    created_at: Optional[datetime] = None
-    source_url: Optional[str] = None
-    metadata: Dict[str, str] = Field(default_factory=dict)
-
-
-class TranscriptContext(BaseContentContext):
-    """
-    Model representing the structure of a transcript.
-
-    Attributes:
-        speakers (List[str]): List of speakers in the transcript.
-        duration (Optional[str]): Duration of the audio/video content.
-        transcript_type (str): Type of transcript (podcast, video, meeting, etc.).
-        timestamps (Optional[Dict[str, str]]): Timestamp markers in the transcript.
-    """
-
-    speakers: List[str] = Field(default_factory=list)
-    duration: Optional[str] = None
-    transcript_type: str = "podcast"  # podcast, video, meeting, interview, etc.
-    timestamps: Optional[Dict[str, str]] = None
-
-
-class BlogPostContext(BaseContentContext):
-    """
-    Model representing the structure of a blog post or article.
-
-    Attributes:
-        author (Optional[str]): Author of the blog post.
-        tags (List[str]): Tags associated with the blog post.
-        category (Optional[str]): Category of the blog post.
-        word_count (Optional[int]): Approximate word count of the content.
-        reading_time (Optional[str]): Estimated reading time.
-    """
-
-    author: Optional[str] = None
-    tags: List[str] = Field(default_factory=list)
-    category: Optional[str] = None
-    word_count: Optional[int] = None
-    reading_time: Optional[str] = None
-
-
-class ReleaseNotesContext(BaseContentContext):
-    """
-    Model representing the structure of software release notes.
-
-    Attributes:
-        version (str): Version number of the release.
-        release_date (Optional[datetime]): When the release was published.
-        changes (List[str]): List of changes in this release.
-        breaking_changes (List[str]): List of breaking changes.
-        features (List[str]): List of new features.
-        bug_fixes (List[str]): List of bug fixes.
-    """
-
-    version: str
-    release_date: Optional[datetime] = None
-    changes: List[str] = Field(default_factory=list)
-    breaking_changes: List[str] = Field(default_factory=list)
-    features: List[str] = Field(default_factory=list)
-    bug_fixes: List[str] = Field(default_factory=list)
-
-
-# Union type for all content types
+# Union type for all content types (using API models)
 ContentContext = Union[TranscriptContext, BlogPostContext, ReleaseNotesContext]
 
 

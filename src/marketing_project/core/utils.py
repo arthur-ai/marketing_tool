@@ -9,11 +9,9 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
 
-from marketing_project.core.models import (
-    AppContext,
+from marketing_project.core.models import AppContext, ContentContext, EmailContext
+from marketing_project.models.content_models import (
     BlogPostContext,
-    ContentContext,
-    EmailContext,
     ReleaseNotesContext,
     TranscriptContext,
 )
@@ -34,49 +32,60 @@ def convert_dict_to_content_context(data: Dict[str, Any]) -> ContentContext:
     Raises:
         ValueError: If data doesn't contain required fields
     """
-    # Validate required fields
-    required_fields = ["id", "title", "content", "snippet"]
-    for field in required_fields:
-        if field not in data:
-            raise ValueError(f"Missing required field: {field}")
+    # Validate required fields (only id is required in API models)
+    if "id" not in data:
+        raise ValueError("Missing required field: id")
 
     # Determine content type based on available fields
     if "speakers" in data or "transcript_type" in data:
+        # Convert duration to int if it's a string
+        duration = data.get("duration")
+        if isinstance(duration, str):
+            # Try to parse duration string (e.g., "30:00" -> 1800 seconds)
+            try:
+                parts = duration.split(":")
+                if len(parts) == 2:
+                    duration = int(parts[0]) * 60 + int(parts[1])
+                elif len(parts) == 3:
+                    duration = int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
+                else:
+                    duration = None
+            except (ValueError, AttributeError):
+                duration = None
+
         return TranscriptContext(
             id=data["id"],
-            title=data["title"],
-            content=data["content"],
-            snippet=data["snippet"],
+            title=data.get("title"),
+            content=data.get("content"),
+            snippet=data.get("snippet"),
             created_at=data.get("created_at"),
             source_url=data.get("source_url"),
             metadata=data.get("metadata", {}),
             speakers=data.get("speakers", []),
-            duration=data.get("duration"),
+            duration=duration if isinstance(duration, int) else None,
             transcript_type=data.get("transcript_type", "podcast"),
-            timestamps=data.get("timestamps"),
         )
     elif "version" in data or "changes" in data:
         return ReleaseNotesContext(
             id=data["id"],
-            title=data["title"],
-            content=data["content"],
-            snippet=data["snippet"],
+            title=data.get("title"),
+            content=data.get("content"),
+            snippet=data.get("snippet"),
             created_at=data.get("created_at"),
             source_url=data.get("source_url"),
             metadata=data.get("metadata", {}),
-            version=data["version"],
+            version=data.get("version"),
             release_date=data.get("release_date"),
             changes=data.get("changes", []),
-            breaking_changes=data.get("breaking_changes", []),
             features=data.get("features", []),
             bug_fixes=data.get("bug_fixes", []),
         )
     elif "author" in data or "tags" in data:
         return BlogPostContext(
             id=data["id"],
-            title=data["title"],
-            content=data["content"],
-            snippet=data["snippet"],
+            title=data.get("title"),
+            content=data.get("content"),
+            snippet=data.get("snippet"),
             created_at=data.get("created_at"),
             source_url=data.get("source_url"),
             metadata=data.get("metadata", {}),

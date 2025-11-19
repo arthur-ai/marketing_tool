@@ -19,7 +19,15 @@ class BlogProcessorRequest(BaseModel):
     content: BlogPostContext = Field(..., description="Blog post content to process")
     output_content_type: Optional[str] = Field(
         default="blog_post",
-        description="Output content type: blog_post, press_release, or case_study",
+        description="Output content type: blog_post, press_release, case_study, or social_media_post",
+    )
+    social_media_platform: Optional[str] = Field(
+        default=None,
+        description="Social media platform: linkedin, hackernews, or email (required when output_content_type is social_media_post)",
+    )
+    email_type: Optional[str] = Field(
+        default=None,
+        description="Email type: newsletter or promotional (only relevant when social_media_platform is email)",
     )
     options: Optional[Dict[str, Any]] = Field(
         default_factory=dict, description="Processing options"

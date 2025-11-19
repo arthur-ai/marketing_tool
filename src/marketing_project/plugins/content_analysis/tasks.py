@@ -15,19 +15,17 @@ import logging
 import re
 from typing import Any, Dict, List, Optional, Union
 
-from marketing_project.core.models import (
-    AppContext,
-    BlogPostContext,
-    ContentContext,
-    EmailContext,
-    ReleaseNotesContext,
-    TranscriptContext,
-)
+from marketing_project.core.models import AppContext, ContentContext, EmailContext
 from marketing_project.core.utils import (
     create_standard_task_result,
     ensure_content_context,
     extract_content_metadata_for_pipeline,
     validate_content_for_processing,
+)
+from marketing_project.models.content_models import (
+    BlogPostContext,
+    ReleaseNotesContext,
+    TranscriptContext,
 )
 
 logger = logging.getLogger("marketing_project.plugins.content_analysis")

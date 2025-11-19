@@ -53,13 +53,14 @@ class TestAnalyzeContentType:
 
     def test_analyze_generic_content(self):
         """Test analyzing generic content type."""
-        from marketing_project.core.models import BaseContentContext
+        # Create a generic content object using ContentContext base
+        # Since ContentContext is a Union, we'll use a minimal BlogPostContext
+        from marketing_project.models.content_models import (
+            BlogPostContext,
+            ContentContext,
+        )
 
-        # Create a generic content object that doesn't match any specific type
-        class GenericContent(BaseContentContext):
-            pass
-
-        generic_content = GenericContent(
+        generic_content = BlogPostContext(
             id="test-generic-1",
             title="Generic Content",
             content="This is generic content.",
@@ -164,7 +165,7 @@ class TestAnalyzeContentForPipeline:
 
     def test_analyze_invalid_content(self):
         """Test analyzing invalid content."""
-        from marketing_project.core.models import BlogPostContext
+        from marketing_project.models.content_models import BlogPostContext
 
         invalid_content = BlogPostContext(
             id="test",
@@ -222,7 +223,7 @@ class TestAssessContentCompleteness:
 
     def test_assess_incomplete_content(self):
         """Test assessing incomplete content."""
-        from marketing_project.core.models import BlogPostContext
+        from marketing_project.models.content_models import BlogPostContext
 
         incomplete_content = BlogPostContext(
             id="test",

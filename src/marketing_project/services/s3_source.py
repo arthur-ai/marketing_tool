@@ -19,13 +19,13 @@ from marketing_project.core.content_sources import (
     ContentSourceStatus,
     S3SourceConfig,
 )
-from marketing_project.core.models import (
+from marketing_project.core.models import ContentContext
+from marketing_project.core.utils import convert_dict_to_content_context
+from marketing_project.models.content_models import (
     BlogPostContext,
-    ContentContext,
     ReleaseNotesContext,
     TranscriptContext,
 )
-from marketing_project.core.utils import convert_dict_to_content_context
 from marketing_project.services.s3_storage import S3Storage
 
 logger = logging.getLogger("marketing_project.services.s3_source")

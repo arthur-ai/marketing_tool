@@ -26,13 +26,13 @@ from marketing_project.core.content_sources import (
     S3SourceConfig,
     SourceConfig,
 )
-from marketing_project.core.models import (
+from marketing_project.core.models import ContentContext
+from marketing_project.core.utils import convert_dict_to_content_context
+from marketing_project.models.content_models import (
     BlogPostContext,
-    ContentContext,
     ReleaseNotesContext,
     TranscriptContext,
 )
-from marketing_project.core.utils import convert_dict_to_content_context
 from marketing_project.services.api_source import (
     APIContentSource,
     RSSContentSource,

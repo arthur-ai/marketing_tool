@@ -34,6 +34,7 @@ try:
 except ImportError:
     PDF_AVAILABLE = False
 
+from marketing_project.core.parsers import parse_transcript
 from marketing_project.services.content_source_config_loader import (
     ContentSourceConfigLoader,
 )
@@ -278,19 +279,85 @@ async def process_uploaded_file(
                 if "id" not in json_data:
                     json_data["id"] = str(uuid.uuid4())
 
+                # If this is a transcript and has raw content, preprocess it
+                if (
+                    content_type == "transcript"
+                    and "content" in json_data
+                    and isinstance(json_data["content"], str)
+                ):
+                    raw_content = json_data["content"]
+                    parsed_data = parse_transcript(
+                        raw_content, content_type="transcript"
+                    )
+
+                    # Update with parsed data
+                    json_data["content"] = parsed_data.get(
+                        "cleaned_content", raw_content
+                    )
+                    json_data["content_type"] = (
+                        "transcript"  # Ensure content_type is set
+                    )
+                    if "speakers" not in json_data or not json_data["speakers"]:
+                        json_data["speakers"] = parsed_data.get("speakers", [])
+                    if "duration" not in json_data or not json_data["duration"]:
+                        # models.content_models.TranscriptContext expects duration as int
+                        json_data["duration"] = parsed_data.get("duration")
+                    if (
+                        "transcript_type" not in json_data
+                        or not json_data["transcript_type"]
+                    ):
+                        json_data["transcript_type"] = parsed_data.get(
+                            "transcript_type", "podcast"
+                        )
+                    if parsed_data.get("timestamps"):
+                        json_data["timestamps"] = parsed_data["timestamps"]
+                    if "snippet" not in json_data:
+                        if len(json_data["content"]) > 200:
+                            json_data["snippet"] = json_data["content"][:200] + "..."
+                        else:
+                            json_data["snippet"] = json_data["content"]
+
                 # Write processed JSON
                 with open(processed_path, "w", encoding="utf-8") as f:
                     json.dump(json_data, f, indent=2, ensure_ascii=False)
 
             except json.JSONDecodeError:
-                # If not valid JSON, create a simple structure
-                json_data = {
-                    "id": str(uuid.uuid4()),
-                    "title": Path(filename).stem,
-                    "content": content_data,
-                    "type": content_type,
-                    "created_at": datetime.utcnow().isoformat() + "Z",
-                }
+                # If not valid JSON, treat as raw text and process based on content_type
+                if content_type == "transcript":
+                    # Parse transcript from raw text
+                    parsed_data = parse_transcript(
+                        content_data, content_type="transcript"
+                    )
+                    # models.content_models.TranscriptContext expects duration as int
+                    json_data = {
+                        "id": str(uuid.uuid4()),
+                        "title": Path(filename).stem,
+                        "content": parsed_data.get("cleaned_content", content_data),
+                        "content_type": "transcript",
+                        "speakers": parsed_data.get("speakers", []),
+                        "duration": parsed_data.get(
+                            "duration"
+                        ),  # Already an int from parser
+                        "transcript_type": parsed_data.get(
+                            "transcript_type", "podcast"
+                        ),
+                        "created_at": datetime.utcnow().isoformat() + "Z",
+                    }
+                    if parsed_data.get("timestamps"):
+                        json_data["timestamps"] = parsed_data["timestamps"]
+                    if len(json_data["content"]) > 200:
+                        json_data["snippet"] = json_data["content"][:200] + "..."
+                    else:
+                        json_data["snippet"] = json_data["content"]
+                else:
+                    # If not valid JSON, create a simple structure
+                    json_data = {
+                        "id": str(uuid.uuid4()),
+                        "title": Path(filename).stem,
+                        "content": content_data,
+                        "type": content_type,
+                        "created_at": datetime.utcnow().isoformat() + "Z",
+                    }
                 with open(processed_path, "w", encoding="utf-8") as f:
                     json.dump(json_data, f, indent=2, ensure_ascii=False)
 
@@ -305,15 +372,46 @@ async def process_uploaded_file(
             ".yaml",
             ".yml",
         ]:
-            # For all other files, create a simple structure
-            json_data = {
-                "id": str(uuid.uuid4()),
-                "title": Path(filename).stem,
-                "content": content_data,
-                "type": content_type,
-                "original_format": file_ext,
-                "created_at": datetime.utcnow().isoformat() + "Z",
-            }
+            # For transcript files, use enhanced parser
+            if content_type == "transcript":
+                # Parse transcript using enhanced parser
+                parsed_data = parse_transcript(content_data, content_type="transcript")
+
+                # Create proper JSON structure matching TranscriptContext
+                # models.content_models.TranscriptContext expects duration as int
+                json_data = {
+                    "id": str(uuid.uuid4()),
+                    "title": Path(filename).stem,
+                    "content": parsed_data.get("cleaned_content", content_data),
+                    "content_type": "transcript",  # Use content_type not type
+                    "speakers": parsed_data.get("speakers", []),
+                    "duration": parsed_data.get(
+                        "duration"
+                    ),  # Already an int from parser
+                    "transcript_type": parsed_data.get("transcript_type", "podcast"),
+                    "original_format": file_ext,
+                    "created_at": datetime.utcnow().isoformat() + "Z",
+                }
+
+                # Add timestamps if available
+                if parsed_data.get("timestamps"):
+                    json_data["timestamps"] = parsed_data["timestamps"]
+
+                # Add snippet if content is long
+                if len(json_data["content"]) > 200:
+                    json_data["snippet"] = json_data["content"][:200] + "..."
+                else:
+                    json_data["snippet"] = json_data["content"]
+            else:
+                # For all other files, create a simple structure
+                json_data = {
+                    "id": str(uuid.uuid4()),
+                    "title": Path(filename).stem,
+                    "content": content_data,
+                    "type": content_type,
+                    "original_format": file_ext,
+                    "created_at": datetime.utcnow().isoformat() + "Z",
+                }
 
             # Save as JSON for consistency
             json_path = processed_path.replace(file_ext, ".json")

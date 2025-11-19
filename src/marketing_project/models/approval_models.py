@@ -138,6 +138,10 @@ class ApprovalSettings(BaseModel):
             "seo_keywords",
             "seo_optimization",
             "content_formatting",
+            # Social media pipeline steps
+            "social_media_marketing_brief",
+            "social_media_angle_hook",
+            "social_media_post_generation",
         ],
         description="List of agent names that require approval",
     )

@@ -17,7 +17,7 @@ import uuid
 from datetime import date, datetime
 from typing import Any, Optional
 
-from marketing_project.core.models import TranscriptContext
+from marketing_project.models.content_models import TranscriptContext
 from marketing_project.services.function_pipeline import FunctionPipeline
 
 logger = logging.getLogger("marketing_project.processors")

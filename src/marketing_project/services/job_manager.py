@@ -532,9 +532,12 @@ class JobManager:
         # Check if job is too old and likely expired from ARQ
         # Only do this if job doesn't have a result (we already checked above)
         if job.status in [JobStatus.QUEUED, JobStatus.PROCESSING]:
+            # Ensure job.created_at is normalized (defensive check)
+            job.created_at = self._normalize_datetime_to_utc(job.created_at)
+
             # Normalize datetimes to ensure both are UTC timezone-aware
             now = datetime.now(timezone.utc)
-            created_at = self._normalize_datetime_to_utc(job.created_at)
+            created_at = job.created_at
             if created_at is None:
                 # If created_at is None, skip age check
                 logger.warning(f"Job {job_id} has no created_at timestamp")

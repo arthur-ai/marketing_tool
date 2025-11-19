@@ -483,7 +483,7 @@ curl -X POST http://localhost:8000/api/v1/process/blog \
 
 ```python
 from marketing_project.services.function_pipeline import FunctionPipeline
-from marketing_project.core.models import BlogPostContext
+from marketing_project.models.content_models import BlogPostContext
 
 # Create pipeline
 pipeline = FunctionPipeline(model="gpt-4o-mini", temperature=0.7)

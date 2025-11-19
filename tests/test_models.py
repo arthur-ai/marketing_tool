@@ -6,12 +6,9 @@ from datetime import datetime
 
 import pytest
 
-from marketing_project.core.models import (
-    AppContext,
-    BaseContentContext,
+from marketing_project.core.models import AppContext, ContentContext, EmailContext
+from marketing_project.models.content_models import (
     BlogPostContext,
-    ContentContext,
-    EmailContext,
     ReleaseNotesContext,
     TranscriptContext,
 )
@@ -34,8 +31,9 @@ def test_email_context():
 
 
 def test_base_content_context():
-    """Test BaseContentContext model."""
-    content = BaseContentContext(
+    """Test ContentContext base model (using BlogPostContext as example)."""
+    # ContentContext is now a Union type, so we test with a concrete implementation
+    content = BlogPostContext(
         id="content-123",
         title="Test Content",
         content="This is the full content",
@@ -60,16 +58,14 @@ def test_transcript_context():
         content="Speaker 1: Hello everyone. Speaker 2: Welcome to the show.",
         snippet="A conversation about technology",
         speakers=["Speaker 1", "Speaker 2"],
-        duration="45:30",
+        duration=2730,  # 45:30 in seconds (int, not string)
         transcript_type="podcast",
-        timestamps={"00:00": "Introduction", "10:30": "Main topic"},
     )
     assert transcript.id == "transcript-123"
     assert transcript.title == "Podcast Episode 1"
     assert transcript.transcript_type == "podcast"
     assert len(transcript.speakers) == 2
-    assert transcript.duration == "45:30"
-    assert transcript.timestamps["00:00"] == "Introduction"
+    assert transcript.duration == 2730
 
 
 def test_blog_post_context():
@@ -83,7 +79,6 @@ def test_blog_post_context():
         tags=["AI", "Technology", "Guide"],
         category="Technology",
         word_count=1500,
-        reading_time="5 min",
     )
     assert blog_post.id == "blog-123"
     assert blog_post.title == "How to Use AI"
@@ -91,7 +86,6 @@ def test_blog_post_context():
     assert "AI" in blog_post.tags
     assert blog_post.category == "Technology"
     assert blog_post.word_count == 1500
-    assert blog_post.reading_time == "5 min"
 
 
 def test_release_notes_context():
@@ -104,14 +98,12 @@ def test_release_notes_context():
         version="2.0.0",
         release_date=datetime.now(),
         changes=["Added new dashboard", "Improved performance"],
-        breaking_changes=["Removed deprecated API"],
         features=["New user interface", "Enhanced security"],
         bug_fixes=["Fixed login issue", "Resolved memory leak"],
     )
     assert release_notes.id == "release-123"
     assert release_notes.version == "2.0.0"
     assert len(release_notes.changes) == 2
-    assert len(release_notes.breaking_changes) == 1
     assert len(release_notes.features) == 2
     assert len(release_notes.bug_fixes) == 2
 

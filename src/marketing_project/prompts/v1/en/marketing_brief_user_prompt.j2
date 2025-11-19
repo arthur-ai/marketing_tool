@@ -1,10 +1,13 @@
 Create a comprehensive marketing brief for a {{ content_type }} focused on the keyword: {{ seo_result.main_keyword }}
 
+CRITICAL: MAIN KEYWORD PRIORITY
+The main keyword ({{ seo_result.main_keyword }}) is the SINGLE most important keyword and MUST be prioritized in all brief elements. All brief components must align with and support the main keyword focus.
+
 Focus the marketing brief on the main keyword: {{ seo_result.main_keyword }}
 
 KEYWORD CONTEXT:
-- Main Keyword: {{ seo_result.main_keyword }}
-- Primary Keywords: {{ seo_result.primary_keywords | join(', ') }}
+- Main Keyword: {{ seo_result.main_keyword }} (HIGHEST PRIORITY - must drive all brief decisions)
+- Primary Keywords: {{ seo_result.primary_keywords | join(', ') }} (support main keyword)
 - Search Intent: {{ seo_result.search_intent }}
 {% if seo_result.long_tail_keywords %}
 - Long-tail Opportunities: {{ seo_result.long_tail_keywords | join(', ') }}
@@ -16,7 +19,15 @@ KEYWORD CONTEXT:
 - Keyword Metadata Available: Search volume, difficulty scores, and trends for primary keywords
 {% endif %}
 
-Define target audience personas, key messaging, content strategy, KPIs, and distribution channels that align with:
+Define target audience personas, key messaging, content strategy, KPIs, and distribution channels that PRIORITIZE the main keyword: {{ seo_result.main_keyword }}
+
+Ensure the main keyword is central to:
+- Target audience definition (who searches for "{{ seo_result.main_keyword }}"?)
+- Key messages (how do messages align with "{{ seo_result.main_keyword }}" themes?)
+- Content strategy (how does strategy optimize for "{{ seo_result.main_keyword }}"?)
+- KPI alignment (how do KPIs measure "{{ seo_result.main_keyword }}" performance?)
+
+Also align with:
 - The search intent ({{ seo_result.search_intent }})
 - The keyword clusters and themes identified
 - Long-tail keyword opportunities for specific targeting

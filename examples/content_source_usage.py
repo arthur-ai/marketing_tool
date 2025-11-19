@@ -14,9 +14,9 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from marketing_project.core.content_sources import ContentSourceType, FileSourceConfig
-from marketing_project.core.models import (
+from marketing_project.core.models import ContentContext
+from marketing_project.models.content_models import (
     BlogPostContext,
-    ContentContext,
     ReleaseNotesContext,
     TranscriptContext,
 )

@@ -10,7 +10,7 @@ import logging
 import os
 import time
 from collections import deque
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Awaitable, Callable, Dict, Optional
 
 import redis.asyncio as redis
@@ -166,7 +166,7 @@ class RedisManager:
             # Check if recovery timeout has passed
             if self._circuit_breaker_last_failure:
                 elapsed = (
-                    datetime.utcnow() - self._circuit_breaker_last_failure
+                    datetime.now(timezone.utc) - self._circuit_breaker_last_failure
                 ).total_seconds()
                 if elapsed >= self._circuit_breaker_recovery_timeout:
                     # Move to half-open state
@@ -191,7 +191,7 @@ class RedisManager:
     def _record_circuit_breaker_failure(self):
         """Record failed operation for circuit breaker."""
         self._circuit_breaker_failures += 1
-        self._circuit_breaker_last_failure = datetime.utcnow()
+        self._circuit_breaker_last_failure = datetime.now(timezone.utc)
 
         if self._circuit_breaker_state == "half_open":
             # Failure in half-open state, open the circuit
@@ -389,7 +389,7 @@ class RedisManager:
                 )
 
             self._health_status = True
-            self._last_health_check = datetime.utcnow()
+            self._last_health_check = datetime.now(timezone.utc)
             self._record_circuit_breaker_success()
             return True
         except (redis.TimeoutError, asyncio.TimeoutError) as e:
@@ -403,7 +403,7 @@ class RedisManager:
                 },
             )
             self._health_status = False
-            self._last_health_check = datetime.utcnow()
+            self._last_health_check = datetime.now(timezone.utc)
             self._record_circuit_breaker_failure()
             # Force reconnection on next use
             await self._reset_connection()
@@ -418,7 +418,7 @@ class RedisManager:
                 },
             )
             self._health_status = False
-            self._last_health_check = datetime.utcnow()
+            self._last_health_check = datetime.now(timezone.utc)
             self._record_circuit_breaker_failure()
             # Force reconnection on next use
             await self._reset_connection()
@@ -463,7 +463,7 @@ class RedisManager:
         if not self._cloudwatch_enabled or not self._cloudwatch_client:
             return
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         if (
             self._last_metrics_publish
             and (now - self._last_metrics_publish).total_seconds()

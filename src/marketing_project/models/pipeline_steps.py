@@ -516,3 +516,98 @@ class PipelineStepInfo(BaseModel):
     tokens_used: Optional[int] = Field(
         description="Tokens consumed by this step", default=None
     )
+
+
+class SocialMediaMarketingBriefResult(BaseModel):
+    """Result from Social Media Marketing Brief generation step."""
+
+    platform: str = Field(
+        description="Social media platform: linkedin, hackernews, or email"
+    )
+    target_audience: List[str] = Field(
+        description="Target audience personas with demographics for this platform"
+    )
+    key_messages: List[str] = Field(description="Core messaging points (3-5 messages)")
+    tone_and_voice: str = Field(
+        description="Recommended tone and voice for this platform"
+    )
+    content_strategy: str = Field(
+        description="Platform-specific content strategy and approach"
+    )
+    distribution_strategy: str = Field(
+        description="Platform-specific distribution and engagement strategy"
+    )
+    platform_specific_notes: Optional[Dict[str, Any]] = Field(
+        description="Platform-specific recommendations and notes", default=None
+    )
+
+    # Quality and confidence metrics
+    confidence_score: Optional[float] = Field(
+        None,
+        ge=0.0,
+        le=1.0,
+        description="Model's confidence in marketing brief quality (0-1)",
+    )
+
+
+class AngleHookResult(BaseModel):
+    """Result from Angle & Hook Generation step."""
+
+    platform: str = Field(
+        description="Social media platform: linkedin, hackernews, or email"
+    )
+    angles: List[str] = Field(
+        description="Multiple angle options for approaching the content (3-5 angles)"
+    )
+    hooks: List[str] = Field(
+        description="Hook variations for capturing attention (3-5 hooks)"
+    )
+    recommended_angle: str = Field(
+        description="The recommended angle to use for this platform"
+    )
+    recommended_hook: str = Field(
+        description="The recommended hook to use for this platform"
+    )
+    rationale: str = Field(
+        description="Explanation of why the recommended angle and hook were chosen"
+    )
+
+    # Quality and confidence metrics
+    confidence_score: Optional[float] = Field(
+        None,
+        ge=0.0,
+        le=1.0,
+        description="Model's confidence in angle/hook quality (0-1)",
+    )
+
+
+class SocialMediaPostResult(BaseModel):
+    """Result from Social Media Post Generation step."""
+
+    platform: str = Field(
+        description="Social media platform: linkedin, hackernews, or email"
+    )
+    content: str = Field(description="Generated social media post content")
+    subject_line: Optional[str] = Field(
+        description="Email subject line (for email platform only)", default=None
+    )
+    hashtags: Optional[List[str]] = Field(
+        description="Recommended hashtags (for LinkedIn platform only)", default=None
+    )
+    call_to_action: Optional[str] = Field(
+        description="Recommended call-to-action", default=None
+    )
+    metadata: Optional[Dict[str, Any]] = Field(
+        description="Additional platform-specific metadata", default=None
+    )
+
+    # Quality and confidence metrics
+    confidence_score: Optional[float] = Field(
+        None,
+        ge=0.0,
+        le=1.0,
+        description="Model's confidence in post quality (0-1)",
+    )
+    engagement_score: Optional[float] = Field(
+        None, ge=0.0, le=100.0, description="Predicted engagement potential (0-100)"
+    )

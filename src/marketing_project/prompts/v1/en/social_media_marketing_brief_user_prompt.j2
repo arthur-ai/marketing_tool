@@ -1,0 +1,74 @@
+Create a platform-specific marketing brief for {{ platform }} based on the blog post content and SEO keywords.
+
+CRITICAL: MAIN KEYWORD PRIORITY
+The main keyword ({{ seo_result.main_keyword }}) is the SINGLE most important keyword and MUST be prioritized in all brief elements.
+
+Platform: {{ platform }}
+{% if email_type %}
+Email Type: {{ email_type }}
+{% endif %}
+
+KEYWORD CONTEXT:
+- Main Keyword: {{ seo_result.main_keyword }} (HIGHEST PRIORITY)
+- Primary Keywords: {{ seo_result.primary_keywords | join(', ') }}
+- Search Intent: {{ seo_result.search_intent }}
+{% if seo_result.long_tail_keywords %}
+- Long-tail Opportunities: {{ seo_result.long_tail_keywords | join(', ') }}
+{% endif %}
+{% if seo_result.keyword_clusters %}
+- Keyword Clusters: {{ seo_result.keyword_clusters | map(attribute='cluster_name') | join(', ') }}
+{% endif %}
+
+BLOG POST CONTEXT:
+{% if input_content %}
+{% if input_content.title %}
+Title: {{ input_content.title }}
+{% endif %}
+{% if input_content.content %}
+Content Preview: {{ input_content.content[:500] }}...
+{% endif %}
+{% endif %}
+
+Generate a {{ platform }}-specific marketing brief that:
+1. **Target Audience**: Define platform-specific personas who would engage with this content
+   {% if platform == 'linkedin' %}
+   - Focus on business professionals, decision-makers, industry leaders
+   {% elif platform == 'hackernews' %}
+   - Focus on developers, technical founders, tech enthusiasts
+   {% elif platform == 'email' %}
+   - Focus on subscribers or specific segments
+   {% endif %}
+
+2. **Key Messages**: Identify 3-5 core messages that align with the main keyword and resonate with {{ platform }} audience
+
+3. **Tone and Voice**: Define the appropriate tone for {{ platform }}
+   {% if platform == 'linkedin' %}
+   - Professional, thought-leadership focused, engaging
+   {% elif platform == 'hackernews' %}
+   - Technical, substantive, discussion-oriented, no marketing fluff
+   {% elif platform == 'email' %}
+   {% if email_type == 'newsletter' %}
+   - Informative, educational, regular update style
+   {% else %}
+   - CTA-focused, conversion-oriented, clear value proposition
+   {% endif %}
+   {% endif %}
+
+4. **Content Strategy**: Define how to present this content on {{ platform }}
+   {% if platform == 'linkedin' %}
+   - Leverage LinkedIn features (hashtags, mentions, rich media)
+   - Engagement tactics (questions, polls, discussions)
+   {% elif platform == 'hackernews' %}
+   - Technical depth and innovation focus
+   - Discussion and debate facilitation
+   {% elif platform == 'email' %}
+   - Subject line strategy
+   - Email design and formatting considerations
+   - Open rate optimization
+   {% endif %}
+
+5. **Distribution Strategy**: Define how to maximize reach and engagement on {{ platform }}
+
+6. **Platform-Specific Notes**: Additional recommendations for {{ platform }} success
+
+Ensure all elements prioritize the main keyword: {{ seo_result.main_keyword }}

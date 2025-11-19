@@ -14,7 +14,7 @@ from pathlib import Path
 import uvicorn
 from fastapi import BackgroundTasks, FastAPI
 
-from marketing_project.core.models import (
+from marketing_project.models.content_models import (
     BlogPostContext,
     ReleaseNotesContext,
     TranscriptContext,

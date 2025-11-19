@@ -7,7 +7,7 @@ Provides analytics and statistics computation with Redis caching.
 import json
 import logging
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 
 import redis.asyncio as redis
@@ -265,7 +265,7 @@ class AnalyticsService:
         all_jobs = await job_manager.list_jobs(limit=1000)
 
         # Filter jobs from the last N days
-        cutoff_date = datetime.utcnow() - timedelta(days=days)
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
         recent_jobs = [j for j in all_jobs if j.created_at >= cutoff_date]
 
         # Sort by created_at descending (most recent first)
@@ -323,7 +323,7 @@ class AnalyticsService:
         all_jobs = await job_manager.list_jobs(limit=1000)
 
         # Create date range
-        end_date = datetime.utcnow().date()
+        end_date = datetime.now(timezone.utc).date()
         start_date = end_date - timedelta(days=days - 1)
 
         # Initialize data points for each day

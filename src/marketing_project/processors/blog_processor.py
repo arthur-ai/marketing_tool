@@ -17,8 +17,9 @@ import uuid
 from datetime import date, datetime
 from typing import Any, Optional
 
-from marketing_project.core.models import BlogPostContext
+from marketing_project.models.content_models import BlogPostContext
 from marketing_project.services.function_pipeline import FunctionPipeline
+from marketing_project.services.social_media_pipeline import SocialMediaPipeline
 
 logger = logging.getLogger("marketing_project.processors")
 
@@ -101,19 +102,62 @@ async def process_blog_post(
                 f"Blog Processor: Using output_content_type={output_content_type} from parameter"
             )
 
-        # Step 2: Run through AI function pipeline
-        logger.info("Blog Processor: Running function-based pipeline")
+        # Step 2: Route to appropriate pipeline
+        logger.info("Blog Processor: Routing to appropriate pipeline")
         try:
-            pipeline = FunctionPipeline(model="gpt-4o-mini", temperature=0.7)
+            # Check if this is a social media post request
+            if output_content_type == "social_media_post":
+                # Get social media platform and email type from job metadata
+                social_media_platform = "linkedin"
+                email_type = None
+                try:
+                    from marketing_project.services.job_manager import get_job_manager
 
-            pipeline_result = await pipeline.execute_pipeline(
-                content_json=blog_post_model.model_dump_json(),
-                job_id=job_id,
-                content_type="blog_post",
-                output_content_type=output_content_type,
-            )
+                    job_manager = get_job_manager()
+                    job = await job_manager.get_job(job_id)
+                    if job:
+                        social_media_platform = job.metadata.get(
+                            "social_media_platform", "linkedin"
+                        )
+                        email_type = job.metadata.get("email_type")
+                        logger.info(
+                            f"Blog Processor: Using social_media_platform={social_media_platform}, email_type={email_type}"
+                        )
+                except Exception as e:
+                    logger.warning(
+                        f"Blog Processor: Could not get social media parameters from job metadata: {e}"
+                    )
 
-            logger.info("Blog Processor: Function pipeline completed successfully")
+                # Route to social media pipeline
+                logger.info(
+                    f"Blog Processor: Running social media pipeline for platform {social_media_platform}"
+                )
+                pipeline = SocialMediaPipeline(model="gpt-4o-mini", temperature=0.7)
+
+                pipeline_result = await pipeline.execute_pipeline(
+                    content_json=blog_post_model.model_dump_json(),
+                    job_id=job_id,
+                    content_type="blog_post",
+                    social_media_platform=social_media_platform,
+                    email_type=email_type,
+                )
+
+                logger.info(
+                    "Blog Processor: Social media pipeline completed successfully"
+                )
+            else:
+                # Route to regular function pipeline
+                logger.info("Blog Processor: Running function-based pipeline")
+                pipeline = FunctionPipeline(model="gpt-4o-mini", temperature=0.7)
+
+                pipeline_result = await pipeline.execute_pipeline(
+                    content_json=blog_post_model.model_dump_json(),
+                    job_id=job_id,
+                    content_type="blog_post",
+                    output_content_type=output_content_type,
+                )
+
+                logger.info("Blog Processor: Function pipeline completed successfully")
 
         except ValueError as e:
             # Approval rejected by user

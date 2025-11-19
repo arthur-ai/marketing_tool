@@ -124,7 +124,7 @@ def sample_seo_keywords():
 @pytest.fixture
 def sample_content_context():
     """Sample ContentContext for testing."""
-    from marketing_project.core.models import BlogPostContext
+    from marketing_project.models.content_models import BlogPostContext
 
     return BlogPostContext(
         id="test-content-1",
@@ -168,7 +168,7 @@ def sample_marketing_brief():
 @pytest.fixture
 def sample_blog_post():
     """Sample blog post data for testing."""
-    from marketing_project.core.models import BlogPostContext
+    from marketing_project.models.content_models import BlogPostContext
 
     return BlogPostContext(
         id="test-blog-1",
@@ -187,7 +187,7 @@ def sample_blog_post():
 @pytest.fixture
 def sample_transcript():
     """Sample transcript data for testing."""
-    from marketing_project.core.models import TranscriptContext
+    from marketing_project.models.content_models import TranscriptContext
 
     return TranscriptContext(
         id="test-transcript-1",
@@ -195,9 +195,8 @@ def sample_transcript():
         content="Speaker 1: Welcome to our discussion about AI in marketing. Speaker 2: Thank you for having me. This is an exciting topic.",
         snippet="A discussion about AI in marketing",
         speakers=["Speaker 1", "Speaker 2"],
-        duration="30:00",
+        duration=1800,  # 30 minutes in seconds (int, not string)
         transcript_type="podcast",
-        timestamps={"00:00": "Introduction", "15:00": "Main discussion"},
         created_at="2024-01-01T00:00:00Z",
     )
 
@@ -205,7 +204,8 @@ def sample_transcript():
 @pytest.fixture
 def sample_app_context_transcript():
     """Sample AppContext with transcript for testing."""
-    from marketing_project.core.models import AppContext, TranscriptContext
+    from marketing_project.core.models import AppContext
+    from marketing_project.models.content_models import TranscriptContext
 
     transcript = TranscriptContext(
         id="test-transcript-1",
@@ -213,7 +213,7 @@ def sample_app_context_transcript():
         content="Speaker 1: Welcome to our discussion about AI in marketing. Speaker 2: Thank you for having me.",
         snippet="A discussion about AI in marketing",
         speakers=["Speaker 1", "Speaker 2"],
-        duration="30:00",
+        duration=1800,  # 30 minutes in seconds (int, not string)
         transcript_type="podcast",
         created_at="2024-01-01T00:00:00Z",
     )
@@ -228,7 +228,7 @@ def sample_app_context_transcript():
 @pytest.fixture
 def sample_release_notes():
     """Sample release notes data for testing."""
-    from marketing_project.core.models import ReleaseNotesContext
+    from marketing_project.models.content_models import ReleaseNotesContext
 
     return ReleaseNotesContext(
         id="test-release-1",
@@ -238,7 +238,6 @@ def sample_release_notes():
         version="2.0.0",
         features=["New dashboard", "Enhanced security"],
         bug_fixes=["Fixed login issue", "Resolved memory leak"],
-        breaking_changes=["Removed deprecated API"],
         changes=["Added new features", "Fixed bugs"],
         created_at="2024-01-01T00:00:00Z",
     )
@@ -247,7 +246,8 @@ def sample_release_notes():
 @pytest.fixture
 def sample_app_context_release():
     """Sample AppContext with release notes for testing."""
-    from marketing_project.core.models import AppContext, ReleaseNotesContext
+    from marketing_project.core.models import AppContext
+    from marketing_project.models.content_models import ReleaseNotesContext
 
     release_notes = ReleaseNotesContext(
         id="test-release-1",
@@ -270,7 +270,8 @@ def sample_app_context_release():
 @pytest.fixture
 def sample_app_context_blog():
     """Sample AppContext with blog post for testing."""
-    from marketing_project.core.models import AppContext, BlogPostContext
+    from marketing_project.core.models import AppContext
+    from marketing_project.models.content_models import BlogPostContext
 
     blog_post = BlogPostContext(
         id="test-blog-1",

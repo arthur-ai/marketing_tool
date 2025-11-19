@@ -225,7 +225,7 @@ async def test_content_sources_async_test_sources():
 @pytest.mark.asyncio
 async def test_content_sources_async_fetch_content():
     """Test _content_sources_async with fetch_content flag."""
-    from marketing_project.core.models import BlogPostContext
+    from marketing_project.models.content_models import BlogPostContext
 
     mock_config_loader = MagicMock()
     mock_config_loader.create_source_configs.return_value = []

@@ -1,16 +1,19 @@
 Generate a complete article from scratch based on the marketing brief:
 
-KEYWORDS TO USE (Use ALL of these throughout the article):
-- Main Keyword: {{ all_keywords.main_keyword }}
-- Primary Keywords: {{ all_keywords.primary | join(', ') }}
-- Secondary Keywords: {{ all_keywords.secondary | join(', ') if all_keywords.secondary else 'None' }}
-- LSI Keywords: {{ all_keywords.lsi | join(', ') if all_keywords.lsi else 'None' }}
-- Long-tail Keywords: {{ all_keywords.long_tail | join(', ') if all_keywords.long_tail else 'None' }}
+CRITICAL: MAIN KEYWORD PRIORITY
+The main keyword ({{ all_keywords.main_keyword }}) is the SINGLE most important keyword and MUST be prioritized above all other keywords. When in doubt between keyword choices, always prioritize the main keyword.
+
+KEYWORDS TO USE (Use ALL of these throughout the article, prioritizing main keyword):
+- Main Keyword: {{ all_keywords.main_keyword }} (HIGHEST PRIORITY - must appear in title, intro, headings, conclusion)
+- Primary Keywords: {{ all_keywords.primary | join(', ') }} (support main keyword)
+- Secondary Keywords: {{ all_keywords.secondary | join(', ') if all_keywords.secondary else 'None' }} (supporting content)
+- LSI Keywords: {{ all_keywords.lsi | join(', ') if all_keywords.lsi else 'None' }} (semantic depth)
+- Long-tail Keywords: {{ all_keywords.long_tail | join(', ') if all_keywords.long_tail else 'None' }} (FAQ sections, detailed explanations)
 {% if seo_result.keyword_clusters %}
 - Keyword Clusters: {{ seo_result.keyword_clusters | map(attribute='cluster_name') | join(', ') }}
 {% endif %}
 
-Marketing Brief:
+Marketing Brief (from Step 2):
 - Target Audience: {{ brief_result.target_audience | join(', ') }}
 - Key Messages: {{ brief_result.key_messages | join(', ') }}
 - Content Strategy: {{ brief_result.content_strategy }}
@@ -19,14 +22,22 @@ Marketing Brief:
 - KPIs: {{ brief_result.kpis | join(', ') if brief_result.kpis else 'Not specified' }}
 - Distribution Channels: {{ brief_result.distribution_channels | join(', ') if brief_result.distribution_channels else 'Not specified' }}
 
+Note: The marketing brief strategy should align with and support the main keyword focus ({{ all_keywords.main_keyword }}).
+
 Generate a complete article that:
 - Is created from scratch, aligned with the marketing strategy
-- Uses ALL keywords naturally throughout the content:
-  * Main keyword: Use in title, headings, and main content focus
-  * Primary keywords: Use in headings, main sections, and key paragraphs
-  * Secondary keywords: Use as supporting content, natural variations
-  * LSI keywords: Use for semantic depth and related concepts
-  * Long-tail keywords: Use in specific sections, FAQ-style content, and detailed explanations
+- PRIORITIZES the main keyword ({{ all_keywords.main_keyword }}) above all other keywords
+- Uses ALL keywords naturally throughout the content with specific placement:
+  * Main keyword (PRIORITY):
+    - Must appear in title (preferably first 3 words)
+    - Must appear in first paragraph (within first 100 words)
+    - Must appear in at least 2 H2 headings
+    - Should appear in conclusion paragraph
+    - Target density: 1-2% (1-2 times per 100 words)
+  * Primary keywords: Use in H2/H3 headings, first 3 paragraphs, main sections (target density: 0.5-1% each)
+  * Secondary keywords: Use as supporting content, natural variations (target density: 0.3-0.5% each)
+  * LSI keywords: Use for semantic depth and related concepts (no specific density target)
+  * Long-tail keywords: Use in FAQ sections, detailed explanations, question format
 {% if seo_result.keyword_clusters %}
 - Organizes content around keyword clusters for thematic depth
 {% endif %}
@@ -42,12 +53,16 @@ Generate a complete article that:
 {% endif %}
 
 Create:
-- Compelling article title optimized for clicks and engagement
+- Compelling article title optimized for clicks and engagement (MUST include main keyword, preferably in first 3 words)
 - Well-structured, engaging article content (full article, not a summary)
-- Clear outline with section headers
-- Strong opening hook that captures attention
-- Key takeaways that reinforce the main messages
-- Compelling call-to-action aligned with the strategy
+- Clear outline with content-specific, keyword-rich section headers (NOT generic placeholders like "Introduction", "Conclusion", "Summary")
+  * Headers must be descriptive and tell readers what the section covers
+  * Headers should include relevant keywords naturally where appropriate
+  * Avoid generic terms: "Introduction", "Conclusion", "Summary", "Overview", "Final Thoughts"
+  * Example good headers: "Implementing [Main Keyword] for Marketing Success", "Key Takeaways for Your [Main Keyword] Strategy"
+- Strong opening hook that captures attention (should include main keyword naturally)
+- Key takeaways that reinforce the main messages from marketing brief
+- Compelling call-to-action aligned with the marketing brief strategy and KPIs
 
 {% if design_kit_config %}
 DESIGN KIT GUIDELINES (STRICTLY FOLLOW ALL OF THESE):
@@ -122,3 +137,10 @@ REUSABLE SNIPPETS:
 
 CRITICAL: The generated article MUST strictly adhere to ALL of the above Design Kit guidelines. Every aspect of voice, tone, structure, CTAs, compliance, and formatting must follow these rules.
 {% endif %}
+
+COMPETITOR INSIGHTS (if available from marketing brief):
+- Review competitor content gaps and opportunities
+- Identify unique angles not covered by competitors
+- Learn from competitor strengths (structure, examples, depth)
+- Differentiate by addressing competitor weaknesses
+- Use insights to inform content depth, value propositions, structure, and main keyword optimization strategies

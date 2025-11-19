@@ -8,7 +8,7 @@ from uuid import uuid4
 
 import pytest
 
-from marketing_project.core.models import BlogPostContext
+from marketing_project.models.content_models import BlogPostContext
 from marketing_project.processors.blog_processor import process_blog_post
 from marketing_project.services.function_pipeline import FunctionPipeline
 

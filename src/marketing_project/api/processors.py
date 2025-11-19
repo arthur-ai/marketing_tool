@@ -79,30 +79,62 @@ async def process_blog_endpoint(request: BlogProcessorRequest):
     try:
         logger.info(f"Blog processor request for content ID: {request.content.id}")
 
+        # Validate social media parameters if output_content_type is social_media_post
+        output_content_type = request.output_content_type or "blog_post"
+        if output_content_type == "social_media_post":
+            if not request.social_media_platform:
+                raise HTTPException(
+                    status_code=400,
+                    detail="social_media_platform is required when output_content_type is 'social_media_post'",
+                )
+            # Validate platform value
+            valid_platforms = ["linkedin", "hackernews", "email"]
+            if request.social_media_platform not in valid_platforms:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"social_media_platform must be one of {valid_platforms}, got '{request.social_media_platform}'",
+                )
+            # Validate email_type if platform is email
+            if request.social_media_platform == "email":
+                if request.email_type:
+                    valid_email_types = ["newsletter", "promotional"]
+                    if request.email_type not in valid_email_types:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"email_type must be one of {valid_email_types}, got '{request.email_type}'",
+                        )
+
         # Get job manager
         job_manager = get_job_manager()
 
-        # Create job
-        output_content_type = request.output_content_type or "blog_post"
+        # Create job metadata
+        job_metadata = {
+            "content_type": "blog_post",
+            "output_content_type": output_content_type,
+        }
+
+        # Add social media parameters if applicable
+        if output_content_type == "social_media_post":
+            job_metadata["social_media_platform"] = request.social_media_platform
+            if request.email_type:
+                job_metadata["email_type"] = request.email_type
+
         job = await job_manager.create_job(
             job_type="blog_post",
             content_id=request.content.id,
-            metadata={
-                "content_type": "blog_post",
-                "output_content_type": output_content_type,
-            },
+            metadata=job_metadata,
         )
 
         # Convert Pydantic model to JSON string for processor
         content_json = request.content.model_dump_json()
 
-        # Submit job to ARQ for background processing (pass output_content_type in metadata)
+        # Submit job to ARQ for background processing
         arq_job_id = await job_manager.submit_to_arq(
             job.id,
             "process_blog_job",  # ARQ function name
             content_json,
             job.id,
-            metadata={"output_content_type": output_content_type},
+            metadata=job_metadata,
         )
 
         logger.info(
