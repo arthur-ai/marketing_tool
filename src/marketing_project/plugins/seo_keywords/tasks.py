@@ -23,7 +23,7 @@ class SEOKeywordsPlugin(PipelineStepPlugin):
 
     @property
     def step_number(self) -> int:
-        return 1
+        return 2
 
     @property
     def response_model(self) -> type[SEOKeywordsResult]:

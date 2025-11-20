@@ -1,0 +1,95 @@
+Please extract and validate the main transcript content from the following raw input.
+
+## Transcript Information
+
+**Transcript ID**: {{ transcript_id }}
+**Title**: {{ transcript_title }}
+
+{% if detected_format %}
+**Detected Format**: {{ detected_format }}
+{% endif %}
+
+{% if parsing_confidence is not none %}
+**Parsing Confidence**: {{ (parsing_confidence * 100)|round(1) }}% ({{ 'High' if parsing_confidence >= 0.8 else 'Medium' if parsing_confidence >= 0.5 else 'Low' }})
+{% endif %}
+
+{% if parsing_warnings %}
+**Parsing Warnings** ({{ parsing_warnings|length }}):
+{% for warning in parsing_warnings %}
+- {{ warning }}
+{% endfor %}
+{% endif %}
+
+## Raw Transcript Input
+
+**IMPORTANT**: Extract the main transcript content from the raw input below. Remove timestamps and metadata while preserving speaker labels and actual dialogue.
+
+**Full Content Length**: {{ transcript_content|length if transcript_content else 0 }} characters
+
+{% if transcript_content %}
+```
+{{ transcript_content }}
+```
+{% else %}
+**WARNING**: No content provided in input.
+{% endif %}
+
+## Metadata
+{% if transcript_metadata %}
+{{ transcript_metadata|tojson(indent=2) }}
+{% else %}
+No additional metadata provided.
+{% endif %}
+
+{% if quality_metrics %}
+## Existing Quality Metrics (for reference)
+{% for metric, value in quality_metrics.items() %}
+- **{{ metric|replace('_', ' ')|title }}**: {{ (value * 100)|round(1) if value <= 1 else value }}%
+{% endfor %}
+{% endif %}
+
+---
+
+## Extraction and Validation Task
+
+### 1. Extract Main Content
+- Extract the actual transcript text from the raw input above
+- Remove timestamps, metadata, and formatting markers while preserving:
+  - Speaker labels and dialogue
+  - Actual conversation/transcript text
+  - Meaningful structure
+- Ensure the extracted content is readable transcript text
+
+### 2. Validate Content Quality
+- **Minimum length**: At least 100 characters
+- **Readability**: Should contain actual transcript text (speaker dialogue, conversation, etc.)
+- **IMPORTANT**: Timestamps in transcript content are EXPECTED and NORMAL. Do NOT flag content as "not readable" just because it contains timestamps. Only flag if content is ONLY timestamps/metadata with no actual transcript text.
+- **Completeness**: Should contain actual transcript content, not just placeholders
+- **Format**: Should be properly formatted with speaker labels if applicable
+
+### 3. Detect Transcript Type
+- Infer the transcript type from content characteristics:
+  - Valid Types: podcast, meeting, interview, video, webinar, other
+  - Look for conversational patterns, question-answer formats, presentation styles
+
+### 4. Calculate Quality Metrics
+- **Completeness Score (0-1)**: How complete the transcript appears
+- **Content Quality Score (0-1)**: Quality and readability of extracted content
+- **Speaker Clarity Score (0-1)**: Optional - how clearly speakers are identified
+- **Timestamp Accuracy Score (0-1)**: Optional - if timestamps are present, how accurate they appear
+
+## Response Requirements
+
+Provide your extraction results, including:
+- **Extracted content**: The main transcript content extracted from raw input
+- **Content summary**: First 500 characters of extracted content
+- **Validation status**: Whether content is valid according to quality criteria
+- **Quality metrics**: Completeness, content_quality, and optional metrics
+- **Confidence score**: Your confidence in the extraction quality (0-1)
+- **Transcript type**: Detected transcript type
+- **Issues found**: List any content-specific issues that couldn't be resolved
+
+**Include quality metrics in your response**:
+- Set `quality_metrics` with completeness and content_quality scores
+- Optionally include speaker_clarity and timestamp_accuracy if relevant
+- Provide realistic confidence scores based on extraction quality

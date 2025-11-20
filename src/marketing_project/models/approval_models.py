@@ -34,7 +34,7 @@ class ApprovalRequest(BaseModel):
     )
 
     # Approval state
-    status: Literal["pending", "approved", "rejected", "modified"] = Field(
+    status: Literal["pending", "approved", "rejected", "modified", "rerun"] = Field(
         default="pending", description="Current approval status"
     )
 
@@ -70,7 +70,7 @@ class ApprovalResponse(BaseModel):
     """Response to an approval request."""
 
     approval_id: str
-    decision: Literal["approve", "reject", "modify"]
+    decision: Literal["approve", "reject", "modify", "rerun"]
     comment: Optional[str] = None
     modified_output: Optional[Dict[str, Any]] = None
     reviewed_by: Optional[str] = None
@@ -84,7 +84,7 @@ class ApprovalListItem(BaseModel):
     agent_name: str
     step_name: str
     pipeline_step: str
-    status: Literal["pending", "approved", "rejected", "modified"]
+    status: Literal["pending", "approved", "rejected", "modified", "rerun"]
     created_at: datetime
     reviewed_at: Optional[datetime] = None
     input_title: Optional[str] = None
@@ -101,7 +101,7 @@ class PendingApprovalsResponse(BaseModel):
 class ApprovalDecisionRequest(BaseModel):
     """Request body for making an approval decision."""
 
-    decision: Literal["approve", "reject", "modify"] = Field(
+    decision: Literal["approve", "reject", "modify", "rerun"] = Field(
         ..., description="Approval decision"
     )
     comment: Optional[str] = Field(
@@ -140,6 +140,9 @@ class ApprovalSettings(BaseModel):
             "seo_keywords",
             "seo_optimization",
             "content_formatting",
+            "transcript_preprocessing_approval",
+            "blog_post_preprocessing_approval",
+            "suggested_links",
             # Social media pipeline steps
             "social_media_marketing_brief",
             "social_media_angle_hook",
@@ -168,6 +171,7 @@ class ApprovalStats(BaseModel):
     approved: int
     rejected: int
     modified: int
+    rerun: int
     avg_review_time_seconds: Optional[float] = None
     approval_rate: float = Field(..., ge=0.0, le=1.0)
 

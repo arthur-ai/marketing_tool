@@ -19,6 +19,7 @@ from typing import Any, Optional
 
 from marketing_project.models.content_models import BlogPostContext
 from marketing_project.services.function_pipeline import FunctionPipeline
+from marketing_project.services.social_media_pipeline import SocialMediaPipeline
 
 logger = logging.getLogger("marketing_project.processors")
 
@@ -131,7 +132,7 @@ async def process_blog_post(
                 logger.info(
                     f"Blog Processor: Running social media pipeline for platform {social_media_platform}"
                 )
-                pipeline = SocialMediaPipeline(model="gpt-4o-mini", temperature=0.7)
+                pipeline = SocialMediaPipeline(model="gpt-5.1", temperature=0.7)
 
                 pipeline_result = await pipeline.execute_pipeline(
                     content_json=blog_post_model.model_dump_json(),
@@ -147,7 +148,7 @@ async def process_blog_post(
             else:
                 # Route to regular function pipeline
                 logger.info("Blog Processor: Running function-based pipeline")
-                pipeline = FunctionPipeline(model="gpt-4o-mini", temperature=0.7)
+                pipeline = FunctionPipeline(model="gpt-5.1", temperature=0.7)
 
                 pipeline_result = await pipeline.execute_pipeline(
                     content_json=blog_post_model.model_dump_json(),

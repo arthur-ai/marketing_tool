@@ -449,7 +449,7 @@ PROMPTS_DIR=src/marketing_project/prompts
 
 # OpenAI
 OPENAI_API_KEY=your_key
-OPENAI_MODEL=gpt-4o-mini
+OPENAI_MODEL=gpt-5.1
 
 # Approval system
 APPROVAL_ENABLED=true
@@ -486,7 +486,7 @@ from marketing_project.services.function_pipeline import FunctionPipeline
 from marketing_project.models.content_models import BlogPostContext
 
 # Create pipeline
-pipeline = FunctionPipeline(model="gpt-4o-mini", temperature=0.7)
+pipeline = FunctionPipeline(model="gpt-5.1", temperature=0.7)
 
 # Process content
 blog_post = BlogPostContext(

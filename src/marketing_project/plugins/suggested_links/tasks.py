@@ -28,7 +28,7 @@ class SuggestedLinksPlugin(PipelineStepPlugin):
 
     @property
     def step_number(self) -> int:
-        return 5
+        return 6
 
     @property
     def response_model(self) -> type[SuggestedLinksResult]:

@@ -39,6 +39,14 @@ class TestTranscriptProcessor:
         """Test successful transcript processing."""
         job_id = str(uuid4())
         mock_pipeline_result = {
+            "transcript_preprocessing_approval": {
+                "is_valid": True,
+                "speakers_validated": True,
+                "duration_validated": True,
+                "content_validated": True,
+                "transcript_type_validated": True,
+                "requires_approval": False,
+            },
             "seo_keywords": {"primary": ["test", "transcript"]},
             "marketing_brief": {"summary": "Test brief"},
             "article_generation": {"content": "Generated article"},

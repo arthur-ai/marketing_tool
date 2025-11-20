@@ -12,13 +12,18 @@ from datetime import datetime
 from typing import Any, Dict, Optional
 
 from marketing_project.models.pipeline_steps import (
+    AngleHookResult,
     ArticleGenerationResult,
+    BlogPostPreprocessingApprovalResult,
     ContentFormattingResult,
     DesignKitResult,
     MarketingBriefResult,
     SEOKeywordsResult,
     SEOOptimizationResult,
+    SocialMediaMarketingBriefResult,
+    SocialMediaPostResult,
     SuggestedLinksResult,
+    TranscriptPreprocessingApprovalResult,
 )
 from marketing_project.services.function_pipeline import FunctionPipeline
 
@@ -26,6 +31,8 @@ logger = logging.getLogger("marketing_project.services.step_retry")
 
 # Map step names to their response models
 STEP_MODEL_MAP = {
+    "transcript_preprocessing_approval": TranscriptPreprocessingApprovalResult,
+    "blog_post_preprocessing_approval": BlogPostPreprocessingApprovalResult,
     "seo_keywords": SEOKeywordsResult,
     "marketing_brief": MarketingBriefResult,
     "article_generation": ArticleGenerationResult,
@@ -33,10 +40,15 @@ STEP_MODEL_MAP = {
     "suggested_links": SuggestedLinksResult,
     "content_formatting": ContentFormattingResult,
     "design_kit": DesignKitResult,
+    "social_media_marketing_brief": SocialMediaMarketingBriefResult,
+    "social_media_angle_hook": AngleHookResult,
+    "social_media_post_generation": SocialMediaPostResult,
 }
 
 # Map step names to their step numbers (for logging/tracking)
 STEP_NUMBER_MAP = {
+    "transcript_preprocessing_approval": 1,
+    "blog_post_preprocessing_approval": 1,
     "seo_keywords": 1,
     "marketing_brief": 2,
     "article_generation": 3,
@@ -44,6 +56,9 @@ STEP_NUMBER_MAP = {
     "suggested_links": 5,
     "content_formatting": 6,
     "design_kit": 7,
+    "social_media_marketing_brief": 2,
+    "social_media_angle_hook": 3,
+    "social_media_post_generation": 4,
 }
 
 
@@ -51,7 +66,7 @@ class StepRetryService:
     """Service for retrying individual pipeline steps."""
 
     def __init__(
-        self, model: str = "gpt-4o-mini", temperature: float = 0.7, lang: str = "en"
+        self, model: str = "gpt-5.1", temperature: float = 0.7, lang: str = "en"
     ):
         """
         Initialize the step retry service.
@@ -113,6 +128,7 @@ class StepRetryService:
             prompt = self._build_prompt(step_name, input_data, context, user_guidance)
 
             # Execute the step using the function pipeline
+            # Skip approval check when retrying (step has already been approved)
             result = await self.pipeline._call_function(
                 prompt=prompt,
                 system_instruction=self.pipeline._get_system_instruction(
@@ -122,7 +138,7 @@ class StepRetryService:
                 step_name=step_name,
                 step_number=step_number,
                 context=context,
-                job_id=job_id,
+                job_id=None,  # Skip approval check during retry (already approved)
             )
 
             execution_time = time.time() - start_time
@@ -774,6 +790,279 @@ Suggest:
             # Add user guidance if provided
             if user_guidance:
                 prompt += f"\n\nIMPORTANT: User feedback for improvement:\n{user_guidance}\n\nPlease incorporate this feedback into the design recommendations."
+
+            return prompt
+
+        elif step_name == "transcript_preprocessing_approval":
+            # Extract transcript data from input_data
+            transcript_id = content.get("id", "N/A")
+            transcript_title = content.get("title", "N/A")
+            transcript_content = content.get("content", "")
+            transcript_snippet = content.get("snippet", "")
+            transcript_speakers = content.get("speakers", [])
+            transcript_duration = content.get("duration")
+            transcript_type = content.get("transcript_type")
+            transcript_metadata = content.get("metadata", {})
+
+            # Parsing information
+            parsing_confidence = content.get("parsing_confidence")
+            detected_format = content.get("detected_format")
+            parsing_warnings = content.get("parsing_warnings", [])
+            quality_metrics = content.get("quality_metrics", {})
+            speaking_time_per_speaker = content.get("speaking_time_per_speaker", {})
+            detected_language = content.get("detected_language")
+            key_topics = content.get("key_topics", [])
+            conversation_flow = content.get("conversation_flow", {})
+
+            prompt = f"""Validate and approve the following transcript preprocessing data before proceeding to SEO keywords extraction.
+
+TRANSCRIPT INFORMATION:
+- Transcript ID: {transcript_id}
+- Title: {transcript_title}
+- Transcript Type: {transcript_type or 'Not specified'}
+{f"- Detected Format: {detected_format}" if detected_format else ""}
+{f"- Parsing Confidence: {parsing_confidence * 100:.1f}% ({'High' if parsing_confidence >= 0.8 else 'Medium' if parsing_confidence >= 0.5 else 'Low'})" if parsing_confidence is not None else ""}
+
+SPEAKERS:
+{f"- Number of Speakers: {len(transcript_speakers)}" if transcript_speakers else "- WARNING: No speakers found"}
+{f"- Speaker List: {', '.join(transcript_speakers)}" if transcript_speakers else ""}
+
+DURATION:
+{f"- Duration: {transcript_duration} seconds ({transcript_duration / 60:.1f} minutes)" if transcript_duration else "- WARNING: Duration not specified"}
+
+CONTENT:
+- Content Length: {len(transcript_content)} characters
+- Content Preview (first 500 chars): {transcript_content[:500] if transcript_content else 'No content available'}
+- Snippet: {transcript_snippet or 'No snippet available'}
+
+{f"PARSING WARNINGS ({len(parsing_warnings)}):" if parsing_warnings else ""}
+{f"\n  - " + "\n  - ".join(parsing_warnings) if parsing_warnings else ""}
+
+{f"\nQUALITY METRICS:" if quality_metrics else ""}
+{f"\n  " + "\n  ".join([f"- {k}: {v * 100 if isinstance(v, float) and v <= 1 else v}%" for k, v in quality_metrics.items()]) if quality_metrics else ""}
+
+{f"\nSPEAKING TIME PER SPEAKER:" if speaking_time_per_speaker else ""}
+{f"\n  " + "\n  ".join([f"- {speaker}: {seconds / 60:.1f} minutes ({seconds} seconds)" for speaker, seconds in speaking_time_per_speaker.items()]) if speaking_time_per_speaker else ""}
+
+{f"KEY TOPICS: {', '.join(key_topics)}" if key_topics else ""}
+
+{f"METADATA: {json.dumps(transcript_metadata, indent=2)}" if transcript_metadata else "No additional metadata provided"}
+
+VALIDATION REQUIREMENTS:
+1. Validate speakers: At least one speaker must be present with reasonable names
+2. Validate duration: Must be a positive integer (minimum 60 seconds)
+3. Validate content: Must be non-empty and readable
+4. Validate transcript_type: Should be specified (podcast, meeting, interview, video, etc.)
+5. Check for parsing issues: Review parsing warnings and quality metrics
+6. Determine if approval is required: Flag any issues that need human review
+
+Output validation results with:
+- is_valid: Overall validation status
+- Individual validation flags (speakers_validated, duration_validated, content_validated, transcript_type_validated)
+- validation_issues: List of any issues found
+- requires_approval: Whether human approval is needed before proceeding"""
+
+            # Add user guidance if provided
+            if user_guidance:
+                prompt += f"\n\nIMPORTANT: User feedback for improvement:\n{user_guidance}\n\nPlease incorporate this feedback into the transcript validation."
+
+            return prompt
+
+        elif step_name == "blog_post_preprocessing_approval":
+            # Extract blog post data from input_data
+            blog_post_id = content.get("id", "N/A")
+            blog_post_title = content.get("title", "N/A")
+            blog_post_content = content.get("content", "")
+            blog_post_snippet = content.get("snippet", "")
+            blog_post_author = content.get("author")
+            blog_post_category = content.get("category")
+            blog_post_tags = content.get("tags", [])
+            blog_post_word_count = content.get("word_count")
+            blog_post_reading_time = content.get("reading_time")
+            blog_post_metadata = content.get("metadata", {})
+
+            # Parsing information
+            parsing_confidence = content.get("parsing_confidence")
+            detected_format = content.get("detected_format")
+            parsing_warnings = content.get("parsing_warnings", [])
+            quality_metrics = content.get("quality_metrics", {})
+
+            prompt = f"""Validate and approve the following blog post preprocessing data before proceeding to SEO keywords extraction.
+
+BLOG POST INFORMATION:
+- Blog Post ID: {blog_post_id}
+- Title: {blog_post_title}
+- Author: {blog_post_author or 'Not specified'}
+- Category: {blog_post_category or 'Not specified'}
+{f"- Detected Format: {detected_format}" if detected_format else ""}
+{f"- Parsing Confidence: {parsing_confidence * 100:.1f}% ({'High' if parsing_confidence >= 0.8 else 'Medium' if parsing_confidence >= 0.5 else 'Low'})" if parsing_confidence is not None else ""}
+
+TAGS:
+{f"- Number of Tags: {len(blog_post_tags)}" if blog_post_tags else "- WARNING: No tags found"}
+{f"- Tag List: {', '.join(blog_post_tags)}" if blog_post_tags else ""}
+
+CONTENT METRICS:
+{f"- Word Count: {blog_post_word_count} words" if blog_post_word_count else "- WARNING: Word count not specified"}
+{f"- Reading Time: {blog_post_reading_time} minutes" if blog_post_reading_time else "- WARNING: Reading time not specified"}
+
+CONTENT:
+- Content Length: {len(blog_post_content)} characters
+- Content Preview (first 500 chars): {blog_post_content[:500] if blog_post_content else 'No content available'}
+- Snippet: {blog_post_snippet or 'No snippet available'}
+
+{f"PARSING WARNINGS ({len(parsing_warnings)}):" if parsing_warnings else ""}
+{f"\n  - " + "\n  - ".join(parsing_warnings) if parsing_warnings else ""}
+
+{f"\nQUALITY METRICS:" if quality_metrics else ""}
+{f"\n  " + "\n  ".join([f"- {k}: {v * 100 if isinstance(v, float) and v <= 1 else v}%" for k, v in quality_metrics.items()]) if quality_metrics else ""}
+
+{f"METADATA: {json.dumps(blog_post_metadata, indent=2)}" if blog_post_metadata else "No additional metadata provided"}
+
+VALIDATION AND EXTRACTION REQUIREMENTS:
+1. Validate title: Must be present, non-empty, and reasonable length (10-200 chars)
+2. Validate content: Must be non-empty, minimum 100 words, readable
+3. Extract/validate author: Extract from content if missing (look for "by Author", "Author:", etc.)
+4. Extract/validate category: Infer from content if missing
+5. Extract/validate tags: Extract hashtags or generate from content if missing
+6. Calculate word_count: Calculate from content if missing
+7. Calculate reading_time: Calculate from word_count if missing (~200 words/minute)
+8. Generate snippet: Generate from first paragraph if missing
+9. Perform sentiment analysis: Analyze overall sentiment, sentiment score, emotional tone
+10. Perform content analysis: Calculate readability, completeness, identify content type, target audience
+11. Perform SEO/marketing analysis: Extract keywords, identify opportunities, assess engagement
+12. Determine if approval is required: Flag any issues that need human review
+
+Output validation results with:
+- is_valid: Overall validation status
+- Individual validation flags (title_validated, content_validated, author_validated, category_validated, tags_validated)
+- Extracted data: author, category, tags, word_count, reading_time
+- Sentiment analysis: overall_sentiment, sentiment_score, sentiment_confidence, emotional_tone
+- Content analysis: readability_score, completeness_score, content_type, target_audience, headings, sections
+- SEO/marketing analysis: potential_keywords, seo_opportunities, engagement_potential, shareability_score
+- validation_issues: List of any issues found
+- requires_approval: Whether human approval is needed before proceeding"""
+
+            # Add user guidance if provided
+            if user_guidance:
+                prompt += f"\n\nIMPORTANT: User feedback for improvement:\n{user_guidance}\n\nPlease incorporate this feedback into the blog post validation."
+
+            return prompt
+
+        elif step_name == "social_media_marketing_brief":
+            seo_keywords = context.get("seo_keywords", {})
+            social_media_platform = context.get("social_media_platform", "linkedin")
+            main_keyword = seo_keywords.get("main_keyword", "")
+            primary_keywords = seo_keywords.get("primary_keywords", [])
+            search_intent = seo_keywords.get("search_intent", "informational")
+            long_tail_keywords = seo_keywords.get("long_tail_keywords", [])
+
+            prompt = f"""Create a platform-specific marketing brief for {social_media_platform} focused on the keyword: {main_keyword}
+
+KEYWORD CONTEXT:
+- Main Keyword: {main_keyword}
+- Primary Keywords: {', '.join(primary_keywords) if primary_keywords else 'None'}
+- Search Intent: {search_intent}
+{f"- Long-tail Opportunities: {', '.join(long_tail_keywords)}" if long_tail_keywords else ""}
+
+PLATFORM: {social_media_platform.upper()}
+
+Generate a marketing brief that includes:
+- Target audience personas with demographics specific to {social_media_platform}
+- Key messaging points (3-5 messages) aligned with search intent ({search_intent})
+- Platform-specific tone and voice recommendations
+- Content strategy tailored for {social_media_platform}
+- Distribution and engagement strategy for {social_media_platform}
+- Platform-specific notes and recommendations
+
+Ensure the brief is optimized for {social_media_platform} audience and engagement patterns."""
+
+            # Add user guidance if provided
+            if user_guidance:
+                prompt += f"\n\nIMPORTANT: User feedback for improvement:\n{user_guidance}\n\nPlease incorporate this feedback into the social media marketing brief."
+
+            return prompt
+
+        elif step_name == "social_media_angle_hook":
+            brief = context.get("social_media_marketing_brief", {})
+            social_media_platform = context.get("social_media_platform", "linkedin")
+            platform = brief.get("platform", social_media_platform)
+            target_audience = brief.get("target_audience", [])
+            key_messages = brief.get("key_messages", [])
+            tone_and_voice = brief.get("tone_and_voice", "Professional and engaging")
+
+            prompt = f"""Generate engaging angles and hooks for {platform} social media content.
+
+FROM MARKETING BRIEF:
+- Platform: {platform}
+- Target Audience: {', '.join(target_audience) if target_audience else 'Not specified'}
+- Key Messages: {', '.join(key_messages) if key_messages else 'None'}
+- Tone and Voice: {tone_and_voice}
+
+Generate:
+- Multiple angle options (3-5 angles) for approaching the content
+- Hook variations (3-5 hooks) for capturing attention on {platform}
+- Recommended angle: The best angle to use for this platform
+- Recommended hook: The best hook to use for this platform
+- Rationale: Explanation of why the recommended angle and hook were chosen
+
+Ensure angles and hooks are:
+- Tailored for {platform} audience and engagement patterns
+- Aligned with the tone and voice: {tone_and_voice}
+- Designed to capture attention and drive engagement
+- Relevant to the target audience: {', '.join(target_audience) if target_audience else 'General audience'}"""
+
+            # Add user guidance if provided
+            if user_guidance:
+                prompt += f"\n\nIMPORTANT: User feedback for improvement:\n{user_guidance}\n\nPlease incorporate this feedback into the angle and hook generation."
+
+            return prompt
+
+        elif step_name == "social_media_post_generation":
+            angle_hook = context.get("social_media_angle_hook", {})
+            brief = context.get("social_media_marketing_brief", {})
+            social_media_platform = context.get("social_media_platform", "linkedin")
+            platform = angle_hook.get(
+                "platform", brief.get("platform", social_media_platform)
+            )
+            recommended_angle = angle_hook.get("recommended_angle", "")
+            recommended_hook = angle_hook.get("recommended_hook", "")
+            rationale = angle_hook.get("rationale", "")
+            target_audience = brief.get("target_audience", [])
+            key_messages = brief.get("key_messages", [])
+            tone_and_voice = brief.get("tone_and_voice", "Professional and engaging")
+
+            prompt = f"""Generate a complete social media post for {platform} using the recommended angle and hook.
+
+FROM ANGLE & HOOK:
+- Platform: {platform}
+- Recommended Angle: {recommended_angle}
+- Recommended Hook: {recommended_hook}
+- Rationale: {rationale}
+
+FROM MARKETING BRIEF:
+- Target Audience: {', '.join(target_audience) if target_audience else 'Not specified'}
+- Key Messages: {', '.join(key_messages) if key_messages else 'None'}
+- Tone and Voice: {tone_and_voice}
+
+Generate:
+- Complete post content optimized for {platform}
+{f"- Subject line (for email platform)" if platform == "email" else ""}
+{f"- Hashtags (for LinkedIn platform)" if platform == "linkedin" else ""}
+- Call-to-action (if appropriate)
+- Platform-specific metadata
+
+Ensure the post:
+- Uses the recommended hook to capture attention
+- Follows the recommended angle for content approach
+- Matches the tone and voice: {tone_and_voice}
+- Speaks directly to the target audience: {', '.join(target_audience) if target_audience else 'General audience'}
+- Incorporates key messages naturally
+- Is optimized for {platform} engagement patterns
+- Includes appropriate formatting for {platform}"""
+
+            # Add user guidance if provided
+            if user_guidance:
+                prompt += f"\n\nIMPORTANT: User feedback for improvement:\n{user_guidance}\n\nPlease incorporate this feedback into the social media post generation."
 
             return prompt
 

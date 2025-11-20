@@ -34,7 +34,7 @@ class PipelineStepPlugin(ABC):
     @property
     @abstractmethod
     def step_number(self) -> int:
-        """Return the step number in the pipeline (1-7)."""
+        """Return the step number in the pipeline (1-8)."""
         pass
 
     @property
@@ -175,13 +175,17 @@ class PipelineStepPlugin(ABC):
         # Get system instruction
         system_instruction = pipeline._get_system_instruction(self.step_name)
 
+        # Get execution step number from context if available (dynamic numbering)
+        # Otherwise fall back to static step_number (for backward compatibility)
+        execution_step_number = context.get("_execution_step_number", self.step_number)
+
         # Execute the step using pipeline's _call_function
         result = await pipeline._call_function(
             prompt=prompt,
             system_instruction=system_instruction,
             response_model=self.response_model,
             step_name=self.step_name,
-            step_number=self.step_number,
+            step_number=execution_step_number,
             context=context,
             job_id=job_id,
         )

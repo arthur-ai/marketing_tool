@@ -13,6 +13,7 @@ from datetime import date, datetime
 from typing import Any, Dict, List, Optional
 
 import redis.asyncio as redis
+from pydantic import BaseModel
 from sqlalchemy import select
 
 from marketing_project.models.db_models import ApprovalSettingsModel
@@ -24,6 +25,13 @@ def _json_serializer(obj: Any) -> Any:
     """Custom JSON serializer for datetime and other non-serializable objects."""
     if isinstance(obj, (datetime, date)):
         return obj.isoformat()
+    # Handle Pydantic BaseModel instances
+    if isinstance(obj, BaseModel):
+        try:
+            return obj.model_dump(mode="json")
+        except (TypeError, ValueError):
+            # Fallback to regular model_dump if mode='json' fails
+            return obj.model_dump()
     raise TypeError(f"Type {type(obj)} not serializable")
 
 
@@ -564,14 +572,9 @@ class ApprovalManager:
             )
 
         # Handle keyword selection for seo_keywords step
+        keyword_selection_used = False
         if approval.pipeline_step == "seo_keywords":
-            # For seo_keywords, only keyword selection is allowed (not reject)
-            if decision.decision == "reject":
-                raise ValueError(
-                    "seo_keywords step does not support rejection. "
-                    "Please use keyword selection to choose which keywords to keep."
-                )
-
+            # Allow keyword selection, approval, or rejection
             if decision.selected_keywords or decision.main_keyword:
                 # Use main_keyword from decision if provided, otherwise from selected_keywords
                 main_keyword = (
@@ -589,6 +592,7 @@ class ApprovalManager:
                 )
                 approval.modified_output = filtered_output
                 approval.status = "approved"  # Treating selection as approval
+                keyword_selection_used = True
                 logger.info(
                     f"Filtered keywords for approval {approval_id}: "
                     f"main_keyword={filtered_output.get('main_keyword', 'N/A')}, "
@@ -596,14 +600,13 @@ class ApprovalManager:
                     f"secondary={len(filtered_output.get('secondary_keywords', []))}, "
                     f"lsi={len(filtered_output.get('lsi_keywords', []))}"
                 )
-            elif decision.decision == "approve":
-                # Allow direct approval (all keywords kept)
-                approval.status = "approved"
             else:
-                raise ValueError(
-                    "seo_keywords step requires keyword selection. "
-                    "Please provide selected_keywords or use decision='approve' to keep all keywords."
-                )
+                # For seo_keywords without keyword selection, validate modify decision
+                if decision.decision == "modify" and not decision.modified_output:
+                    raise ValueError(
+                        "seo_keywords step requires keyword selection or modified_output when using modify decision. "
+                        "Please provide selected_keywords, modified_output, or use decision='approve'/'reject'."
+                    )
         else:
             # Validate modified output if decision is modify (and not keyword selection)
             if (
@@ -613,14 +616,18 @@ class ApprovalManager:
             ):
                 raise ValueError("Modified output required when decision is 'modify'")
 
-        # Update approval
-        if decision.decision == "approve":
-            approval.status = "approved"
-        elif decision.decision == "reject":
-            approval.status = "rejected"
-        elif decision.decision == "modify":
-            approval.status = "modified"
-            approval.modified_output = decision.modified_output
+        # Update approval status (skip if keyword selection was used, as status is already set)
+        if not keyword_selection_used:
+            if decision.decision == "approve":
+                approval.status = "approved"
+            elif decision.decision == "reject":
+                approval.status = "rejected"
+            elif decision.decision == "modify":
+                approval.status = "modified"
+                approval.modified_output = decision.modified_output
+            elif decision.decision == "rerun":
+                approval.status = "rerun"
+                # Store comment as user_guidance for the rerun (will be used in API handler)
 
         approval.reviewed_at = datetime.utcnow()
         approval.user_comment = decision.comment
@@ -1000,6 +1007,7 @@ class ApprovalManager:
         approved = len([a for a in approvals if a.status == "approved"])
         rejected = len([a for a in approvals if a.status == "rejected"])
         modified = len([a for a in approvals if a.status == "modified"])
+        rerun = len([a for a in approvals if a.status == "rerun"])
 
         # Calculate average review time
         reviewed = [a for a in approvals if a.reviewed_at]
@@ -1012,7 +1020,7 @@ class ApprovalManager:
             avg_review_time = None
 
         # Calculate approval rate
-        decided = approved + rejected + modified
+        decided = approved + rejected + modified + rerun
         approval_rate = (approved + modified) / decided if decided > 0 else 0.0
 
         return ApprovalStats(
@@ -1021,6 +1029,7 @@ class ApprovalManager:
             approved=approved,
             rejected=rejected,
             modified=modified,
+            rerun=rerun,
             avg_review_time_seconds=avg_review_time,
             approval_rate=approval_rate,
         )

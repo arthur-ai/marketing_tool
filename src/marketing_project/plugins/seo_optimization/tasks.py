@@ -22,7 +22,7 @@ class SEOOptimizationPlugin(PipelineStepPlugin):
 
     @property
     def step_number(self) -> int:
-        return 4
+        return 5
 
     @property
     def response_model(self) -> type[SEOOptimizationResult]:

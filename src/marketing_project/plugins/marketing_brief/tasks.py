@@ -22,7 +22,7 @@ class MarketingBriefPlugin(PipelineStepPlugin):
 
     @property
     def step_number(self) -> int:
-        return 2
+        return 3
 
     @property
     def response_model(self) -> type[MarketingBriefResult]:
@@ -37,6 +37,7 @@ class MarketingBriefPlugin(PipelineStepPlugin):
 
         Converts seo_keywords to model and prepares context for template.
         Optionally includes design_kit_config if available.
+        For transcripts, includes all transcript-specific metadata.
         """
         from marketing_project.models.design_kit_config import DesignKitConfig
         from marketing_project.models.pipeline_steps import SEOKeywordsResult
@@ -66,6 +67,75 @@ class MarketingBriefPlugin(PipelineStepPlugin):
             "seo_result": seo_result,
             "design_kit_config": design_kit_config,
         }
+
+        # For transcripts, include all transcript-specific metadata
+        if content_type == "transcript":
+            input_content = context.get("input_content", {})
+            if isinstance(input_content, dict):
+                # Include core transcript fields
+                prompt_context["transcript_speakers"] = input_content.get(
+                    "speakers", []
+                )
+                prompt_context["transcript_duration"] = input_content.get("duration")
+                prompt_context["transcript_type"] = input_content.get(
+                    "transcript_type", "podcast"
+                )
+                prompt_context["transcript_title"] = input_content.get("title", "")
+                prompt_context["transcript_snippet"] = input_content.get("snippet", "")
+
+                # Include enhanced parsing metadata
+                prompt_context["parsing_confidence"] = input_content.get(
+                    "parsing_confidence"
+                )
+                prompt_context["detected_format"] = input_content.get("detected_format")
+                prompt_context["parsing_warnings"] = input_content.get(
+                    "parsing_warnings", []
+                )
+                prompt_context["quality_metrics"] = input_content.get(
+                    "quality_metrics", {}
+                )
+                prompt_context["speaking_time_per_speaker"] = input_content.get(
+                    "speaking_time_per_speaker", {}
+                )
+                prompt_context["detected_language"] = input_content.get(
+                    "detected_language"
+                )
+                prompt_context["key_topics"] = input_content.get("key_topics", [])
+                prompt_context["conversation_flow"] = input_content.get(
+                    "conversation_flow", {}
+                )
+
+                # Include speaker analysis if available
+                speaker_analysis = input_content.get("speaker_analysis", {})
+                if speaker_analysis:
+                    prompt_context["speaker_analysis"] = speaker_analysis
+
+                # Include additional transcript metadata
+                prompt_context["speaker_mapping"] = input_content.get(
+                    "speaker_mapping", {}
+                )
+                prompt_context["timestamps"] = input_content.get("timestamps", {})
+                prompt_context["word_count"] = input_content.get("word_count")
+
+        # For blog posts, include blog post-specific metadata
+        elif content_type == "blog_post":
+            input_content = context.get("input_content", {})
+            if isinstance(input_content, dict):
+                # Extract blog post metadata
+                prompt_context["blog_post_headings"] = input_content.get("headings", [])
+                prompt_context["blog_post_tags"] = input_content.get("tags", [])
+                prompt_context["blog_post_category"] = input_content.get("category", "")
+                prompt_context["blog_post_author"] = input_content.get("author", "")
+                prompt_context["blog_post_reading_time"] = input_content.get(
+                    "reading_time"
+                )
+                prompt_context["blog_post_word_count"] = input_content.get("word_count")
+                prompt_context["blog_post_links"] = input_content.get("links", [])
+                prompt_context["blog_post_source_url"] = input_content.get(
+                    "source_url", ""
+                )
+                prompt_context["blog_post_title"] = input_content.get("title", "")
+                prompt_context["blog_post_snippet"] = input_content.get("snippet", "")
 
         return prompt_context
 

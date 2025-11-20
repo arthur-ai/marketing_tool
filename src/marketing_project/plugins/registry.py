@@ -64,7 +64,7 @@ class PluginRegistry:
         Get a plugin by step number.
 
         Args:
-            step_number: Step number (1-7)
+            step_number: Step number (1-8)
 
         Returns:
             Plugin instance or None if not found
@@ -105,6 +105,14 @@ class PluginRegistry:
         # Note: DesignKitPlugin is not included as it's not part of the content pipeline
         # It's used separately for generating DesignKitConfig
         plugin_modules = [
+            (
+                "marketing_project.plugins.transcript_preprocessing_approval",
+                "TranscriptPreprocessingApprovalPlugin",
+            ),
+            (
+                "marketing_project.plugins.blog_post_preprocessing_approval",
+                "BlogPostPreprocessingApprovalPlugin",
+            ),
             ("marketing_project.plugins.seo_keywords", "SEOKeywordsPlugin"),
             ("marketing_project.plugins.marketing_brief", "MarketingBriefPlugin"),
             ("marketing_project.plugins.article_generation", "ArticleGenerationPlugin"),

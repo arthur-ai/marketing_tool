@@ -611,3 +611,392 @@ class SocialMediaPostResult(BaseModel):
     engagement_score: Optional[float] = Field(
         None, ge=0.0, le=100.0, description="Predicted engagement potential (0-100)"
     )
+
+
+class QualityMetrics(BaseModel):
+    """Quality metrics for transcript parsing."""
+
+    completeness: Optional[float] = Field(
+        None,
+        ge=0.0,
+        le=1.0,
+        description="Completeness score (0-1)",
+    )
+    speaker_clarity: Optional[float] = Field(
+        None,
+        ge=0.0,
+        le=1.0,
+        description="Speaker clarity score (0-1)",
+    )
+    timestamp_accuracy: Optional[float] = Field(
+        None,
+        ge=0.0,
+        le=1.0,
+        description="Timestamp accuracy score (0-1)",
+    )
+    content_quality: Optional[float] = Field(
+        None,
+        ge=0.0,
+        le=1.0,
+        description="Content quality score (0-1)",
+    )
+
+
+class ConversationFlow(BaseModel):
+    """Analysis of conversation flow structure."""
+
+    flow_type: Optional[str] = Field(
+        None,
+        description="Type of conversation flow (e.g., 'interview', 'discussion', 'presentation')",
+    )
+    question_count: Optional[int] = Field(
+        None,
+        description="Number of questions detected",
+    )
+    answer_count: Optional[int] = Field(
+        None,
+        description="Number of answers detected",
+    )
+    patterns: Optional[List[str]] = Field(
+        None,
+        description="Detected conversation patterns",
+    )
+
+
+class TranscriptContentExtractionResult(BaseModel):
+    """Result from transcript content extraction step."""
+
+    extracted_content: str = Field(
+        description="Main transcript content extracted from raw input"
+    )
+    content_validated: bool = Field(
+        description="Content validation status - true if content is valid"
+    )
+    content_summary: Optional[str] = Field(
+        None, description="Summary of content for review (first 500 chars)"
+    )
+    validation_issues: List[str] = Field(
+        default_factory=list,
+        description="List of content-specific validation issues found (empty if valid)",
+    )
+    quality_metrics: Optional[QualityMetrics] = Field(
+        None,
+        description="Detailed quality metrics from content extraction",
+    )
+    confidence_score: Optional[float] = Field(
+        None,
+        ge=0.0,
+        le=1.0,
+        description="Confidence in content extraction quality (0-1)",
+    )
+    transcript_type: Optional[str] = Field(
+        None, description="Detected transcript type (podcast, meeting, interview, etc.)"
+    )
+
+
+class TranscriptSpeakersExtractionResult(BaseModel):
+    """Result from transcript speakers extraction step."""
+
+    speakers: List[str] = Field(
+        default_factory=list,
+        description="Extracted speaker names from transcript content",
+    )
+    speakers_validated: bool = Field(
+        description="Speakers validation status - true if speakers list is valid"
+    )
+    validation_issues: List[str] = Field(
+        default_factory=list,
+        description="List of speaker-specific validation issues found (empty if valid)",
+    )
+    confidence_score: Optional[float] = Field(
+        None,
+        ge=0.0,
+        le=1.0,
+        description="Confidence in speakers extraction quality (0-1)",
+    )
+
+
+class TranscriptDurationExtractionResult(BaseModel):
+    """Result from transcript duration extraction step."""
+
+    duration: Optional[int] = Field(
+        None, description="Duration in seconds extracted/calculated from transcript"
+    )
+    duration_validated: bool = Field(
+        description="Duration validation status - true if duration is valid"
+    )
+    validation_issues: List[str] = Field(
+        default_factory=list,
+        description="List of duration-specific validation issues found (empty if valid)",
+    )
+    confidence_score: Optional[float] = Field(
+        None,
+        ge=0.0,
+        le=1.0,
+        description="Confidence in duration extraction quality (0-1)",
+    )
+    extraction_method: Optional[str] = Field(
+        None,
+        description="Method used to extract duration (timestamps, word_count, estimated, etc.)",
+    )
+
+
+class TranscriptPreprocessingApprovalResult(BaseModel):
+    """Result from Transcript Preprocessing Approval step."""
+
+    is_valid: bool = Field(
+        description="Overall validation status - true if all transcript fields are valid"
+    )
+    speakers_validated: bool = Field(
+        description="Speakers validation status - true if speakers list is valid"
+    )
+    duration_validated: bool = Field(
+        description="Duration validation status - true if duration is valid"
+    )
+    content_validated: bool = Field(
+        description="Content validation status - true if content is valid"
+    )
+    transcript_type_validated: bool = Field(
+        description="Transcript type validation status - true if transcript_type is valid"
+    )
+    validation_issues: List[str] = Field(
+        default_factory=list,
+        description="List of validation issues found (empty if all valid)",
+    )
+    speakers: List[str] = Field(
+        default_factory=list,
+        description="Confirmed speaker list after validation",
+    )
+    duration: Optional[int] = Field(
+        None, description="Confirmed duration in seconds after validation"
+    )
+    transcript_type: Optional[str] = Field(
+        None, description="Confirmed transcript type after validation"
+    )
+    content_summary: Optional[str] = Field(
+        None, description="Summary of content for review (first 500 chars)"
+    )
+    confidence_score: Optional[float] = Field(
+        None,
+        ge=0.0,
+        le=1.0,
+        description="Confidence in preprocessing quality (0-1)",
+    )
+    requires_approval: bool = Field(
+        description="Whether human approval is required before proceeding"
+    )
+    approval_suggestions: List[str] = Field(
+        default_factory=list,
+        description="Suggestions for reviewer on what to check",
+    )
+    # Enhanced parsing fields
+    parsing_confidence: Optional[float] = Field(
+        None,
+        ge=0.0,
+        le=1.0,
+        description="Confidence in parsing accuracy (0-1)",
+    )
+    detected_format: Optional[str] = Field(
+        None,
+        description="Detected transcript format (webvtt, srt, json, csv, ttml, plain)",
+    )
+    parsing_warnings: List[str] = Field(
+        default_factory=list,
+        description="Warnings from parsing process",
+    )
+    quality_metrics: Optional[QualityMetrics] = Field(
+        None,
+        description="Detailed quality metrics from parsing",
+    )
+    speaking_time_per_speaker: Optional[Dict[str, int]] = Field(
+        None,
+        description="Speaking time in seconds per speaker",
+    )
+    detected_language: Optional[str] = Field(
+        None,
+        description="Detected language code (e.g., 'en')",
+    )
+    key_topics: List[str] = Field(
+        default_factory=list,
+        description="Key topics/themes extracted from content",
+    )
+    conversation_flow: Optional[ConversationFlow] = Field(
+        None,
+        description="Analysis of conversation flow structure",
+    )
+
+
+class BlogPostPreprocessingApprovalResult(BaseModel):
+    """Result from Blog Post Preprocessing Approval step."""
+
+    is_valid: bool = Field(
+        description="Overall validation status - true if all blog post fields are valid"
+    )
+    title_validated: bool = Field(
+        description="Title validation status - true if title is valid"
+    )
+    content_validated: bool = Field(
+        description="Content validation status - true if content is valid"
+    )
+    author_validated: bool = Field(
+        description="Author validation status - true if author is valid or extracted"
+    )
+    category_validated: bool = Field(
+        description="Category validation status - true if category is valid or extracted"
+    )
+    tags_validated: bool = Field(
+        description="Tags validation status - true if tags are valid or extracted"
+    )
+    validation_issues: List[str] = Field(
+        default_factory=list,
+        description="List of validation issues found (empty if all valid)",
+    )
+    author: Optional[str] = Field(None, description="Extracted/confirmed author name")
+    category: Optional[str] = Field(None, description="Extracted/confirmed category")
+    tags: List[str] = Field(
+        default_factory=list,
+        description="Extracted/confirmed tags list",
+    )
+    word_count: Optional[int] = Field(None, description="Calculated word count")
+    reading_time: Optional[int] = Field(
+        None, description="Calculated reading time in minutes"
+    )
+    content_summary: Optional[str] = Field(
+        None, description="Summary of content for review (first 500 chars)"
+    )
+    confidence_score: Optional[float] = Field(
+        None,
+        ge=0.0,
+        le=1.0,
+        description="Confidence in preprocessing quality (0-1)",
+    )
+    requires_approval: bool = Field(
+        description="Whether human approval is required before proceeding"
+    )
+    approval_suggestions: List[str] = Field(
+        default_factory=list,
+        description="Suggestions for reviewer on what to check",
+    )
+    # Sentiment fields
+    overall_sentiment: Optional[str] = Field(
+        None,
+        description="Overall sentiment (positive, negative, neutral)",
+    )
+    sentiment_score: Optional[float] = Field(
+        None,
+        ge=-1.0,
+        le=1.0,
+        description="Sentiment score (-1.0 to 1.0, where -1 is very negative, 1 is very positive)",
+    )
+    sentiment_confidence: Optional[float] = Field(
+        None,
+        ge=0.0,
+        le=1.0,
+        description="Confidence in sentiment analysis (0-1)",
+    )
+    emotional_tone: Optional[str] = Field(
+        None,
+        description="Emotional tone (professional, casual, technical, friendly, etc.)",
+    )
+    sentiment_by_section: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Sentiment analysis per section (if content has clear sections)",
+    )
+    # Content analysis fields
+    readability_score: Optional[float] = Field(
+        None,
+        ge=0.0,
+        le=100.0,
+        description="Readability score (0-100, higher is more readable)",
+    )
+    completeness_score: Optional[float] = Field(
+        None,
+        ge=0.0,
+        le=100.0,
+        description="Completeness score (0-100, based on structure and content)",
+    )
+    content_type: Optional[str] = Field(
+        None,
+        description="Content type classification (tutorial, guide, article, opinion, news, etc.)",
+    )
+    target_audience: Optional[str] = Field(
+        None,
+        description="Target audience (beginner, intermediate, advanced, general)",
+    )
+    headings: List[str] = Field(
+        default_factory=list,
+        description="List of headings (H1, H2, H3) extracted from content",
+    )
+    sections: List[str] = Field(
+        default_factory=list,
+        description="List of section titles identified in content",
+    )
+    paragraph_count: Optional[int] = Field(
+        None, description="Number of paragraphs in content"
+    )
+    list_count: Optional[int] = Field(
+        None, description="Number of lists (bulleted or numbered) in content"
+    )
+    link_count: Optional[int] = Field(
+        None, description="Number of links (internal and external) in content"
+    )
+    # SEO/Marketing fields
+    potential_keywords: List[str] = Field(
+        default_factory=list,
+        description="Potential keywords extracted from content",
+    )
+    seo_opportunities: List[str] = Field(
+        default_factory=list,
+        description="SEO optimization opportunities identified",
+    )
+    engagement_potential: Optional[float] = Field(
+        None,
+        ge=0.0,
+        le=100.0,
+        description="Engagement potential score (0-100)",
+    )
+    shareability_score: Optional[float] = Field(
+        None,
+        ge=0.0,
+        le=100.0,
+        description="Shareability score (0-100)",
+    )
+    cta_detected: Optional[bool] = Field(
+        None, description="Whether call-to-action is detected in content"
+    )
+    # Language/Topics
+    detected_language: Optional[str] = Field(
+        None,
+        description="Detected language code (e.g., 'en')",
+    )
+    key_topics: List[str] = Field(
+        default_factory=list,
+        description="Key topics/themes extracted from content",
+    )
+    inferred_categories: List[str] = Field(
+        default_factory=list,
+        description="Categories inferred from content analysis",
+    )
+    # Optional parsing fields
+    parsing_confidence: Optional[float] = Field(
+        None,
+        ge=0.0,
+        le=1.0,
+        description="Confidence in parsing accuracy (0-1)",
+    )
+    detected_format: Optional[str] = Field(
+        None,
+        description="Detected content format (html, markdown, plain, etc.)",
+    )
+    parsing_warnings: List[str] = Field(
+        default_factory=list,
+        description="Warnings from parsing process",
+    )
+    quality_metrics: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Detailed quality metrics from parsing/analysis",
+    )
+    content_structure: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Detailed content structure analysis",
+    )

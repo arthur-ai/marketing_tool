@@ -1,0 +1,176 @@
+Please validate and approve the following transcript preprocessing data before proceeding to SEO keywords extraction.
+
+## Transcript Information
+
+**Transcript ID**: {{ transcript_id }}
+**Title**: {{ transcript_title }}
+**Transcript Type**: {{ transcript_type or 'Not specified' }}
+
+{% if detected_format %}
+**Detected Format**: {{ detected_format }}
+{% endif %}
+
+{% if parsing_confidence is not none %}
+**Parsing Confidence**: {{ (parsing_confidence * 100)|round(1) }}% ({{ 'High' if parsing_confidence >= 0.8 else 'Medium' if parsing_confidence >= 0.5 else 'Low' }})
+{% endif %}
+
+{% if parsing_warnings %}
+**Parsing Warnings** ({{ parsing_warnings|length }}):
+{% for warning in parsing_warnings %}
+- {{ warning }}
+{% endfor %}
+{% endif %}
+
+## Speakers
+{% if transcript_speakers %}
+**Number of Speakers**: {{ transcript_speakers|length }}
+**Speaker List**:
+{% for speaker in transcript_speakers %}
+- {{ speaker }}
+{% endfor %}
+{% else %}
+**WARNING**: No speakers found in transcript data.
+{% endif %}
+
+## Duration
+{% if transcript_duration %}
+**Duration**: {{ transcript_duration }} seconds ({{ (transcript_duration / 60)|round(1) }} minutes)
+{% else %}
+**WARNING**: Duration not specified.
+{% endif %}
+
+## Content Preview
+**Content Summary** (first 500 characters):
+{{ content_summary }}
+
+**Full Content Length**: {{ transcript_content|length if transcript_content else 0 }} characters
+
+{% if transcript_content %}
+## Full Transcript Content
+**IMPORTANT**: Use the full content below to extract speakers, duration, and validate the transcript. The content summary above is just a preview.
+
+```
+{{ transcript_content }}
+```
+{% endif %}
+
+## Snippet
+{{ transcript_snippet or 'No snippet available' }}
+
+## Metadata
+{% if transcript_metadata %}
+{{ transcript_metadata|tojson(indent=2) }}
+{% else %}
+No additional metadata provided.
+{% endif %}
+
+{% if quality_metrics %}
+## Parsing Quality Metrics
+{% for metric, value in quality_metrics.items() %}
+- **{{ metric|replace('_', ' ')|title }}**: {{ (value * 100)|round(1) if value <= 1 else value }}%
+{% endfor %}
+{% endif %}
+
+{% if speaking_time_per_speaker %}
+## Speaking Time per Speaker
+{% for speaker, seconds in speaking_time_per_speaker.items() %}
+- **{{ speaker }}**: {{ (seconds / 60)|round(1) }} minutes ({{ seconds }} seconds)
+{% endfor %}
+{% endif %}
+
+{% if detected_language %}
+## Detected Language
+**Language**: {{ detected_language|upper }}
+{% endif %}
+
+{% if key_topics %}
+## Key Topics Extracted
+{% for topic in key_topics %}
+- {{ topic }}
+{% endfor %}
+{% endif %}
+
+{% if conversation_flow %}
+## Conversation Flow Analysis
+**Flow Type**: {{ conversation_flow.get('type', 'unknown')|title }}
+{% if conversation_flow.get('question_count') is not none %}
+**Questions**: {{ conversation_flow.get('question_count', 0) }}
+{% endif %}
+{% if conversation_flow.get('answer_count') is not none %}
+**Answers**: {{ conversation_flow.get('answer_count', 0) }}
+{% endif %}
+{% endif %}
+
+---
+
+## Validation and Extraction Task
+
+**IMPORTANT**: If any data is missing, you MUST attempt to extract it from the content before flagging as invalid.
+
+### 1. Speakers Validation and Extraction
+- **If speakers are present**: Validate that names are reasonable and consistent
+- **If speakers are MISSING or empty**:
+  - **CRITICAL**: Use the FULL transcript content (not just the summary) to extract speaker names
+  - Analyze the entire content to identify speaker names
+  - Look for patterns like:
+    - "Name:" (e.g., "Pranav Shikarpur: You're the expert...")
+    - Standalone names on lines after timestamps (e.g., timestamp line followed by "Pranav Shikarpur" on next line)
+    - "Name said:", "Name -", etc.
+  - Extract ALL unique speaker names you find throughout the entire transcript
+  - Include extracted speakers in your response's `speakers` field
+  - Set `speakers_validated: true` if you extract at least one valid speaker
+
+### 2. Duration Validation and Extraction
+- **If duration is present**: Validate that it's reasonable and matches content length
+- **If duration is MISSING or invalid**:
+  - **CRITICAL**: Use the FULL transcript content to find timestamps
+  - Look for timestamps throughout the entire content, including:
+    - SRT-style: "00:02:12,730 --> 00:02:15,570"
+    - Simple: "00:02:12", "[1:23]", "(5:30)"
+  - Calculate duration from the LAST timestamp found in the full content
+  - If no timestamps, estimate from word count (~150 words per minute)
+  - Include extracted/calculated duration in your response's `duration` field
+  - Set `duration_validated: true` if you successfully extract/calculate duration
+
+### 3. Content Validation and Improvement
+- **If content is present**: Check readability and completeness
+- **IMPORTANT**: Timestamps in transcript content are EXPECTED and NORMAL. Do NOT add "Content is not fully readable and contains timestamps" to `validation_issues` just because timestamps are present. Only flag if content is ONLY timestamps/metadata with no actual readable transcript text.
+- **If content has formatting issues**:
+  - Note the issues in `validation_issues` (but NOT timestamps - those are expected)
+  - Suggest improvements in `approval_suggestions`
+  - If content is readable despite issues, you may set `content_validated: true`
+
+### 4. Transcript Type Validation
+   - Is transcript type specified?
+   - Does the type match the content characteristics?
+- If missing, infer from content and include in response
+
+### 5. Title and Snippet Validation
+- **Title**: Only flag as "not descriptive enough" if it's completely generic (e.g., "Transcript", "Untitled", empty) or missing. Do NOT flag if title exists and provides basic context, even if it could be more descriptive.
+- **Snippet**: Only flag as "not descriptive enough" if it's completely generic, empty, or missing. Do NOT flag if snippet exists and provides any meaningful preview, even if it could be improved.
+
+### 6. Overall Quality Assessment
+- After extraction attempts, assess overall quality
+- Calculate confidence score (higher if you successfully extracted missing data)
+- Only require approval if critical data cannot be extracted or content is unreadable
+
+## Response Requirements
+
+Provide your validation results, including:
+- **Extracted data**: Include any speakers, duration, or other data you extracted in the appropriate fields
+- **Validation status**: For each field, indicate if it's valid (after extraction if needed)
+- **Issues found**: List any remaining issues that couldn't be auto-fixed
+- **Approval requirement**: Only require approval if extraction failed for critical data
+- **Suggestions**: Provide actionable feedback, including notes about what you extracted
+- **Reasoning**: Explain your decisions, especially:
+  - How you used parsing confidence and warnings
+  - What you extracted and why
+  - How parsing quality metrics influenced your assessment
+  - Why you require (or don't require) approval
+
+**Include parsing information in your response**:
+- Set `parsing_confidence` to the provided value (or your assessment if not provided)
+- Include `detected_format` if available
+- Add any `parsing_warnings` you identified
+- Include `quality_metrics` in your assessment
+- Note `speaking_time_per_speaker`, `detected_language`, `key_topics`, and `conversation_flow` if relevant

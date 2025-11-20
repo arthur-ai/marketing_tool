@@ -1,0 +1,212 @@
+Please validate and approve the following blog post preprocessing data before proceeding to SEO keywords extraction.
+
+## Blog Post Information
+
+**Blog Post ID**: {{ blog_post_id }}
+**Title**: {{ blog_post_title }}
+**Author**: {{ blog_post_author or 'Not specified' }}
+**Category**: {{ blog_post_category or 'Not specified' }}
+
+{% if detected_format %}
+**Detected Format**: {{ detected_format }}
+{% endif %}
+
+{% if parsing_confidence is not none %}
+**Parsing Confidence**: {{ (parsing_confidence * 100)|round(1) }}% ({{ 'High' if parsing_confidence >= 0.8 else 'Medium' if parsing_confidence >= 0.5 else 'Low' }})
+{% endif %}
+
+{% if parsing_warnings %}
+**Parsing Warnings** ({{ parsing_warnings|length }}):
+{% for warning in parsing_warnings %}
+- {{ warning }}
+{% endfor %}
+{% endif %}
+
+## Tags
+{% if blog_post_tags %}
+**Number of Tags**: {{ blog_post_tags|length }}
+**Tag List**:
+{% for tag in blog_post_tags %}
+- {{ tag }}
+{% endfor %}
+{% else %}
+**WARNING**: No tags found in blog post data.
+{% endif %}
+
+## Content Metrics
+{% if blog_post_word_count %}
+**Word Count**: {{ blog_post_word_count }} words
+{% else %}
+**WARNING**: Word count not specified.
+{% endif %}
+
+{% if blog_post_reading_time %}
+**Reading Time**: {{ blog_post_reading_time }} minutes
+{% else %}
+**WARNING**: Reading time not specified.
+{% endif %}
+
+## Content Preview
+**Content Summary** (first 500 characters):
+{{ content_summary }}
+
+**Full Content Length**: {{ blog_post_content|length if blog_post_content else 0 }} characters
+
+{% if blog_post_content %}
+## Full Blog Post Content
+**IMPORTANT**: Use the full content below to extract author, category, tags, perform sentiment analysis, and validate the blog post. The content summary above is just a preview.
+
+```
+{{ blog_post_content }}
+```
+{% endif %}
+
+## Snippet
+{{ blog_post_snippet or 'No snippet available' }}
+
+## Metadata
+{% if blog_post_metadata %}
+{{ blog_post_metadata|tojson(indent=2) }}
+{% else %}
+No additional metadata provided.
+{% endif %}
+
+{% if quality_metrics %}
+## Parsing Quality Metrics
+{% for metric, value in quality_metrics.items() %}
+- **{{ metric|replace('_', ' ')|title }}**: {{ (value * 100)|round(1) if value <= 1 else value }}%
+{% endfor %}
+{% endif %}
+
+---
+
+## Validation and Extraction Task
+
+**IMPORTANT**: If any data is missing, you MUST attempt to extract it from the content before flagging as invalid. Additionally, you MUST perform comprehensive sentiment analysis and content analysis.
+
+### 1. Title Validation
+- **If title is present**: Validate that it's descriptive and reasonable length (10-200 chars)
+- **If title is MISSING or invalid**:
+  - Flag as critical issue
+  - Suggest title generation in `approval_suggestions`
+  - Set `title_validated: false`
+
+### 2. Content Validation
+- **If content is present**: Check readability, completeness, and minimum length (100 words)
+- **If content is MISSING or invalid**:
+  - Flag as critical issue
+  - Set `content_validated: false`
+  - Require approval
+
+### 3. Author Validation and Extraction
+- **If author is present**: Validate that name is reasonable
+- **If author is MISSING**:
+  - **CRITICAL**: Use the FULL blog post content to extract author name
+  - Look for patterns like "by Author", "Author:", "Written by", etc.
+  - Check metadata for author information
+  - Extract author name from content if found
+  - Include extracted author in your response's `author` field
+  - Set `author_validated: true` if you successfully extract author
+
+### 4. Category Validation and Extraction
+- **If category is present**: Validate that it's reasonable
+- **If category is MISSING**:
+  - Analyze the content to infer category (technology, business, lifestyle, etc.)
+  - Check metadata for category information
+  - Extract category from content if found
+  - Include extracted category in your response's `category` field
+  - Set `category_validated: true` if you successfully extract category
+
+### 5. Tags Validation and Extraction
+- **If tags are present**: Validate that tags are reasonable
+- **If tags are MISSING or empty**:
+  - Extract hashtags from content (#tag patterns)
+  - Extract key topics as potential tags
+  - Generate relevant tags based on content analysis
+  - Include extracted tags in your response's `tags` field
+  - Set `tags_validated: true` if you successfully extract at least one tag
+
+### 6. Word Count and Reading Time Calculation
+- **If word count is present**: Validate that it's reasonable
+- **If word count is MISSING**:
+  - Calculate word count from content
+  - Include calculated word count in your response's `word_count` field
+- **If reading time is MISSING**:
+  - Calculate reading time from word count (~200 words per minute)
+  - Include calculated reading time in your response's `reading_time` field
+
+### 7. Snippet Generation
+- **If snippet is present**: Validate that it provides meaningful preview
+- **If snippet is MISSING**:
+  - Generate snippet from first paragraph or content summary
+  - Keep to 100-200 characters
+  - Note in `approval_suggestions` that snippet was generated
+
+### 8. Sentiment Analysis (REQUIRED)
+- **Perform comprehensive sentiment analysis**:
+  - Analyze overall sentiment (positive, negative, neutral)
+  - Calculate sentiment score (-1.0 to 1.0)
+  - Determine sentiment confidence (0-1)
+  - Identify emotional tone (professional, casual, technical, friendly, etc.)
+  - If content has clear sections, analyze sentiment per section
+- **Include all sentiment fields** in your response
+
+### 9. Content Analysis (REQUIRED)
+- **Perform comprehensive content analysis**:
+  - Calculate readability score (0-100)
+  - Calculate completeness score (0-100)
+  - Classify content type (tutorial, guide, article, opinion, news, etc.)
+  - Identify target audience (beginner, intermediate, advanced, general)
+  - Extract headings (H1, H2, H3) from content
+  - Identify sections and their titles
+  - Count paragraphs, lists, and links
+- **Include all content analysis fields** in your response
+
+### 10. SEO & Marketing Analysis (REQUIRED)
+- **Perform SEO and marketing analysis**:
+  - Extract potential keywords from content
+  - Identify SEO optimization opportunities
+  - Assess engagement potential (0-100)
+  - Assess shareability score (0-100)
+  - Detect call-to-action (CTA) presence
+- **Include all SEO/marketing fields** in your response
+
+### 11. Language & Topics (REQUIRED)
+- **Perform language and topic analysis**:
+  - Detect language if not specified (e.g., 'en', 'es', 'fr')
+  - Extract key topics/themes from content (3-10 topics)
+  - Infer additional categories from content analysis
+- **Include all language/topic fields** in your response
+
+### 12. Overall Quality Assessment
+- After extraction attempts, assess overall quality
+- Calculate confidence score (higher if you successfully extracted missing data)
+- Only require approval if critical data (title, content) cannot be extracted or content is unreadable
+- Include all analysis results even if approval not required
+
+## Response Requirements
+
+Provide your validation results, including:
+- **Extracted data**: Include any author, category, tags, word_count, reading_time, or other data you extracted in the appropriate fields
+- **Validation status**: For each field, indicate if it's valid (after extraction if needed)
+- **Sentiment analysis**: Include all sentiment fields (overall_sentiment, sentiment_score, sentiment_confidence, emotional_tone, sentiment_by_section)
+- **Content analysis**: Include all content analysis fields (readability_score, completeness_score, content_type, target_audience, headings, sections, paragraph_count, list_count, link_count)
+- **SEO/Marketing analysis**: Include all SEO/marketing fields (potential_keywords, seo_opportunities, engagement_potential, shareability_score, cta_detected)
+- **Language/Topics**: Include all language/topic fields (detected_language, key_topics, inferred_categories)
+- **Issues found**: List any remaining issues that couldn't be auto-fixed
+- **Approval requirement**: Only require approval if extraction failed for critical data
+- **Suggestions**: Provide actionable feedback, including notes about what you extracted and analyzed
+- **Reasoning**: Explain your decisions, especially:
+  - How you used parsing confidence and warnings
+  - What you extracted and why
+  - How sentiment analysis was performed
+  - How content analysis was performed
+  - How parsing quality metrics influenced your assessment
+  - Why you require (or don't require) approval
+
+**Include parsing information in your response**:
+- Set `parsing_confidence` to the provided value (or your assessment if not provided)
+- Include `detected_format` if available
+- Add any `parsing_warnings` you identified
+- Include `quality_metrics` in your assessment
+- Include `content_structure` with detailed structure analysis

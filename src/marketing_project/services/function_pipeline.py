@@ -27,11 +27,19 @@ def _json_serializer(obj: Any) -> Any:
     """Custom JSON serializer for datetime and other non-serializable objects."""
     if isinstance(obj, (datetime, date)):
         return obj.isoformat()
+    # Handle Pydantic BaseModel instances
+    if isinstance(obj, BaseModel):
+        try:
+            return obj.model_dump(mode="json")
+        except (TypeError, ValueError):
+            # Fallback to regular model_dump if mode='json' fails
+            return obj.model_dump()
     raise TypeError(f"Type {type(obj)} not serializable")
 
 
 from marketing_project.models.pipeline_steps import (
     ArticleGenerationResult,
+    BlogPostPreprocessingApprovalResult,
     ContentFormattingResult,
     DesignKitResult,
     MarketingBriefResult,
@@ -40,6 +48,10 @@ from marketing_project.models.pipeline_steps import (
     SEOKeywordsResult,
     SEOOptimizationResult,
     SuggestedLinksResult,
+    TranscriptContentExtractionResult,
+    TranscriptDurationExtractionResult,
+    TranscriptPreprocessingApprovalResult,
+    TranscriptSpeakersExtractionResult,
 )
 from marketing_project.plugins.context_utils import ContextTransformer
 from marketing_project.plugins.registry import get_plugin_registry
@@ -57,13 +69,13 @@ class FunctionPipeline:
     """
 
     def __init__(
-        self, model: str = "gpt-4o-mini", temperature: float = 0.7, lang: str = "en"
+        self, model: str = "gpt-5.1", temperature: float = 0.7, lang: str = "en"
     ):
         """
         Initialize the function pipeline.
 
         Args:
-            model: OpenAI model to use (default: gpt-4o-mini)
+            model: OpenAI model to use (default: gpt-5.1)
             temperature: Sampling temperature (default: 0.7)
             lang: Language for prompts (default: "en")
         """
@@ -203,6 +215,7 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
         step_name: str,
         pipeline_context: Dict[str, Any],
         job_id: Optional[str] = None,
+        execution_step_number: Optional[int] = None,
     ) -> BaseModel:
         """
         Execute a pipeline step using its plugin.
@@ -211,6 +224,7 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
             step_name: Name of the step to execute
             pipeline_context: Accumulated context from previous steps
             job_id: Optional job ID for tracking
+            execution_step_number: Optional actual execution step number (for dynamic numbering)
 
         Returns:
             Pydantic model instance with step results
@@ -231,6 +245,10 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
             raise ValueError(
                 f"Missing required context keys for {step_name}: {missing}"
             )
+
+        # Store execution step number in pipeline context for plugins to use
+        if execution_step_number is not None:
+            pipeline_context["_execution_step_number"] = execution_step_number
 
         # Execute plugin
         result = await plugin.execute(
@@ -684,9 +702,33 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
 
             plugins = registry.get_plugins_in_order()
 
-            # Execute each step using its plugin
+            # Filter out steps that should be skipped based on content type
+            # This allows us to calculate dynamic step numbers based on actual execution
+            active_plugins = []
             for plugin in plugins:
-                logger.info(f"Executing step {plugin.step_number}: {plugin.step_name}")
+                # Skip transcript_preprocessing_approval for non-transcript content
+                if (
+                    plugin.step_name == "transcript_preprocessing_approval"
+                    and content_type != "transcript"
+                ):
+                    logger.info(
+                        f"Skipping step {plugin.step_name} (not transcript content)"
+                    )
+                    continue
+                # Skip blog_post_preprocessing_approval for non-blog_post content
+                if (
+                    plugin.step_name == "blog_post_preprocessing_approval"
+                    and content_type != "blog_post"
+                ):
+                    logger.info(
+                        f"Skipping step {plugin.step_name} (not blog_post content)"
+                    )
+                    continue
+                active_plugins.append(plugin)
+
+            # Execute each step using its plugin with dynamic step numbers
+            for execution_index, plugin in enumerate(active_plugins, start=1):
+                logger.info(f"Executing step {execution_index}: {plugin.step_name}")
 
                 # Execute step using plugin
                 step_result = await self._execute_step_with_plugin(
@@ -1059,7 +1101,9 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
             registry = get_plugin_registry()
             plugins = registry.get_plugins_in_order()
 
-            # Execute remaining steps using plugins
+            # Filter out steps that should be skipped
+            active_plugins = []
+            content_type_resume = context_data.get("content_type", "blog_post")
             for plugin in plugins:
                 # Skip steps that have already been completed
                 if plugin.step_number < resume_from:
@@ -1067,12 +1111,30 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
 
                 # Skip if result already exists
                 if plugin.step_name in results:
-                    logger.info(
-                        f"Skipping step {plugin.step_number}: {plugin.step_name} (already completed)"
-                    )
+                    logger.info(f"Skipping {plugin.step_name} (already completed)")
                     continue
 
-                logger.info(f"Executing step {plugin.step_number}: {plugin.step_name}")
+                # Skip transcript_preprocessing_approval for non-transcript content
+                if (
+                    plugin.step_name == "transcript_preprocessing_approval"
+                    and content_type_resume != "transcript"
+                ):
+                    logger.info(f"Skipping {plugin.step_name} (not transcript content)")
+                    continue
+
+                # Skip blog_post_preprocessing_approval for non-blog_post content
+                if (
+                    plugin.step_name == "blog_post_preprocessing_approval"
+                    and content_type_resume != "blog_post"
+                ):
+                    logger.info(f"Skipping {plugin.step_name} (not blog_post content)")
+                    continue
+
+                active_plugins.append(plugin)
+
+            # Execute remaining steps with dynamic step numbers
+            for execution_index, plugin in enumerate(active_plugins, start=resume_from):
+                logger.info(f"Executing step {execution_index}: {plugin.step_name}")
 
                 # Validate context before executing
                 if not plugin.validate_context(pipeline_context):
@@ -1091,11 +1153,12 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                         f"step_result present: {bool(last_step_result)}"
                     )
 
-                # Execute step using plugin
+                # Execute step using plugin with dynamic step number
                 step_result = await self._execute_step_with_plugin(
                     step_name=plugin.step_name,
                     pipeline_context=pipeline_context,
                     job_id=job_id,
+                    execution_step_number=execution_index,
                 )
 
                 # Store result - use model_dump(mode='json') to ensure datetime objects are serialized

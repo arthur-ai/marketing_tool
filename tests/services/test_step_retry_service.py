@@ -24,7 +24,7 @@ from marketing_project.services.step_retry_service import (
 @pytest.fixture
 def step_retry_service():
     """Create a StepRetryService instance for testing."""
-    service = StepRetryService(model="gpt-4o-mini", temperature=0.7, lang="en")
+    service = StepRetryService(model="gpt-5.1", temperature=0.7, lang="en")
     # Mock the pipeline
     service.pipeline = MagicMock()
     service.pipeline._call_function = AsyncMock()

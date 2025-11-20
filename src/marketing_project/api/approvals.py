@@ -66,7 +66,6 @@ async def get_pending_approvals(
                     # Job is cancelled/failed/completed, mark approval as rejected if still pending
                     # BUT: Skip auto-rejection if:
                     # 1. Job was completed due to approval (has resume_job_id metadata)
-                    # 2. seo_keywords step doesn't support rejection (only keyword selection)
                     should_auto_reject = True
                     if job.status == JobStatus.COMPLETED:
                         # Check if job was completed due to approval (has resume_job_id)
@@ -80,14 +79,6 @@ async def get_pending_approvals(
                                 f"Skipping auto-rejection for approval {approval.id} - "
                                 f"job {approval.job_id} was completed after approval"
                             )
-
-                    # Check if this step doesn't support rejection
-                    if approval.pipeline_step == "seo_keywords":
-                        should_auto_reject = False
-                        logger.debug(
-                            f"Skipping auto-rejection for approval {approval.id} - "
-                            f"seo_keywords step does not support rejection"
-                        )
 
                     if should_auto_reject and approval.status == "pending":
                         try:
@@ -110,11 +101,7 @@ async def get_pending_approvals(
                 # Job not found - might have expired or been deleted
                 # Exclude from pending since job doesn't exist
                 # If approval is still pending, mark it as rejected
-                # BUT: Skip auto-rejection for seo_keywords step (doesn't support rejection)
-                if (
-                    approval.status == "pending"
-                    and approval.pipeline_step != "seo_keywords"
-                ):
+                if approval.status == "pending":
                     try:
                         await manager.decide_approval(
                             approval.id,
@@ -131,11 +118,6 @@ async def get_pending_approvals(
                         logger.warning(
                             f"Failed to auto-reject approval {approval.id}: {e}"
                         )
-                elif approval.pipeline_step == "seo_keywords":
-                    logger.debug(
-                        f"Skipping auto-rejection for approval {approval.id} (job not found) - "
-                        f"seo_keywords step does not support rejection"
-                    )
                 # Don't include in filtered list
 
         approvals = filtered_approvals
@@ -277,6 +259,7 @@ async def get_approval_analytics():
         approved = len([a for a in all_approvals if a.status == "approved"])
         rejected = len([a for a in all_approvals if a.status == "rejected"])
         modified = len([a for a in all_approvals if a.status == "modified"])
+        rerun = len([a for a in all_approvals if a.status == "rerun"])
 
         # Calculate average review time
         reviewed = [a for a in all_approvals if a.reviewed_at and a.created_at]
@@ -288,7 +271,7 @@ async def get_approval_analytics():
             avg_review_time = sum(review_times) / len(review_times)
 
         # Approval rate
-        decided = approved + rejected + modified
+        decided = approved + rejected + modified + rerun
         approval_rate = (approved + modified) / decided if decided > 0 else 0.0
 
         # Most common modifications (by step type)
@@ -312,6 +295,7 @@ async def get_approval_analytics():
                     "approved": 0,
                     "rejected": 0,
                     "modified": 0,
+                    "rerun": 0,
                 }
 
             approval_rate_by_step[step]["total"] += 1
@@ -321,10 +305,17 @@ async def get_approval_analytics():
                 approval_rate_by_step[step]["rejected"] += 1
             elif a.status == "modified":
                 approval_rate_by_step[step]["modified"] += 1
+            elif a.status == "rerun":
+                approval_rate_by_step[step]["rerun"] += 1
 
         # Calculate rates
         for step, counts in approval_rate_by_step.items():
-            total_decided = counts["approved"] + counts["rejected"] + counts["modified"]
+            total_decided = (
+                counts["approved"]
+                + counts["rejected"]
+                + counts["modified"]
+                + counts["rerun"]
+            )
             if total_decided > 0:
                 counts["approval_rate"] = (
                     counts["approved"] + counts["modified"]
@@ -342,6 +333,7 @@ async def get_approval_analytics():
                     "approved": 0,
                     "rejected": 0,
                     "modified": 0,
+                    "rerun": 0,
                     "avg_review_time": 0,
                     "review_times": [],
                 }
@@ -353,6 +345,8 @@ async def get_approval_analytics():
                 reviewer_stats[reviewer]["rejected"] += 1
             elif a.status == "modified":
                 reviewer_stats[reviewer]["modified"] += 1
+            elif a.status == "rerun":
+                reviewer_stats[reviewer]["rerun"] += 1
 
             review_time = (a.reviewed_at - a.created_at).total_seconds()
             reviewer_stats[reviewer]["review_times"].append(review_time)
@@ -385,6 +379,7 @@ async def get_approval_analytics():
                     "approved": 0,
                     "rejected": 0,
                     "modified": 0,
+                    "rerun": 0,
                     "pending": 0,
                 }
             daily_trends[day]["total"] += 1
@@ -401,6 +396,7 @@ async def get_approval_analytics():
                 "approved": approved,
                 "rejected": rejected,
                 "modified": modified,
+                "rerun": rerun,
                 "avg_review_time_seconds": avg_review_time,
                 "approval_rate": approval_rate,
             },
@@ -817,6 +813,59 @@ async def decide_approval(approval_id: str, decision: ApprovalDecisionRequest):
                         f"No pipeline context found for job {approval.job_id}"
                     )
 
+        # Handle rerun - rerun step with user comment as guidance, create new approval
+        if decision.decision == "rerun":
+            if not decision.comment:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Comment is required for rerun decision to provide guidance for regeneration",
+                )
+
+            # Trigger retry with user comment as guidance
+            pipeline_step = approval.pipeline_step
+            input_data = approval.input_data
+
+            # Get context from pipeline context
+            context_data = await manager.load_pipeline_context(approval.job_id)
+            context = context_data.get("context", {}) if context_data else {}
+
+            # Create retry job
+            retry_job_id = str(uuid.uuid4())
+            retry_job = await job_manager.create_job(
+                job_id=retry_job_id,
+                job_type=f"retry_step_{pipeline_step}",
+                content_id=approval.job_id,
+                metadata={
+                    "original_job_id": approval.job_id,
+                    "approval_id": approval_id,
+                    "step_name": pipeline_step,
+                    "retry_attempt": approval.retry_count + 1,
+                    "rerun_from_approval": True,  # Flag to indicate this is a rerun, not a reject retry
+                },
+            )
+
+            # Submit to ARQ worker with user guidance
+            await job_manager.submit_to_arq(
+                retry_job_id,
+                "retry_step_job",
+                pipeline_step,
+                input_data,
+                context,
+                retry_job_id,
+                approval_id,
+                user_guidance=decision.comment,  # Use comment as guidance
+            )
+
+            # Update approval with retry info
+            approval.retry_job_id = retry_job_id
+            approval.retry_count += 1
+            await manager._save_approval_to_redis(approval)
+
+            logger.info(
+                f"Rerun step '{pipeline_step}' for approval {approval_id} "
+                f"(retry job: {retry_job_id}, attempt: {approval.retry_count})"
+            )
+
         # Handle rejection - auto-regenerate if enabled, otherwise mark as failed
         if decision.decision == "reject":
 
@@ -848,11 +897,11 @@ async def decide_approval(approval_id: str, decision: ApprovalDecisionRequest):
                 await job_manager.submit_to_arq(
                     retry_job_id,
                     "retry_step_job",
-                    step_name=pipeline_step,
-                    input_data=input_data,
-                    context=context,
-                    job_id=retry_job_id,
-                    approval_id=approval_id,
+                    pipeline_step,
+                    input_data,
+                    context,
+                    retry_job_id,
+                    approval_id,
                     user_guidance=decision.comment,  # Use comment as guidance
                 )
 
@@ -1211,11 +1260,11 @@ async def retry_rejected_step(
         await job_manager.submit_to_arq(
             retry_job_id,
             "retry_step_job",
-            step_name=pipeline_step,
-            input_data=input_data,
-            context=context,
-            job_id=retry_job_id,
-            approval_id=approval_id,
+            pipeline_step,
+            input_data,
+            context,
+            retry_job_id,
+            approval_id,
             user_guidance=user_guidance,
         )
 

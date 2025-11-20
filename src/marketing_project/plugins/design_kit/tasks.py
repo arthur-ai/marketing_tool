@@ -191,7 +191,7 @@ If a pattern is not clearly present, use an empty list [] or null. Only include 
 
         Args:
             use_internal_docs: Whether to fetch and analyze all content from internal_docs
-            model: OpenAI model to use (defaults to OPENAI_MODEL env var or gpt-4o-mini)
+            model: OpenAI model to use (defaults to OPENAI_MODEL env var or gpt-5.1)
             temperature: Sampling temperature (default: 0.7)
 
         Returns:
@@ -213,7 +213,7 @@ If a pattern is not clearly present, use an empty list [] or null. Only include 
 
             # Use FunctionPipeline infrastructure for consistency
             pipeline = FunctionPipeline(
-                model=model or os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+                model=model or os.getenv("OPENAI_MODEL", "gpt-5.1"),
                 temperature=temperature,
             )
 

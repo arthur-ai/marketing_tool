@@ -1,0 +1,86 @@
+Please extract or calculate the duration of the following transcript content.
+
+## Transcript Information
+
+**Transcript ID**: {{ transcript_id }}
+**Title**: {{ transcript_title }}
+
+## Transcript Content
+
+**IMPORTANT**: Scan the ENTIRE transcript content below for timestamps. Calculate duration from the last timestamp, or estimate from word count if no timestamps are available.
+
+**Content Length**: {{ extracted_content|length if extracted_content else (transcript_content|length if transcript_content else 0) }} characters
+
+{% if extracted_content %}
+```
+{{ extracted_content }}
+```
+{% elif transcript_content %}
+```
+{{ transcript_content }}
+```
+{% else %}
+**WARNING**: No content provided for duration extraction.
+{% endif %}
+
+## Existing Duration Information
+
+{% if transcript_duration %}
+**Current Duration**: {{ transcript_duration }} seconds ({{ (transcript_duration / 60)|round(1) }} minutes)
+
+**Note**: This duration may be incorrect or missing. Please extract/calculate duration from the content above.
+{% else %}
+**WARNING**: Duration not specified. Please extract/calculate from content.
+{% endif %}
+
+---
+
+## Extraction Task
+
+### 1. Find Timestamps
+- **CRITICAL**: Scan the ENTIRE transcript content for timestamps
+- Look for timestamps throughout the full content, including:
+  - SRT-style: "00:02:12,730 --> 00:02:15,570"
+  - WebVTT-style: "00:02:12.730 --> 00:02:15.570"
+  - Simple formats: "00:02:12", "[1:23]", "(5:30)", "2:15"
+  - Any time-like patterns
+
+### 2. Calculate Duration
+- **If timestamps found**: Calculate duration from the LAST timestamp found in the entire content
+  - Extract the end time from the last timestamp
+  - Convert to seconds (hours*3600 + minutes*60 + seconds + milliseconds/1000)
+- **If no timestamps**: Estimate from word count
+  - Count words in transcript content
+  - Use formula: ~150 words per minute
+  - Calculate: (word_count / 150) * 60 seconds
+  - Round to nearest integer
+
+### 3. Validate Duration
+- **Required**: Duration must be present and valid
+- **Format**: Positive integer representing seconds
+- **Range**: Should be reasonable:
+  - Minimum: 60 seconds (1 minute)
+  - No strict upper limit, but flag if unreasonably long (e.g., > 10 hours)
+- **Consistency**: Duration should align with content size and structure
+
+### 4. Specify Extraction Method
+- Indicate how duration was extracted:
+  - "timestamps" - calculated from timestamps
+  - "word_count" - estimated from word count
+  - "provided" - validated from provided duration
+  - "estimated" - rough estimation
+
+## Response Requirements
+
+Provide your extraction results, including:
+- **Duration**: Duration in seconds (positive integer, or None if cannot be determined)
+- **Validation status**: Whether duration is valid according to criteria
+- **Confidence score**: Your confidence in the extraction quality (0-1)
+- **Extraction method**: How duration was extracted (timestamps, word_count, etc.)
+- **Issues found**: List any duration-specific issues (empty if valid)
+
+**Important Notes**:
+- If no timestamps found and cannot estimate, return None and flag as invalid
+- Always attempt extraction before flagging as invalid
+- Provide realistic confidence scores based on extraction method
+- Always specify extraction_method in response

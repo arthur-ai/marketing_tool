@@ -104,7 +104,7 @@ async def process_transcript(
         # Step 2: Run through AI function pipeline
         logger.info("Transcript Processor: Running function-based pipeline")
         try:
-            pipeline = FunctionPipeline(model="gpt-4o-mini", temperature=0.7)
+            pipeline = FunctionPipeline(model="gpt-5.1", temperature=0.7)
 
             pipeline_result = await pipeline.execute_pipeline(
                 content_json=transcript_model.model_dump_json(),

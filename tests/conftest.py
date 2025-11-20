@@ -351,7 +351,7 @@ def function_pipeline():
 
     from marketing_project.services.function_pipeline import FunctionPipeline
 
-    pipeline = FunctionPipeline(model="gpt-4o-mini", temperature=0.7, lang="en")
+    pipeline = FunctionPipeline(model="gpt-5.1", temperature=0.7, lang="en")
 
     # Mock the OpenAI client to avoid real API calls
     mock_client = AsyncMock()

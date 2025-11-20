@@ -1,0 +1,79 @@
+Please extract speaker names from the following transcript content.
+
+## Transcript Information
+
+**Transcript ID**: {{ transcript_id }}
+**Title**: {{ transcript_title }}
+
+## Transcript Content
+
+**IMPORTANT**: Analyze the ENTIRE transcript content below to identify all unique speaker names. Look for patterns like "Name:", standalone names, "Name said:", etc.
+
+**Content Length**: {{ extracted_content|length if extracted_content else (transcript_content|length if transcript_content else 0) }} characters
+
+{% if extracted_content %}
+```
+{{ extracted_content }}
+```
+{% elif transcript_content %}
+```
+{{ transcript_content }}
+```
+{% else %}
+**WARNING**: No content provided for speaker extraction.
+{% endif %}
+
+## Existing Speaker Information
+
+{% if transcript_speakers %}
+**Current Speakers** ({{ transcript_speakers|length }}):
+{% for speaker in transcript_speakers %}
+- {{ speaker }}
+{% endfor %}
+
+**Note**: These speakers may be incomplete or incorrect. Please extract speakers from the content above.
+{% else %}
+**WARNING**: No speakers currently identified. Please extract from content.
+{% endif %}
+
+---
+
+## Extraction Task
+
+### 1. Extract Speaker Names
+- **CRITICAL**: Use the FULL transcript content (not just summaries) to extract speaker names
+- Analyze the entire content to identify speaker names
+- Look for patterns like:
+  - "Name:" (e.g., "Pranav Shikarpur: You're the expert...")
+  - Standalone names on lines after timestamps (e.g., timestamp line followed by "Pranav Shikarpur" on next line)
+  - "Name said:", "Name -", etc.
+  - Names in metadata or separate fields
+- Extract ALL unique speaker names you find throughout the entire transcript
+- Deduplicate - ensure each speaker appears only once in the list
+
+### 2. Validate Speaker Names
+- **Required**: At least one speaker must be present
+- Each speaker name should be:
+  - Non-empty
+  - Reasonable length (1-50 characters)
+  - Not generic placeholders like "Speaker 1", "Speaker 2" (unless no better names available)
+  - Consistent naming throughout transcript
+- Names should be actual names or meaningful identifiers
+
+### 3. Quality Assessment
+- Assess confidence in extraction
+- Note any issues with speaker identification
+- Flag if only generic names found or if extraction is uncertain
+
+## Response Requirements
+
+Provide your extraction results, including:
+- **Extracted speakers**: List of all unique speaker names found
+- **Validation status**: Whether speakers are valid according to criteria
+- **Confidence score**: Your confidence in the extraction quality (0-1)
+- **Issues found**: List any speaker-specific issues (empty if valid)
+
+**Important Notes**:
+- If only generic names like "Speaker 1", "Speaker 2" are found, extract them but note in validation_issues
+- If no speakers can be identified, return empty list and flag as invalid
+- Always attempt extraction before flagging as invalid

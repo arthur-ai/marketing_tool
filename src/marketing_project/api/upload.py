@@ -312,10 +312,38 @@ async def process_uploaded_file(
                     if parsed_data.get("timestamps"):
                         json_data["timestamps"] = parsed_data["timestamps"]
                     if "snippet" not in json_data:
-                        if len(json_data["content"]) > 200:
-                            json_data["snippet"] = json_data["content"][:200] + "..."
-                        else:
-                            json_data["snippet"] = json_data["content"]
+                        # Use generated snippet from parser if available
+                        json_data["snippet"] = parsed_data.get("snippet") or (
+                            json_data["content"][:200] + "..."
+                            if len(json_data["content"]) > 200
+                            else json_data["content"]
+                        )
+
+                    # Preserve enhanced parsing metadata
+                    if parsed_data.get("parsing_confidence") is not None:
+                        json_data["parsing_confidence"] = parsed_data[
+                            "parsing_confidence"
+                        ]
+                    if parsed_data.get("detected_format"):
+                        json_data["detected_format"] = parsed_data["detected_format"]
+                    if parsed_data.get("warnings"):
+                        json_data["parsing_warnings"] = parsed_data["warnings"]
+                    if parsed_data.get("quality_metrics"):
+                        json_data["quality_metrics"] = parsed_data["quality_metrics"]
+                    if parsed_data.get("speaking_time_per_speaker"):
+                        json_data["speaking_time_per_speaker"] = parsed_data[
+                            "speaking_time_per_speaker"
+                        ]
+                    if parsed_data.get("detected_language"):
+                        json_data["detected_language"] = parsed_data[
+                            "detected_language"
+                        ]
+                    if parsed_data.get("key_topics"):
+                        json_data["key_topics"] = parsed_data["key_topics"]
+                    if parsed_data.get("conversation_flow"):
+                        json_data["conversation_flow"] = parsed_data[
+                            "conversation_flow"
+                        ]
 
                 # Write processed JSON
                 with open(processed_path, "w", encoding="utf-8") as f:
@@ -345,10 +373,37 @@ async def process_uploaded_file(
                     }
                     if parsed_data.get("timestamps"):
                         json_data["timestamps"] = parsed_data["timestamps"]
-                    if len(json_data["content"]) > 200:
-                        json_data["snippet"] = json_data["content"][:200] + "..."
-                    else:
-                        json_data["snippet"] = json_data["content"]
+                    json_data["snippet"] = parsed_data.get("snippet") or (
+                        json_data["content"][:200] + "..."
+                        if len(json_data["content"]) > 200
+                        else json_data["content"]
+                    )
+
+                    # Preserve enhanced parsing metadata
+                    if parsed_data.get("parsing_confidence") is not None:
+                        json_data["parsing_confidence"] = parsed_data[
+                            "parsing_confidence"
+                        ]
+                    if parsed_data.get("detected_format"):
+                        json_data["detected_format"] = parsed_data["detected_format"]
+                    if parsed_data.get("warnings"):
+                        json_data["parsing_warnings"] = parsed_data["warnings"]
+                    if parsed_data.get("quality_metrics"):
+                        json_data["quality_metrics"] = parsed_data["quality_metrics"]
+                    if parsed_data.get("speaking_time_per_speaker"):
+                        json_data["speaking_time_per_speaker"] = parsed_data[
+                            "speaking_time_per_speaker"
+                        ]
+                    if parsed_data.get("detected_language"):
+                        json_data["detected_language"] = parsed_data[
+                            "detected_language"
+                        ]
+                    if parsed_data.get("key_topics"):
+                        json_data["key_topics"] = parsed_data["key_topics"]
+                    if parsed_data.get("conversation_flow"):
+                        json_data["conversation_flow"] = parsed_data[
+                            "conversation_flow"
+                        ]
                 else:
                     # If not valid JSON, create a simple structure
                     json_data = {
@@ -397,11 +452,32 @@ async def process_uploaded_file(
                 if parsed_data.get("timestamps"):
                     json_data["timestamps"] = parsed_data["timestamps"]
 
-                # Add snippet if content is long
-                if len(json_data["content"]) > 200:
-                    json_data["snippet"] = json_data["content"][:200] + "..."
-                else:
-                    json_data["snippet"] = json_data["content"]
+                # Add snippet if content is long (use generated snippet if available)
+                json_data["snippet"] = parsed_data.get("snippet") or (
+                    json_data["content"][:200] + "..."
+                    if len(json_data["content"]) > 200
+                    else json_data["content"]
+                )
+
+                # Preserve enhanced parsing metadata
+                if parsed_data.get("parsing_confidence") is not None:
+                    json_data["parsing_confidence"] = parsed_data["parsing_confidence"]
+                if parsed_data.get("detected_format"):
+                    json_data["detected_format"] = parsed_data["detected_format"]
+                if parsed_data.get("warnings"):
+                    json_data["parsing_warnings"] = parsed_data["warnings"]
+                if parsed_data.get("quality_metrics"):
+                    json_data["quality_metrics"] = parsed_data["quality_metrics"]
+                if parsed_data.get("speaking_time_per_speaker"):
+                    json_data["speaking_time_per_speaker"] = parsed_data[
+                        "speaking_time_per_speaker"
+                    ]
+                if parsed_data.get("detected_language"):
+                    json_data["detected_language"] = parsed_data["detected_language"]
+                if parsed_data.get("key_topics"):
+                    json_data["key_topics"] = parsed_data["key_topics"]
+                if parsed_data.get("conversation_flow"):
+                    json_data["conversation_flow"] = parsed_data["conversation_flow"]
             else:
                 # For all other files, create a simple structure
                 json_data = {

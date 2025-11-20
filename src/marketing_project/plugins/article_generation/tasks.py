@@ -22,7 +22,7 @@ class ArticleGenerationPlugin(PipelineStepPlugin):
 
     @property
     def step_number(self) -> int:
-        return 3
+        return 4
 
     @property
     def response_model(self) -> type[ArticleGenerationResult]:

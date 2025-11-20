@@ -15,6 +15,8 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from pydantic import BaseModel
+
 logger = logging.getLogger(__name__)
 
 
@@ -22,6 +24,13 @@ def _json_serializer(obj: Any) -> Any:
     """Custom JSON serializer for datetime and other non-serializable objects."""
     if isinstance(obj, (datetime, date)):
         return obj.isoformat()
+    # Handle Pydantic BaseModel instances
+    if isinstance(obj, BaseModel):
+        try:
+            return obj.model_dump(mode="json")
+        except (TypeError, ValueError):
+            # Fallback to regular model_dump if mode='json' fails
+            return obj.model_dump()
     raise TypeError(f"Type {type(obj)} not serializable")
 
 
@@ -100,7 +109,7 @@ class StepResultManager:
 
         Args:
             job_id: Job identifier (current job executing the step)
-            step_number: Step sequence number (0 for input, 1-7 for pipeline steps, 8 for final)
+            step_number: Step sequence number (0 for input, 1-8 for pipeline steps, 9 for final)
             step_name: Human-readable step name
             result_data: The result data to save (will be JSON serialized)
             metadata: Optional metadata to include in the file
@@ -556,7 +565,7 @@ class StepResultManager:
                     total_exec_time / chain_metrics["total_steps"]
                 )
 
-            # Estimate cost (rough calculation: $0.01 per 1K tokens for GPT-4o-mini)
+            # Estimate cost (rough calculation: $0.01 per 1K tokens for gpt-5.1)
             # This is a simplified estimate - actual costs vary by model
             total_tokens = chain_metrics.get("total_tokens_used") or 0
             chain_metrics["estimated_cost_usd"] = (total_tokens / 1000) * 0.01

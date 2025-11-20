@@ -22,7 +22,7 @@ class ContentFormattingPlugin(PipelineStepPlugin):
 
     @property
     def step_number(self) -> int:
-        return 6
+        return 8
 
     @property
     def response_model(self) -> type[ContentFormattingResult]:

@@ -59,13 +59,13 @@ class SocialMediaPipeline:
     """
 
     def __init__(
-        self, model: str = "gpt-4o-mini", temperature: float = 0.7, lang: str = "en"
+        self, model: str = "gpt-5.1", temperature: float = 0.7, lang: str = "en"
     ):
         """
         Initialize the social media pipeline.
 
         Args:
-            model: OpenAI model to use (default: gpt-4o-mini)
+            model: OpenAI model to use (default: gpt-5.1)
             temperature: Sampling temperature (default: 0.7)
             lang: Language for prompts (default: "en")
         """

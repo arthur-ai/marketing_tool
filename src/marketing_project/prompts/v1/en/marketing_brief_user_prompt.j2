@@ -32,6 +32,110 @@ Also align with:
 - The keyword clusters and themes identified
 - Long-tail keyword opportunities for specific targeting
 
+{% if content_type == "transcript" %}
+TRANSCRIPT CONTEXT (Use this information to inform the marketing brief):
+{% if transcript_title %}
+- Title: {{ transcript_title }}
+{% endif %}
+{% if transcript_speakers %}
+- Speakers: {{ transcript_speakers | join(', ') }}
+{% endif %}
+{% if transcript_duration %}
+- Duration: {{ transcript_duration }} seconds ({{ (transcript_duration / 60) | round(1) }} minutes)
+{% endif %}
+{% if transcript_type %}
+- Transcript Type: {{ transcript_type }}
+{% endif %}
+{% if key_topics %}
+- Key Topics Identified: {{ key_topics | join(', ') }}
+{% endif %}
+{% if detected_language %}
+- Language: {{ detected_language }}
+{% endif %}
+{% if speaking_time_per_speaker %}
+- Speaking Time Distribution:
+{% for speaker, time in speaking_time_per_speaker.items() %}
+  - {{ speaker }}: {{ (time / 60) | round(1) }} minutes
+{% endfor %}
+{% endif %}
+{% if conversation_flow %}
+- Conversation Flow: {{ conversation_flow | tojson }}
+{% endif %}
+{% if parsing_confidence is not none %}
+- Parsing Quality: {{ (parsing_confidence * 100) | round(1) }}% confidence
+{% endif %}
+{% if detected_format %}
+- Original Format: {{ detected_format }}
+{% endif %}
+{% if transcript_snippet %}
+- Content Preview: {{ transcript_snippet }}
+{% endif %}
+{% if word_count %}
+- Word Count: {{ word_count }}
+{% endif %}
+{% if speaker_mapping %}
+- Speaker Mapping (normalized names): {{ speaker_mapping | tojson }}
+{% endif %}
+{% if timestamps %}
+- Timestamps: {{ timestamps|length }} timestamp entries available
+{% endif %}
+
+When creating the marketing brief for this transcript:
+- Consider the speakers and their roles when defining target audience personas
+- Use the key topics identified to inform content strategy and messaging
+- Leverage conversation flow insights for content structure recommendations
+- Consider speaking time distribution when planning content format and length
+- Factor in transcript type ({{ transcript_type }}) when selecting distribution channels
+- Use speaker_mapping to understand speaker relationships and normalization
+- Consider timestamps for understanding content structure and pacing
+- Factor in word_count when determining content depth and format recommendations
+{% endif %}
+
+{% if content_type == "blog_post" %}
+BLOG POST CONTEXT (Use this information to inform the marketing brief):
+{% if blog_post_title %}
+- Title: {{ blog_post_title }}
+{% endif %}
+{% if blog_post_author %}
+- Author: {{ blog_post_author }}
+{% endif %}
+{% if blog_post_category %}
+- Category: {{ blog_post_category }}
+{% endif %}
+{% if blog_post_tags %}
+- Tags: {{ blog_post_tags | join(', ') }}
+{% endif %}
+{% if blog_post_headings %}
+- Content Structure (Headings):
+{% for heading in blog_post_headings %}
+  - {{ heading }}
+{% endfor %}
+{% endif %}
+{% if blog_post_word_count %}
+- Word Count: {{ blog_post_word_count }}
+{% endif %}
+{% if blog_post_reading_time %}
+- Reading Time: {{ blog_post_reading_time }}
+{% endif %}
+{% if blog_post_links %}
+- Links: {{ blog_post_links|length }} links found
+{% endif %}
+{% if blog_post_source_url %}
+- Source URL: {{ blog_post_source_url }}
+{% endif %}
+{% if blog_post_snippet %}
+- Content Preview: {{ blog_post_snippet }}
+{% endif %}
+
+When creating the marketing brief for this blog post:
+- Use headings to understand content structure and inform content strategy recommendations
+- Use tags and category to inform target audience personas and messaging themes
+- Use author information for audience persona development (if author is a known expert/influencer)
+- Use reading_time and word_count for content format recommendations and distribution channel selection
+- Use links to understand external references and resources that may inform content strategy
+- Consider the content structure (headings) when recommending content organization and flow
+{% endif %}
+
 {% if design_kit_config %}
 DESIGN KIT GUIDELINES (Follow these brand guidelines):
 - Voice & Tone: {{ design_kit_config.voice_adjectives | join(', ') if design_kit_config.voice_adjectives else 'Not specified' }}
