@@ -28,6 +28,7 @@ from marketing_project.processors import (
 from marketing_project.services.function_pipeline import FunctionPipeline
 from marketing_project.services.internal_docs_scanner import get_internal_docs_scanner
 from marketing_project.services.job_manager import JobStatus, get_job_manager
+from marketing_project.services.social_media_pipeline import SocialMediaPipeline
 
 logger = logging.getLogger(__name__)
 
@@ -186,6 +187,102 @@ async def process_transcript_job(ctx, content_json: str, job_id: str, **kwargs) 
 
     except Exception as e:
         logger.error(f"ARQ Worker: Transcript job {job_id} failed: {e}")
+        raise
+
+
+async def process_social_media_job(
+    ctx, content_json: str, job_id: str, **kwargs
+) -> Dict:
+    """
+    Background job for processing social media posts from blog content.
+
+    Args:
+        ctx: ARQ context
+        content_json: JSON string of blog content
+        job_id: Job ID for tracking
+        **kwargs: Additional ARQ-specific parameters (e.g., metadata, _timeout)
+
+    Returns:
+        Processing result dictionary
+    """
+    try:
+        logger.info(f"ARQ Worker: Processing social media job {job_id}")
+
+        # Update job manager
+        job_manager = get_job_manager()
+        await job_manager.update_job_progress(
+            job_id, 10, "Starting social media pipeline"
+        )
+
+        # Store input content in job metadata
+        try:
+            content_dict = json.loads(content_json)
+            job = await job_manager.get_job(job_id)
+            if job:
+                job.metadata["input_content"] = content_dict
+                # Also extract and store title for easier access
+                if "title" in content_dict:
+                    job.metadata["title"] = content_dict["title"]
+                await job_manager._save_job(job)
+        except Exception as e:
+            logger.warning(f"Failed to store input content for job {job_id}: {e}")
+
+        # Get social media platform and email type from job metadata
+        social_media_platform = "linkedin"
+        email_type = None
+        try:
+            job = await job_manager.get_job(job_id)
+            if job:
+                social_media_platform = job.metadata.get(
+                    "social_media_platform", "linkedin"
+                )
+                email_type = job.metadata.get("email_type")
+                logger.info(
+                    f"ARQ Worker: Using social_media_platform={social_media_platform}, email_type={email_type}"
+                )
+        except Exception as e:
+            logger.warning(
+                f"ARQ Worker: Could not get social media parameters from job metadata: {e}"
+            )
+
+        # Execute social media pipeline
+        await job_manager.update_job_progress(
+            job_id, 20, f"Running social media pipeline for {social_media_platform}"
+        )
+
+        pipeline = SocialMediaPipeline(model="gpt-4o-mini", temperature=0.7)
+        pipeline_result = await pipeline.execute_pipeline(
+            content_json=content_json,
+            job_id=job_id,
+            content_type="blog_post",
+            social_media_platform=social_media_platform,
+            email_type=email_type,
+        )
+
+        # Check if pipeline is waiting for approval
+        if pipeline_result.get("pipeline_status") == "waiting_for_approval":
+            logger.info(
+                f"ARQ Worker: Social media job {job_id} waiting for approval at step {pipeline_result.get('metadata', {}).get('stopped_at_step')}"
+            )
+            # Return the result - job status is already updated by the pipeline
+            return pipeline_result
+
+        # Check if pipeline failed
+        if pipeline_result.get("pipeline_status") == "failed":
+            error_msg = pipeline_result.get("metadata", {}).get(
+                "error", "Pipeline failed"
+            )
+            raise Exception(error_msg)
+
+        await job_manager.update_job_progress(job_id, 100, "Completed")
+        logger.info(
+            f"ARQ Worker: Social media job {job_id} completed successfully for platform {social_media_platform}"
+        )
+
+        return pipeline_result
+
+    except Exception as e:
+        logger.error(f"ARQ Worker: Social media job {job_id} failed: {e}")
         raise
 
 
@@ -1347,6 +1444,7 @@ class WorkerSettings:
         process_blog_job,
         process_release_notes_job,
         process_transcript_job,
+        process_social_media_job,
         resume_pipeline_job,
         retry_step_job,
         execute_single_step_job,

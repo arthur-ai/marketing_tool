@@ -19,7 +19,6 @@ from typing import Any, Optional
 
 from marketing_project.models.content_models import BlogPostContext
 from marketing_project.services.function_pipeline import FunctionPipeline
-from marketing_project.services.social_media_pipeline import SocialMediaPipeline
 
 logger = logging.getLogger("marketing_project.processors")
 

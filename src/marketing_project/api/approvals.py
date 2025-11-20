@@ -180,18 +180,35 @@ async def get_pending_approvals(
         all_approvals = await manager.list_approvals(job_id=job_id)
 
         # Convert to list items
-        items = [
-            ApprovalListItem(
-                id=a.id,
-                job_id=a.job_id,
-                agent_name=a.agent_name,
-                step_name=a.step_name,
-                status=a.status,
-                created_at=a.created_at,
-                reviewed_at=a.reviewed_at,
+        items = []
+        for a in approvals:
+            # Extract input_title from approval input_data or job metadata
+            input_title = None
+            # Try to get from approval input_data first
+            if a.input_data:
+                original_content = a.input_data.get("original_content", {})
+                if isinstance(original_content, dict):
+                    input_title = original_content.get("title")
+
+            # If not found, try to get from job metadata
+            if not input_title:
+                job = await job_manager.get_job(a.job_id)
+                if job and job.metadata:
+                    input_title = job.metadata.get("title")
+
+            items.append(
+                ApprovalListItem(
+                    id=a.id,
+                    job_id=a.job_id,
+                    agent_name=a.agent_name,
+                    step_name=a.step_name,
+                    pipeline_step=a.pipeline_step,
+                    status=a.status,
+                    created_at=a.created_at,
+                    reviewed_at=a.reviewed_at,
+                    input_title=input_title,
+                )
             )
-            for a in approvals
-        ]
 
         return PendingApprovalsResponse(
             approvals=items,
@@ -1079,19 +1096,37 @@ async def get_job_approvals(
         all_approvals = await manager.list_approvals(job_id=job_id)
         pending = await manager.list_approvals(job_id=job_id, status="pending")
 
+        # Get job for metadata access
+        job = await job_manager.get_job(job_id)
+
         # Convert to list items
-        items = [
-            ApprovalListItem(
-                id=a.id,
-                job_id=a.job_id,
-                agent_name=a.agent_name,
-                step_name=a.step_name,
-                status=a.status,
-                created_at=a.created_at,
-                reviewed_at=a.reviewed_at,
+        items = []
+        for a in approvals:
+            # Extract input_title from approval input_data or job metadata
+            input_title = None
+            # Try to get from approval input_data first
+            if a.input_data:
+                original_content = a.input_data.get("original_content", {})
+                if isinstance(original_content, dict):
+                    input_title = original_content.get("title")
+
+            # If not found, try to get from job metadata
+            if not input_title and job and job.metadata:
+                input_title = job.metadata.get("title")
+
+            items.append(
+                ApprovalListItem(
+                    id=a.id,
+                    job_id=a.job_id,
+                    agent_name=a.agent_name,
+                    step_name=a.step_name,
+                    pipeline_step=a.pipeline_step,
+                    status=a.status,
+                    created_at=a.created_at,
+                    reviewed_at=a.reviewed_at,
+                    input_title=input_title,
+                )
             )
-            for a in approvals
-        ]
 
         return PendingApprovalsResponse(
             approvals=items,

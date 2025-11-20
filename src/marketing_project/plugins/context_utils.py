@@ -5,6 +5,7 @@ This module provides utilities for converting between dicts and Pydantic models,
 preparing context for template rendering, and managing context transformations.
 """
 
+import json
 import logging
 from typing import Any, Dict, Optional, Type, TypeVar, Union
 
@@ -22,6 +23,44 @@ class ContextTransformer:
     Provides methods for converting dicts to Pydantic models, preparing context
     for template rendering, and managing context transformations.
     """
+
+    @staticmethod
+    def _parse_json_strings(value: Any) -> Any:
+        """
+        Recursively parse JSON strings in dict/list structures.
+
+        This handles cases where data was double-encoded (e.g., a list was
+        serialized to JSON string, then the whole dict was serialized again).
+
+        Args:
+            value: Value to parse (dict, list, str, or other)
+
+        Returns:
+            Parsed value with JSON strings converted to their native types
+        """
+        if isinstance(value, str):
+            # Try to parse if it looks like JSON (starts with [ or {)
+            stripped = value.strip()
+            if (stripped.startswith("[") and stripped.endswith("]")) or (
+                stripped.startswith("{") and stripped.endswith("}")
+            ):
+                try:
+                    # Parse the stripped value to avoid issues with leading/trailing whitespace
+                    parsed = json.loads(stripped)
+                    # Recursively parse nested structures
+                    return ContextTransformer._parse_json_strings(parsed)
+                except (json.JSONDecodeError, ValueError):
+                    # Not valid JSON, return as-is
+                    return value
+            return value
+        elif isinstance(value, dict):
+            return {
+                k: ContextTransformer._parse_json_strings(v) for k, v in value.items()
+            }
+        elif isinstance(value, list):
+            return [ContextTransformer._parse_json_strings(item) for item in value]
+        else:
+            return value
 
     @staticmethod
     def ensure_model(
@@ -44,7 +83,9 @@ class ContextTransformer:
             return value
         elif isinstance(value, dict):
             try:
-                return model_class(**value)
+                # Parse any JSON strings in the dict before validation
+                parsed_value = ContextTransformer._parse_json_strings(value)
+                return model_class(**parsed_value)
             except Exception as e:
                 logger.error(f"Failed to convert dict to {model_class.__name__}: {e}")
                 raise ValueError(

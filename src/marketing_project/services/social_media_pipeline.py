@@ -213,6 +213,11 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
         Raises:
             ApprovalRequiredException: If approval is required (pipeline should stop)
         """
+        # Import at method level so it's available in exception handlers
+        from marketing_project.processors.approval_helper import (
+            ApprovalRequiredException,
+        )
+
         start_time = time.time()
 
         messages = [
@@ -259,7 +264,6 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
             if job_id:
                 try:
                     from marketing_project.processors.approval_helper import (
-                        ApprovalRequiredException,
                         check_and_create_approval_request,
                     )
                     from marketing_project.services.job_manager import (
@@ -472,6 +476,18 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
         # Reset step info
         self.step_info = []
 
+        # Update job progress to indicate pipeline started
+        if job_id:
+            try:
+                from marketing_project.services.job_manager import get_job_manager
+
+                job_manager = get_job_manager()
+                await job_manager.update_job_progress(
+                    job_id, 5, "Starting social media pipeline"
+                )
+            except Exception as e:
+                logger.warning(f"Failed to update job progress: {e}")
+
         # Parse input content
         try:
             content = json.loads(content_json)
@@ -519,6 +535,33 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
             # Execute each step
             for plugin in plugins:
                 logger.info(f"Executing step {plugin.step_number}: {plugin.step_name}")
+
+                # Update job progress
+                if job_id:
+                    try:
+                        from marketing_project.services.job_manager import (
+                            get_job_manager,
+                        )
+
+                        job_manager = get_job_manager()
+                        # Calculate progress: each step is 25% (100% / 4 steps)
+                        step_progress = int((plugin.step_number / len(plugins)) * 100)
+                        # Format step name for display (keep the actual step_name for mapping)
+                        step_display_name = plugin.step_name.replace("_", " ").replace(
+                            "social media ", ""
+                        )
+                        await job_manager.update_job_progress(
+                            job_id,
+                            step_progress,
+                            f"Step {plugin.step_number}/{len(plugins)}: {step_display_name}",
+                        )
+                        # Also update current_step with the actual step_name for frontend mapping
+                        job = await job_manager.get_job(job_id)
+                        if job:
+                            job.current_step = plugin.step_name
+                            await job_manager._save_job(job)
+                    except Exception as e:
+                        logger.warning(f"Failed to update job progress: {e}")
 
                 # Check for approval requirements
                 try:

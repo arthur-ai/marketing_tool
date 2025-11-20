@@ -83,9 +83,11 @@ class ApprovalListItem(BaseModel):
     job_id: str
     agent_name: str
     step_name: str
+    pipeline_step: str
     status: Literal["pending", "approved", "rejected", "modified"]
     created_at: datetime
     reviewed_at: Optional[datetime] = None
+    input_title: Optional[str] = None
 
 
 class PendingApprovalsResponse(BaseModel):

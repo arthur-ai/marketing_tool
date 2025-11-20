@@ -128,10 +128,16 @@ async def process_blog_endpoint(request: BlogProcessorRequest):
         # Convert Pydantic model to JSON string for processor
         content_json = request.content.model_dump_json()
 
+        # Determine which ARQ job function to use
+        if output_content_type == "social_media_post":
+            arq_function_name = "process_social_media_job"
+        else:
+            arq_function_name = "process_blog_job"
+
         # Submit job to ARQ for background processing
         arq_job_id = await job_manager.submit_to_arq(
             job.id,
-            "process_blog_job",  # ARQ function name
+            arq_function_name,  # ARQ function name
             content_json,
             job.id,
             metadata=job_metadata,
