@@ -22,11 +22,11 @@ annotated-doc==0.0.4
     # via fastapi
 annotated-types==0.7.0
     # via pydantic
-any-agent[langchain]==1.12.1
+any-agent[langchain]==1.14.0
     # via -r requirements.in
 any-llm-sdk==1.2.0
     # via any-agent
-anyio==4.11.0
+anyio==4.12.0
     # via
     #   httpx
     #   mcp
@@ -38,7 +38,7 @@ apscheduler==3.11.1
     # via -r requirements.in
 arq==0.26.3
     # via -r requirements.in
-asyncpg==0.30.0
+asyncpg==0.31.0
     # via -r requirements.in
 attrs==25.4.0
     # via
@@ -47,10 +47,16 @@ attrs==25.4.0
     #   outcome
     #   referencing
     #   trio
-beautifulsoup4==4.14.2
+beautifulsoup4==4.14.3
     # via -r requirements.in
 black==25.11.0
     # via -r requirements-dev.in
+boto3==1.42.0
+    # via -r requirements.in
+botocore==1.41.6
+    # via
+    #   boto3
+    #   s3transfer
 certifi==2025.11.12
     # via
     #   httpcore
@@ -60,20 +66,19 @@ certifi==2025.11.12
     #   sentry-sdk
 cffi==2.0.0
     # via cryptography
-cfgv==3.4.0
+cfgv==3.5.0
     # via pre-commit
 charset-normalizer==3.4.4
     # via requests
-click==8.3.0
+click==8.3.1
     # via
     #   -r requirements.in
     #   arq
     #   black
     #   rich-toolkit
     #   typer
-    #   typer-slim
     #   uvicorn
-coverage[toml]==7.11.3
+coverage[toml]==7.12.0
     # via pytest-cov
 cryptography==46.0.3
     # via pyjwt
@@ -93,12 +98,14 @@ email-validator==2.3.0
     # via
     #   fastapi
     #   pydantic
-fastapi[standard]==0.121.2
+fastapi[standard]==0.123.0
     # via -r requirements.in
 fastapi-cli[standard]==0.0.16
     # via fastapi
-fastapi-cloud-cli==0.3.1
+fastapi-cloud-cli==0.5.2
     # via fastapi-cli
+fastar==0.8.0
+    # via fastapi-cloud-cli
 feedparser==6.0.12
     # via -r requirements.in
 filelock==3.20.0
@@ -174,6 +181,10 @@ jinja2==3.1.6
     #   torch
 jiter==0.12.0
     # via openai
+jmespath==1.0.1
+    # via
+    #   boto3
+    #   botocore
 joblib==1.5.2
     # via scikit-learn
 jsonpatch==1.33
@@ -186,7 +197,7 @@ jsonschema-specifications==2025.9.1
     # via jsonschema
 keybert==0.9.0
     # via -r requirements.in
-langchain==1.0.5
+langchain==1.1.0
     # via
     #   -r requirements.in
     #   any-agent
@@ -194,7 +205,7 @@ langchain-classic==1.0.0
     # via langchain-community
 langchain-community==0.4.1
     # via -r requirements.in
-langchain-core==1.0.4
+langchain-core==1.1.0
     # via
     #   langchain
     #   langchain-classic
@@ -205,15 +216,15 @@ langchain-core==1.0.4
     #   langgraph
     #   langgraph-checkpoint
     #   langgraph-prebuilt
-langchain-mcp-adapters==0.1.13
+langchain-mcp-adapters==0.1.14
     # via any-agent
-langchain-openai==1.0.2
+langchain-openai==1.1.0
     # via -r requirements.in
 langchain-text-splitters==1.0.0
     # via langchain-classic
 langdetect==1.0.9
     # via -r requirements.in
-langgraph==1.0.3
+langgraph==1.0.4
     # via
     #   any-agent
     #   langchain
@@ -221,11 +232,11 @@ langgraph-checkpoint==3.0.1
     # via
     #   langgraph
     #   langgraph-prebuilt
-langgraph-prebuilt==1.0.2
+langgraph-prebuilt==1.0.5
     # via langgraph
-langgraph-sdk==0.2.9
+langgraph-sdk==0.2.10
     # via langgraph
-langsmith==0.4.42
+langsmith==0.4.49
     # via
     #   langchain-classic
     #   langchain-community
@@ -240,7 +251,7 @@ marshmallow==3.26.1
     # via dataclasses-json
 mccabe==0.7.0
     # via flake8
-mcp==1.21.0
+mcp==1.22.0
     # via
     #   any-agent
     #   langchain-mcp-adapters
@@ -258,18 +269,57 @@ mypy-extensions==1.1.0
     # via
     #   black
     #   typing-inspect
-networkx==3.5
+networkx==3.6
     # via torch
 nodeenv==1.9.1
     # via pre-commit
-numpy==2.3.4
+numpy==2.3.5
     # via
     #   keybert
     #   langchain-community
     #   scikit-learn
     #   scipy
     #   transformers
-openai==2.7.2
+nvidia-cublas-cu12==12.8.4.1
+    # via
+    #   nvidia-cudnn-cu12
+    #   nvidia-cusolver-cu12
+    #   torch
+nvidia-cuda-cupti-cu12==12.8.90
+    # via torch
+nvidia-cuda-nvrtc-cu12==12.8.93
+    # via torch
+nvidia-cuda-runtime-cu12==12.8.90
+    # via torch
+nvidia-cudnn-cu12==9.10.2.21
+    # via torch
+nvidia-cufft-cu12==11.3.3.83
+    # via torch
+nvidia-cufile-cu12==1.13.1.3
+    # via torch
+nvidia-curand-cu12==10.3.9.90
+    # via torch
+nvidia-cusolver-cu12==11.7.3.90
+    # via torch
+nvidia-cusparse-cu12==12.5.8.93
+    # via
+    #   nvidia-cusolver-cu12
+    #   torch
+nvidia-cusparselt-cu12==0.7.1
+    # via torch
+nvidia-nccl-cu12==2.27.5
+    # via torch
+nvidia-nvjitlink-cu12==12.8.93
+    # via
+    #   nvidia-cufft-cu12
+    #   nvidia-cusolver-cu12
+    #   nvidia-cusparse-cu12
+    #   torch
+nvidia-nvshmem-cu12==3.3.20
+    # via torch
+nvidia-nvtx-cu12==12.8.90
+    # via torch
+openai==2.8.1
     # via
     #   -r requirements.in
     #   any-llm-sdk
@@ -317,7 +367,7 @@ pluggy==1.6.0
     # via
     #   pytest
     #   pytest-cov
-pre-commit==4.4.0
+pre-commit==4.5.0
     # via -r requirements-dev.in
 propcache==0.4.1
     # via
@@ -327,7 +377,7 @@ pycodestyle==2.14.0
     # via flake8
 pycparser==2.23
     # via cffi
-pydantic[email]==2.12.4
+pydantic[email]==2.12.5
     # via
     #   -r requirements.in
     #   any-agent
@@ -378,7 +428,9 @@ pytest-asyncio==1.3.0
 pytest-cov==7.0.0
     # via -r requirements-dev.in
 python-dateutil==2.9.0.post0
-    # via dateparser
+    # via
+    #   botocore
+    #   dateparser
 python-docx==1.2.0
     # via -r requirements.in
 python-dotenv==1.2.1
@@ -438,17 +490,19 @@ rich==14.2.0
     #   keybert
     #   rich-toolkit
     #   typer
-rich-toolkit==0.15.1
+rich-toolkit==0.17.0
     # via
     #   fastapi-cli
     #   fastapi-cloud-cli
 rignore==0.7.6
     # via fastapi-cloud-cli
-rpds-py==0.28.0
+rpds-py==0.30.0
     # via
     #   jsonschema
     #   referencing
-safetensors==0.6.2
+s3transfer==0.16.0
+    # via boto3
+safetensors==0.7.0
     # via transformers
 scikit-learn==1.7.2
     # via
@@ -462,21 +516,18 @@ selenium==4.38.0
     # via -r requirements.in
 sentence-transformers==5.1.2
     # via keybert
-sentry-sdk==2.44.0
+sentry-sdk==2.46.0
     # via fastapi-cloud-cli
 sgmllib3k==1.0.0
     # via feedparser
 shellingham==1.5.4
-    # via
-    #   huggingface-hub
-    #   typer
+    # via typer
 six==1.17.0
     # via
     #   langdetect
     #   python-dateutil
 sniffio==1.3.1
     # via
-    #   anyio
     #   openai
     #   trio
 sortedcontainers==2.4.0
@@ -490,13 +541,13 @@ sqlalchemy[asyncio]==2.0.44
     #   langchain-community
 sse-starlette==3.0.3
     # via mcp
-starlette==0.49.3
+starlette==0.50.0
     # via
     #   fastapi
     #   mcp
 sympy==1.14.0
     # via torch
-tavily-python==0.7.12
+tavily-python==0.7.13
     # via any-agent
 tenacity==9.1.2
     # via
@@ -519,7 +570,7 @@ tqdm==4.67.1
     #   openai
     #   sentence-transformers
     #   transformers
-transformers==4.57.1
+transformers==4.57.3
     # via sentence-transformers
 trio==0.32.0
     # via
@@ -527,6 +578,8 @@ trio==0.32.0
     #   trio-websocket
 trio-websocket==0.12.2
     # via selenium
+triton==3.5.1
+    # via torch
 typer==0.20.0
     # via
     #   fastapi-cli
@@ -542,6 +595,7 @@ typing-extensions==4.15.0
     #   huggingface-hub
     #   langchain-core
     #   langchain-mcp-adapters
+    #   mcp
     #   openai
     #   opentelemetry-api
     #   opentelemetry-sdk
@@ -558,13 +612,13 @@ typing-extensions==4.15.0
     #   starlette
     #   torch
     #   typer
-    #   typer-slim
     #   typing-inspect
     #   typing-inspection
 typing-inspect==0.9.0
     # via dataclasses-json
 typing-inspection==0.4.2
     # via
+    #   mcp
     #   pydantic
     #   pydantic-settings
 tzlocal==5.3.1
@@ -573,6 +627,7 @@ tzlocal==5.3.1
     #   dateparser
 urllib3[socks]==2.5.0
     # via
+    #   botocore
     #   requests
     #   selenium
     #   sentry-sdk
@@ -595,7 +650,7 @@ websocket-client==1.9.0
     # via selenium
 websockets==15.0.1
     # via uvicorn
-wsproto==1.3.1
+wsproto==1.3.2
     # via trio-websocket
 xxhash==3.6.0
     # via langgraph
