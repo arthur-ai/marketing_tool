@@ -30,6 +30,54 @@ def _json_serializer(obj: Any) -> Any:
     raise TypeError(f"Type {type(obj)} not serializable")
 
 
+def _parse_duration_to_seconds(duration: Any) -> Optional[int]:
+    """
+    Parse duration string to seconds (integer).
+
+    Supports formats:
+    - "MM:SS" (e.g., "10:00" = 600 seconds)
+    - "HH:MM:SS" (e.g., "1:10:00" = 4200 seconds)
+    - Integer (already in seconds)
+
+    Args:
+        duration: Duration as string or integer
+
+    Returns:
+        Duration in seconds as integer, or None if parsing fails
+    """
+    if duration is None:
+        return None
+
+    # If already an integer, return as-is
+    if isinstance(duration, int):
+        return duration
+
+    # If not a string, try to convert
+    if not isinstance(duration, str):
+        try:
+            return int(duration)
+        except (ValueError, TypeError):
+            return None
+
+    # Parse string format (MM:SS or HH:MM:SS)
+    try:
+        parts = duration.split(":")
+        if len(parts) == 2:
+            # MM:SS format
+            minutes, seconds = int(parts[0]), int(parts[1])
+            return minutes * 60 + seconds
+        elif len(parts) == 3:
+            # HH:MM:SS format
+            hours, minutes, seconds = int(parts[0]), int(parts[1]), int(parts[2])
+            return hours * 3600 + minutes * 60 + seconds
+        else:
+            # Try to parse as integer string
+            return int(duration)
+    except (ValueError, TypeError):
+        logger.warning(f"Failed to parse duration '{duration}', using None")
+        return None
+
+
 async def process_transcript(
     content_data: str,
     job_id: Optional[str] = None,
@@ -65,6 +113,13 @@ async def process_transcript(
         logger.info(
             f"Transcript Processor: Processing transcript '{data.get('title', 'Untitled')}'"
         )
+
+        # Parse duration if it's a string
+        if "duration" in data and isinstance(data["duration"], str):
+            data["duration"] = _parse_duration_to_seconds(data["duration"])
+            if data["duration"] is None:
+                logger.warning("Failed to parse duration, removing from data")
+                data.pop("duration", None)
 
         # Convert to Pydantic model (validates required fields automatically)
         try:
@@ -102,7 +157,9 @@ async def process_transcript(
             )
 
         # Step 2: Run through AI function pipeline
-        logger.info("Transcript Processor: Running function-based pipeline")
+        logger.info(
+            f"Transcript Processor: Running function-based pipeline with output_content_type={output_content_type}"
+        )
         try:
             pipeline = FunctionPipeline(model="gpt-5.1", temperature=0.7)
 

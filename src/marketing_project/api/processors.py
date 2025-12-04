@@ -82,20 +82,36 @@ async def process_blog_endpoint(request: BlogProcessorRequest):
         # Validate social media parameters if output_content_type is social_media_post
         output_content_type = request.output_content_type or "blog_post"
         if output_content_type == "social_media_post":
-            if not request.social_media_platform:
-                raise HTTPException(
-                    status_code=400,
-                    detail="social_media_platform is required when output_content_type is 'social_media_post'",
-                )
-            # Validate platform value
+            # Determine platforms: use social_media_platforms if provided, otherwise use social_media_platform (backward compatibility)
+            platforms = request.social_media_platforms
+            if not platforms:
+                if request.social_media_platform:
+                    platforms = [request.social_media_platform]
+                else:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="social_media_platform or social_media_platforms is required when output_content_type is 'social_media_post'",
+                    )
+
+            # Validate platform values
             valid_platforms = ["linkedin", "hackernews", "email"]
-            if request.social_media_platform not in valid_platforms:
+            invalid_platforms = [p for p in platforms if p not in valid_platforms]
+            if invalid_platforms:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"social_media_platform must be one of {valid_platforms}, got '{request.social_media_platform}'",
+                    detail=f"Invalid platforms: {invalid_platforms}. Must be one of {valid_platforms}",
                 )
-            # Validate email_type if platform is email
-            if request.social_media_platform == "email":
+
+            # Check max platforms limit
+            max_platforms = 5  # Default limit, can be configured
+            if len(platforms) > max_platforms:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Maximum {max_platforms} platforms allowed per batch, got {len(platforms)}",
+                )
+
+            # Validate email_type if email is in platforms
+            if "email" in platforms:
                 if request.email_type:
                     valid_email_types = ["newsletter", "promotional"]
                     if request.email_type not in valid_email_types:
@@ -115,9 +131,22 @@ async def process_blog_endpoint(request: BlogProcessorRequest):
 
         # Add social media parameters if applicable
         if output_content_type == "social_media_post":
-            job_metadata["social_media_platform"] = request.social_media_platform
+            # Store platforms (use list if multiple, single value for backward compatibility)
+            if len(platforms) == 1:
+                job_metadata["social_media_platform"] = platforms[0]
+            else:
+                job_metadata["social_media_platforms"] = platforms
             if request.email_type:
                 job_metadata["email_type"] = request.email_type
+            if request.variations_count:
+                job_metadata["variations_count"] = request.variations_count
+            if request.pipeline_config:
+                # Store pipeline config in job metadata
+                job_metadata["pipeline_config"] = (
+                    request.pipeline_config.model_dump()
+                    if hasattr(request.pipeline_config, "model_dump")
+                    else request.pipeline_config
+                )
 
         job = await job_manager.create_job(
             job_type="blog_post",
@@ -130,7 +159,11 @@ async def process_blog_endpoint(request: BlogProcessorRequest):
 
         # Determine which ARQ job function to use
         if output_content_type == "social_media_post":
-            arq_function_name = "process_social_media_job"
+            # Use multi-platform function if multiple platforms, otherwise single platform
+            if len(platforms) > 1:
+                arq_function_name = "process_multi_platform_social_media_job"
+            else:
+                arq_function_name = "process_social_media_job"
         else:
             arq_function_name = "process_blog_job"
 
@@ -268,6 +301,10 @@ async def process_transcript_endpoint(request: TranscriptProcessorRequest):
 
         # Create job
         output_content_type = request.output_content_type or "blog_post"
+        logger.info(
+            f"Transcript processor: Using output_content_type={output_content_type} for content {request.content.id}"
+        )
+
         job = await job_manager.create_job(
             job_type="transcript",
             content_id=request.content.id,
@@ -290,7 +327,8 @@ async def process_transcript_endpoint(request: TranscriptProcessorRequest):
         )
 
         logger.info(
-            f"Transcript processor job {job.id} submitted to ARQ (arq_id: {arq_job_id}) for content {request.content.id}"
+            f"Transcript processor job {job.id} submitted to ARQ (arq_id: {arq_job_id}) "
+            f"for content {request.content.id} with output_content_type={output_content_type}"
         )
 
         return JobSubmissionResponse(

@@ -8,8 +8,17 @@ import logging
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
-from marketing_project.models.pipeline_steps import SEOKeywordsResult
+from marketing_project.models.pipeline_steps import EngineConfig, SEOKeywordsResult
 from marketing_project.plugins.base import PipelineStepPlugin
+from marketing_project.services.engines.composer import EngineComposer
+from marketing_project.services.engines.registry import register_engine
+from marketing_project.services.engines.seo_keywords.composer import SEOKeywordsComposer
+from marketing_project.services.engines.seo_keywords.llm_engine import (
+    LLMSEOKeywordsEngine,
+)
+from marketing_project.services.engines.seo_keywords.local_semantic_engine import (
+    LocalSemanticSEOKeywordsEngine,
+)
 
 logger = logging.getLogger("marketing_project.plugins.seo_keywords")
 
@@ -667,19 +676,41 @@ class SEOKeywordsPlugin(PipelineStepPlugin):
         Returns:
             SEOKeywordsResult with extracted keywords
         """
-        # Step 1: Get base result from LLM
-        result = await self._execute_step(context, pipeline, job_id)
+        # Step 1: Get engine configuration
+        engine_config = self._get_engine_config(context, pipeline)
 
-        # Step 2: Post-process keywords
+        # Step 2: Register engines if not already registered
+        self._ensure_engines_registered()
+
+        # Step 3: Create LLM engine instance (needs plugin)
+        llm_engine = LLMSEOKeywordsEngine(self)
+        from marketing_project.services.engines.registry import register_engine
+
+        register_engine("llm", llm_engine)
+
+        # Step 4: Create composer and extract keywords
+        composer = EngineComposer(
+            default_engine_type=engine_config.default_engine,
+            field_overrides=engine_config.field_overrides,
+        )
+        seo_composer = SEOKeywordsComposer(composer)
+
+        # Step 5: Get content
+        content = context.get("input_content", {})
+
+        # Step 6: Compose result from engines
+        result = await seo_composer.compose_result(content, context, pipeline)
+
+        # Step 7: Post-process keywords
         result = self._post_process_keywords(result, context)
 
-        # Step 3: Validate and fix issues
+        # Step 8: Validate and fix issues
         result = self._validate_and_fix(result, context)
 
-        # Step 4: Calculate derived metrics
+        # Step 9: Calculate derived metrics
         result = self._calculate_derived_metrics(result, context)
 
-        # Step 5: Validate final result
+        # Step 10: Validate final result
         is_valid, errors = self._validate_result(result)
         if not is_valid:
             logger.warning(f"SEO keywords validation issues: {errors}")
@@ -687,3 +718,53 @@ class SEOKeywordsPlugin(PipelineStepPlugin):
             result = self._validate_and_fix(result, context)
 
         return result
+
+    def _get_engine_config(
+        self, context: Dict[str, Any], pipeline: Any
+    ) -> EngineConfig:
+        """
+        Get engine configuration from context or pipeline config.
+
+        Args:
+            context: Execution context
+            pipeline: FunctionPipeline instance
+
+        Returns:
+            EngineConfig with default and overrides
+        """
+        # Check context first
+        if "seo_keywords_engine_config" in context:
+            config = context["seo_keywords_engine_config"]
+            if isinstance(config, dict):
+                return EngineConfig(**config)
+            elif isinstance(config, EngineConfig):
+                return config
+
+        # Check pipeline config (top-level)
+        if hasattr(pipeline, "pipeline_config") and pipeline.pipeline_config:
+            # Check top-level seo_keywords_engine_config
+            if hasattr(pipeline.pipeline_config, "seo_keywords_engine_config"):
+                config = pipeline.pipeline_config.seo_keywords_engine_config
+                if config:
+                    return config
+
+            # Check step config
+            step_config = pipeline.pipeline_config.get_step_config("seo_keywords")
+            if step_config and step_config.seo_keywords_engine_config:
+                return step_config.seo_keywords_engine_config
+
+        # Default: LLM only
+        return EngineConfig(default_engine="llm", field_overrides=None)
+
+    def _ensure_engines_registered(self) -> None:
+        """Ensure engines are registered in the global registry."""
+        from marketing_project.services.engines.registry import get_registry
+
+        registry = get_registry()
+
+        # Register LLM engine (create new instance each time since it needs plugin)
+        # Note: We'll create it on-demand in the composer instead
+        # Just ensure local semantic is registered
+        if not registry.has("local_semantic"):
+            local_engine = LocalSemanticSEOKeywordsEngine()
+            register_engine("local_semantic", local_engine)

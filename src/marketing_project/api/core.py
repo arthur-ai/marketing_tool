@@ -321,16 +321,28 @@ async def execute_pipeline_step(step_name: str, request: StepExecutionRequest):
         # Create content ID from content if available
         content_id = request.content.get("id", f"step_{step_name}_{int(time.time())}")
 
+        # Prepare job metadata
+        job_metadata = {
+            "step_name": step_name,
+            "step_number": plugin.step_number,
+            "content": request.content,
+            "context_keys": list(request.context.keys()),
+        }
+
+        # Store pipeline_config in metadata if provided
+        if request.pipeline_config:
+            from marketing_project.models.pipeline_steps import PipelineConfig
+
+            if isinstance(request.pipeline_config, dict):
+                job_metadata["pipeline_config"] = request.pipeline_config
+            else:
+                job_metadata["pipeline_config"] = request.pipeline_config.model_dump()
+
         # Create job
         job = await job_manager.create_job(
             job_type=f"step_{step_name}",
             content_id=content_id,
-            metadata={
-                "step_name": step_name,
-                "step_number": plugin.step_number,
-                "content": request.content,
-                "context_keys": list(request.context.keys()),
-            },
+            metadata=job_metadata,
         )
 
         # Convert content to JSON string

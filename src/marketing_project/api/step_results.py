@@ -544,6 +544,34 @@ async def download_step_result(
     """
     try:
         step_manager = get_step_result_manager()
+
+        # Check if using S3
+        if step_manager._use_s3 and step_manager.s3_storage:
+            try:
+                # Get step result data
+                step_data = await step_manager.get_step_result(
+                    job_id, step_filename, execution_context_id
+                )
+
+                # Convert to JSON string
+                import json
+
+                from fastapi.responses import Response
+
+                json_content = json.dumps(step_data, indent=2, ensure_ascii=False)
+                download_filename = f"{job_id}_{step_filename}"
+
+                return Response(
+                    content=json_content.encode("utf-8"),
+                    media_type="application/json",
+                    headers={
+                        "Content-Disposition": f'attachment; filename="{download_filename}"'
+                    },
+                )
+            except Exception as e:
+                logger.warning(f"Failed to download from S3, trying local: {e}")
+
+        # Fallback to local file
         file_path = await step_manager.get_step_file_path(
             job_id, step_filename, execution_context_id
         )
@@ -568,6 +596,43 @@ async def download_step_result(
         )
         raise HTTPException(
             status_code=500, detail=f"Failed to download step result: {str(e)}"
+        )
+
+
+@router.get("/jobs/{job_id}/pipeline-flow")
+async def get_pipeline_flow(job_id: str):
+    """
+    Get complete pipeline flow visualization data.
+
+    Returns structured data showing:
+    - Original input content
+    - Each step with its input snapshot and output
+    - Final output
+    - Execution summary
+
+    Args:
+        job_id: Job identifier
+
+    Returns:
+        PipelineFlowResponse with complete flow data
+    """
+    try:
+        from marketing_project.models.pipeline_steps import PipelineFlowResponse
+
+        step_manager = get_step_result_manager()
+        flow_data = await step_manager.get_pipeline_flow(job_id)
+
+        # Convert to Pydantic model for validation
+        return PipelineFlowResponse(**flow_data)
+
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=404, detail=f"No results found for job {job_id}"
+        )
+    except Exception as e:
+        logger.error(f"Failed to get pipeline flow for {job_id}: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get pipeline flow: {str(e)}"
         )
 
 

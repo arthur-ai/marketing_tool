@@ -16,12 +16,15 @@ from marketing_project.api.content import get_content_manager
 from marketing_project.models.analytics_models import (
     ContentSourceStats,
     ContentStats,
+    CostMetrics,
     DashboardStats,
     PipelineStats,
+    QualityTrends,
     RecentActivity,
     RecentActivityItem,
     TrendData,
     TrendDataPoint,
+    UnifiedMonitoringMetrics,
 )
 from marketing_project.services.job_manager import JobStatus, get_job_manager
 from marketing_project.services.redis_manager import get_redis_manager
@@ -376,11 +379,245 @@ class AnalyticsService:
 
         return result
 
-    async def cleanup(self):
-        """Cleanup Redis connections."""
-        # RedisManager cleanup is handled globally
-        # This method is here for consistency with other managers
-        pass
+    async def get_social_media_performance(
+        self, days: int = 30, platform: Optional[str] = None
+    ) -> Dict:
+        """
+        Get social media post performance metrics.
+
+        Args:
+            days: Number of days to look back
+            platform: Optional platform filter (linkedin, hackernews, email)
+
+        Returns:
+            Dictionary with performance metrics
+        """
+        cache_key = f"social_media_performance:{days}:{platform or 'all'}"
+        cached = await self._get_cached(cache_key)
+        if cached:
+            return cached
+
+        job_manager = get_job_manager()
+        all_jobs = await job_manager.list_jobs(limit=1000)
+
+        # Filter for social media jobs
+        social_media_jobs = [
+            j
+            for j in all_jobs
+            if j.metadata.get("output_content_type") == "social_media_post"
+        ]
+
+        # Filter by platform if specified
+        if platform:
+            social_media_jobs = [
+                j
+                for j in social_media_jobs
+                if j.metadata.get("social_media_platform") == platform
+                or platform in j.metadata.get("social_media_platforms", [])
+            ]
+
+        # Filter by date range
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
+        recent_jobs = [j for j in social_media_jobs if j.created_at >= cutoff_date]
+
+        # Calculate metrics
+        total_posts = len(recent_jobs)
+        completed_posts = sum(1 for j in recent_jobs if j.status == JobStatus.COMPLETED)
+        failed_posts = sum(1 for j in recent_jobs if j.status == JobStatus.FAILED)
+
+        # Get quality scores from job results
+        quality_scores = []
+        for job in recent_jobs:
+            if job.status == JobStatus.COMPLETED:
+                try:
+                    result = await job_manager.get_job_result(job.job_id)
+                    if result and "metadata" in result:
+                        platform_scores = result["metadata"].get(
+                            "platform_quality_scores", {}
+                        )
+                        if platform_scores:
+                            quality_scores.append(platform_scores)
+                except Exception:
+                    pass
+
+        # Calculate average quality scores
+        avg_scores = {}
+        if quality_scores:
+            for score_dict in quality_scores:
+                for key, value in score_dict.items():
+                    if isinstance(value, (int, float)):
+                        if key not in avg_scores:
+                            avg_scores[key] = []
+                        avg_scores[key].append(value)
+
+            avg_scores = {
+                key: sum(values) / len(values) for key, values in avg_scores.items()
+            }
+
+        # Calculate success rate
+        finished_posts = completed_posts + failed_posts
+        success_rate = completed_posts / finished_posts if finished_posts > 0 else 0.0
+
+        # Group by platform
+        platform_breakdown = {}
+        for job in recent_jobs:
+            platforms = (
+                [job.metadata.get("social_media_platform")]
+                if job.metadata.get("social_media_platform")
+                else job.metadata.get("social_media_platforms", [])
+            )
+            for p in platforms:
+                if p not in platform_breakdown:
+                    platform_breakdown[p] = {
+                        "total": 0,
+                        "completed": 0,
+                        "failed": 0,
+                    }
+                platform_breakdown[p]["total"] += 1
+                if job.status == JobStatus.COMPLETED:
+                    platform_breakdown[p]["completed"] += 1
+                elif job.status == JobStatus.FAILED:
+                    platform_breakdown[p]["failed"] += 1
+
+        result = {
+            "total_posts": total_posts,
+            "completed_posts": completed_posts,
+            "failed_posts": failed_posts,
+            "success_rate": success_rate,
+            "average_quality_scores": avg_scores,
+            "platform_breakdown": platform_breakdown,
+            "days": days,
+            "platform": platform,
+        }
+
+        await self._set_cached(cache_key, result)
+        return result
+
+    async def get_social_media_trends(
+        self, days: int = 7, platform: Optional[str] = None
+    ) -> Dict:
+        """
+        Get social media performance trends over time.
+
+        Args:
+            days: Number of days to look back
+            platform: Optional platform filter
+
+        Returns:
+            Dictionary with trend data points
+        """
+        cache_key = f"social_media_trends:{days}:{platform or 'all'}"
+        cached = await self._get_cached(cache_key)
+        if cached:
+            return cached
+
+        job_manager = get_job_manager()
+        all_jobs = await job_manager.list_jobs(limit=1000)
+
+        # Filter for social media jobs
+        social_media_jobs = [
+            j
+            for j in all_jobs
+            if j.metadata.get("output_content_type") == "social_media_post"
+        ]
+
+        if platform:
+            social_media_jobs = [
+                j
+                for j in social_media_jobs
+                if j.metadata.get("social_media_platform") == platform
+                or platform in j.metadata.get("social_media_platforms", [])
+            ]
+
+        # Group by date
+        end_date = datetime.now(timezone.utc)
+        start_date = end_date - timedelta(days=days)
+
+        daily_stats = {}
+        current_date = start_date
+        while current_date <= end_date:
+            date_str = current_date.strftime("%Y-%m-%d")
+            daily_stats[date_str] = {
+                "date": date_str,
+                "total": 0,
+                "completed": 0,
+                "failed": 0,
+                "quality_scores": [],
+            }
+            current_date += timedelta(days=1)
+
+        # Populate daily stats
+        for job in social_media_jobs:
+            if job.created_at >= start_date:
+                date_str = job.created_at.strftime("%Y-%m-%d")
+                if date_str in daily_stats:
+                    daily_stats[date_str]["total"] += 1
+                    if job.status == JobStatus.COMPLETED:
+                        daily_stats[date_str]["completed"] += 1
+                    elif job.status == JobStatus.FAILED:
+                        daily_stats[date_str]["failed"] += 1
+
+                    # Try to get quality score
+                    if job.status == JobStatus.COMPLETED:
+                        try:
+                            result = await job_manager.get_job_result(job.job_id)
+                            if result and "metadata" in result:
+                                scores = result["metadata"].get(
+                                    "platform_quality_scores", {}
+                                )
+                                if scores:
+                                    daily_stats[date_str]["quality_scores"].append(
+                                        scores
+                                    )
+                        except Exception:
+                            pass
+
+        # Calculate averages
+        trend_points = []
+        for date_str in sorted(daily_stats.keys()):
+            stats = daily_stats[date_str]
+            avg_quality = 0.0
+            if stats["quality_scores"]:
+                all_scores = []
+                for score_dict in stats["quality_scores"]:
+                    for value in score_dict.values():
+                        if isinstance(value, (int, float)):
+                            all_scores.append(value)
+                if all_scores:
+                    avg_quality = sum(all_scores) / len(all_scores)
+
+            trend_points.append(
+                {
+                    "date": date_str,
+                    "total": stats["total"],
+                    "completed": stats["completed"],
+                    "failed": stats["failed"],
+                    "success_rate": (
+                        stats["completed"] / (stats["completed"] + stats["failed"])
+                        if (stats["completed"] + stats["failed"]) > 0
+                        else 0.0
+                    ),
+                    "average_quality": avg_quality,
+                }
+            )
+
+        result = {
+            "trend_points": trend_points,
+            "start_date": start_date.strftime("%Y-%m-%d"),
+            "end_date": end_date.strftime("%Y-%m-%d"),
+            "days": days,
+            "platform": platform,
+        }
+
+        await self._set_cached(cache_key, result)
+        return result
+
+
+async def cleanup(self):
+    """Cleanup Redis connections."""
+    # RedisManager cleanup is handled globally
+    # This method is here for consistency with other managers
+    pass
 
 
 # Singleton instance

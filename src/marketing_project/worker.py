@@ -173,8 +173,34 @@ async def process_transcript_job(ctx, content_json: str, job_id: str, **kwargs) 
         except Exception as e:
             logger.warning(f"Failed to store input content for job {job_id}: {e}")
 
-        # Process the transcript
-        result_json = await process_transcript(content_json, job_id=job_id)
+        # Extract output_content_type from kwargs (ARQ metadata) or job metadata
+        output_content_type = None
+        try:
+            # First try to get from kwargs (ARQ metadata)
+            if "metadata" in kwargs and isinstance(kwargs["metadata"], dict):
+                output_content_type = kwargs["metadata"].get("output_content_type")
+                if output_content_type:
+                    logger.info(
+                        f"ARQ Worker: Using output_content_type={output_content_type} from ARQ metadata"
+                    )
+
+            # Fallback to job metadata if not in kwargs
+            if not output_content_type:
+                job = await job_manager.get_job(job_id)
+                if job and job.metadata.get("output_content_type"):
+                    output_content_type = job.metadata.get("output_content_type")
+                    logger.info(
+                        f"ARQ Worker: Using output_content_type={output_content_type} from job metadata"
+                    )
+        except Exception as e:
+            logger.warning(
+                f"ARQ Worker: Could not get output_content_type from metadata: {e}"
+            )
+
+        # Process the transcript (pass output_content_type explicitly)
+        result_json = await process_transcript(
+            content_json, job_id=job_id, output_content_type=output_content_type
+        )
         result_dict = json.loads(result_json)
 
         if result_dict.get("status") == "error":
@@ -227,9 +253,10 @@ async def process_social_media_job(
         except Exception as e:
             logger.warning(f"Failed to store input content for job {job_id}: {e}")
 
-        # Get social media platform and email type from job metadata
+        # Get social media platform, email type, and variations count from job metadata
         social_media_platform = "linkedin"
         email_type = None
+        variations_count = 1
         try:
             job = await job_manager.get_job(job_id)
             if job:
@@ -237,8 +264,9 @@ async def process_social_media_job(
                     "social_media_platform", "linkedin"
                 )
                 email_type = job.metadata.get("email_type")
+                variations_count = job.metadata.get("variations_count", 1)
                 logger.info(
-                    f"ARQ Worker: Using social_media_platform={social_media_platform}, email_type={email_type}"
+                    f"ARQ Worker: Using social_media_platform={social_media_platform}, email_type={email_type}, variations_count={variations_count}"
                 )
         except Exception as e:
             logger.warning(
@@ -250,13 +278,42 @@ async def process_social_media_job(
             job_id, 20, f"Running social media pipeline for {social_media_platform}"
         )
 
-        pipeline = SocialMediaPipeline(model="gpt-4o-mini", temperature=0.7)
+        # Get pipeline config from job metadata if available
+        pipeline_config = None
+        try:
+            job = await job_manager.get_job(job_id)
+            if job and job.metadata.get("pipeline_config"):
+                from marketing_project.models.pipeline_steps import PipelineConfig
+
+                pipeline_config = PipelineConfig(**job.metadata["pipeline_config"])
+        except Exception as e:
+            logger.warning(f"Could not load pipeline config from job metadata: {e}")
+
+        # Create pipeline with config (no defaults - must be configured in settings)
+        if pipeline_config:
+            pipeline = SocialMediaPipeline(pipeline_config=pipeline_config)
+        else:
+            # Fallback: create with default config (should not happen if settings are configured)
+            logger.warning("No pipeline config found in job metadata, using defaults")
+            from marketing_project.models.pipeline_steps import PipelineConfig
+
+            pipeline = SocialMediaPipeline(
+                pipeline_config=PipelineConfig(
+                    default_model="gpt-5.1",
+                    default_temperature=0.7,
+                    default_max_retries=2,
+                    step_configs={},
+                )
+            )
+
         pipeline_result = await pipeline.execute_pipeline(
             content_json=content_json,
             job_id=job_id,
             content_type="blog_post",
             social_media_platform=social_media_platform,
             email_type=email_type,
+            generate_variations=variations_count,
+            pipeline_config=pipeline_config,
         )
 
         # Check if pipeline is waiting for approval
@@ -283,6 +340,133 @@ async def process_social_media_job(
 
     except Exception as e:
         logger.error(f"ARQ Worker: Social media job {job_id} failed: {e}")
+        raise
+
+
+async def process_multi_platform_social_media_job(
+    ctx, content_json: str, job_id: str, **kwargs
+) -> Dict:
+    """
+    Background job for processing social media posts for multiple platforms from blog content.
+
+    Args:
+        ctx: ARQ context
+        content_json: JSON string of blog content
+        job_id: Job ID for tracking
+        **kwargs: Additional ARQ-specific parameters (e.g., metadata, _timeout)
+
+    Returns:
+        Processing result dictionary with results for each platform
+    """
+    try:
+        logger.info(f"ARQ Worker: Processing multi-platform social media job {job_id}")
+
+        # Update job manager
+        job_manager = get_job_manager()
+        await job_manager.update_job_progress(
+            job_id, 10, "Starting multi-platform social media pipeline"
+        )
+
+        # Store input content in job metadata
+        try:
+            content_dict = json.loads(content_json)
+            job = await job_manager.get_job(job_id)
+            if job:
+                job.metadata["input_content"] = content_dict
+                # Also extract and store title for easier access
+                if "title" in content_dict:
+                    job.metadata["title"] = content_dict["title"]
+                await job_manager._save_job(job)
+        except Exception as e:
+            logger.warning(f"Failed to store input content for job {job_id}: {e}")
+
+        # Get platforms, email type from job metadata
+        platforms = ["linkedin"]
+        email_type = None
+        try:
+            job = await job_manager.get_job(job_id)
+            if job:
+                # Check for social_media_platforms (list) first, fallback to single platform
+                if "social_media_platforms" in job.metadata:
+                    platforms = job.metadata["social_media_platforms"]
+                elif "social_media_platform" in job.metadata:
+                    platforms = [job.metadata["social_media_platform"]]
+                email_type = job.metadata.get("email_type")
+                logger.info(
+                    f"ARQ Worker: Using platforms={platforms}, email_type={email_type}"
+                )
+        except Exception as e:
+            logger.warning(
+                f"ARQ Worker: Could not get social media parameters from job metadata: {e}"
+            )
+
+        # Validate platforms
+        if not platforms or len(platforms) == 0:
+            raise ValueError("At least one platform must be specified")
+        if len(platforms) == 1:
+            logger.warning(
+                f"ARQ Worker: Only one platform specified ({platforms[0]}), consider using process_social_media_job instead"
+            )
+
+        # Execute multi-platform social media pipeline
+        await job_manager.update_job_progress(
+            job_id, 20, f"Running multi-platform pipeline for {', '.join(platforms)}"
+        )
+
+        # Get pipeline config from job metadata if available
+        pipeline_config = None
+        try:
+            job = await job_manager.get_job(job_id)
+            if job and job.metadata.get("pipeline_config"):
+                from marketing_project.models.pipeline_steps import PipelineConfig
+
+                pipeline_config = PipelineConfig(**job.metadata["pipeline_config"])
+        except Exception as e:
+            logger.warning(f"Could not load pipeline config from job metadata: {e}")
+
+        # Create pipeline with config (no defaults - must be configured in settings)
+        if pipeline_config:
+            pipeline = SocialMediaPipeline(pipeline_config=pipeline_config)
+        else:
+            # Fallback: create with default config (should not happen if settings are configured)
+            logger.warning("No pipeline config found in job metadata, using defaults")
+            from marketing_project.models.pipeline_steps import PipelineConfig
+
+            pipeline = SocialMediaPipeline(
+                pipeline_config=PipelineConfig(
+                    default_model="gpt-5.1",
+                    default_temperature=0.7,
+                    default_max_retries=2,
+                    step_configs={},
+                )
+            )
+
+        pipeline_result = await pipeline.execute_multi_platform_pipeline(
+            content_json=content_json,
+            platforms=platforms,
+            job_id=job_id,
+            content_type="blog_post",
+            email_type=email_type,
+        )
+
+        # Check if pipeline failed
+        if pipeline_result.get("pipeline_status") == "failed":
+            error_msg = pipeline_result.get("metadata", {}).get(
+                "error", "Pipeline failed"
+            )
+            raise Exception(error_msg)
+
+        await job_manager.update_job_progress(job_id, 100, "Completed")
+        logger.info(
+            f"ARQ Worker: Multi-platform social media job {job_id} completed successfully for platforms {', '.join(platforms)}"
+        )
+
+        return pipeline_result
+
+    except Exception as e:
+        logger.error(
+            f"ARQ Worker: Multi-platform social media job {job_id} failed: {e}"
+        )
         raise
 
 
@@ -325,7 +509,7 @@ async def analyze_design_kit_batch_job(
         from marketing_project.services.function_pipeline import FunctionPipeline
 
         pipeline = FunctionPipeline(
-            model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"), temperature=0.7
+            model=os.getenv("OPENAI_MODEL", "gpt-5.1"), temperature=0.7
         )
 
         plugin = DesignKitPlugin()
@@ -401,7 +585,7 @@ async def synthesize_design_kit_job(
         from marketing_project.services.function_pipeline import FunctionPipeline
 
         pipeline = FunctionPipeline(
-            model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"), temperature=0.7
+            model=os.getenv("OPENAI_MODEL", "gpt-5.1"), temperature=0.7
         )
 
         plugin = DesignKitPlugin()
@@ -889,7 +1073,7 @@ async def resume_pipeline_job(
         from marketing_project.services.function_pipeline import FunctionPipeline
 
         # Create pipeline and resume
-        pipeline = FunctionPipeline(model="gpt-4o-mini", temperature=0.7)
+        pipeline = FunctionPipeline(model="gpt-5.1", temperature=0.7)
 
         # Determine content type from context
         content_type = context_data.get("content_type", "blog_post")
@@ -1445,6 +1629,7 @@ class WorkerSettings:
         process_release_notes_job,
         process_transcript_job,
         process_social_media_job,
+        process_multi_platform_social_media_job,
         resume_pipeline_job,
         retry_step_job,
         execute_single_step_job,

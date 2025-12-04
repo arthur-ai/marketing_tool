@@ -308,6 +308,70 @@ async def get_job_result(job_id: str):
             ):
                 result["final_content"] = result.get("result", {}).get("final_content")
 
+        # Get input_content from metadata (always include)
+        input_content = job.metadata.get("input_content") or result.get("input_content")
+
+        # Build step_inputs and step_outputs arrays from step results
+        step_inputs = []
+        step_outputs = []
+        try:
+            from marketing_project.services.step_result_manager import (
+                get_step_result_manager,
+            )
+
+            step_manager = get_step_result_manager()
+            job_results = await step_manager.get_job_results(job_id)
+            steps = job_results.get("steps", [])
+
+            # Sort steps by step_number
+            steps_sorted = sorted(steps, key=lambda x: x.get("step_number", 0) or 0)
+
+            for step in steps_sorted:
+                step_name = step.get("step_name")
+                step_number = step.get("step_number")
+                if not step_name:
+                    continue
+
+                try:
+                    # Get full step result to extract input snapshot and output
+                    step_result = await step_manager.get_step_result_by_name(
+                        job_id, step_name
+                    )
+
+                    # Extract input snapshot
+                    input_snapshot = step_result.get("input_snapshot")
+                    if input_snapshot:
+                        step_inputs.append(
+                            {
+                                "step_name": step_name,
+                                "step_number": step_number,
+                                "input_snapshot": input_snapshot,
+                                "context_keys_used": step_result.get(
+                                    "context_keys_used", []
+                                ),
+                            }
+                        )
+
+                    # Extract output
+                    step_output = step_result.get("result")
+                    if step_output:
+                        step_outputs.append(
+                            {
+                                "step_name": step_name,
+                                "step_number": step_number,
+                                "output": step_output,
+                            }
+                        )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to get step result for {step_name} in job {job_id}: {e}"
+                    )
+                    continue
+        except Exception as e:
+            logger.warning(
+                f"Failed to get step results for job {job_id}: {e}. Continuing without step_inputs/step_outputs."
+            )
+
         return {
             "success": True,
             "message": f"Job {job_id} completed successfully",
@@ -315,9 +379,9 @@ async def get_job_result(job_id: str):
             "content_id": job.content_id,
             "result": result,
             "completed_at": job.completed_at,
-            "input_content": job.metadata.get(
-                "input_content"
-            ),  # Also include in top level
+            "input_content": input_content,  # Always include from metadata
+            "step_inputs": step_inputs,  # Array of input snapshots per step
+            "step_outputs": step_outputs,  # Array of outputs per step
         }
 
     except HTTPException:

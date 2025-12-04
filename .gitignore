@@ -130,6 +130,8 @@ dmypy.json
 
 # Project specific
 logs/
+context_registry/
+results/
 *.log
 secrets/
 uploads/

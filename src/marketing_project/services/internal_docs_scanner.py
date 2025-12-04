@@ -313,6 +313,112 @@ class InternalDocsScanner:
             logger.warning(f"Failed to extract links from {url}: {e}")
             return []
 
+    def _is_valid_document_url(self, url: str) -> bool:
+        """
+        Check if URL is a valid document (not image/js/css).
+
+        Args:
+            url: URL to check
+
+        Returns:
+            True if URL is a valid document, False otherwise
+        """
+        # Parse URL to get path
+        parsed = urlparse(url)
+        path = parsed.path.lower()
+
+        # Invalid file extensions (images, scripts, styles)
+        invalid_extensions = [
+            ".jpg",
+            ".jpeg",
+            ".png",
+            ".gif",
+            ".svg",
+            ".webp",
+            ".ico",
+            ".bmp",
+            ".js",
+            ".css",
+            ".json",
+            ".xml",
+            ".woff",
+            ".woff2",
+            ".ttf",
+            ".eot",
+            ".mp4",
+            ".mp3",
+            ".avi",
+            ".mov",
+            ".wmv",
+            ".flv",
+            ".webm",
+            ".zip",
+            ".tar",
+            ".gz",
+            ".rar",
+            ".7z",
+        ]
+
+        # Check if path ends with invalid extension
+        for ext in invalid_extensions:
+            if path.endswith(ext):
+                return False
+
+        # Valid document extensions
+        valid_extensions = [
+            ".html",
+            ".htm",
+            ".pdf",
+            ".doc",
+            ".docx",
+            ".txt",
+            ".md",
+            ".rtf",
+            ".odt",
+            ".pages",
+        ]
+
+        # Check if path ends with valid extension
+        for ext in valid_extensions:
+            if path.endswith(ext):
+                return True
+
+        # If no extension or extension not in lists, check if it looks like a document page
+        # (has path segments, not just domain)
+        if (
+            path
+            and path != "/"
+            and not any(path.endswith(ext) for ext in invalid_extensions)
+        ):
+            # Assume it's a document page if it has a path
+            return True
+
+        return False
+
+    def _normalize_url(self, url: str) -> str:
+        """
+        Normalize URL by removing fragments and cleaning up.
+
+        Args:
+            url: URL to normalize
+
+        Returns:
+            Normalized URL without fragment
+        """
+        parsed = urlparse(url)
+        # Remove fragment, keep everything else
+        normalized = urlunparse(
+            (
+                parsed.scheme,
+                parsed.netloc,
+                parsed.path,
+                parsed.params,
+                parsed.query,
+                "",  # Remove fragment
+            )
+        )
+        return normalized
+
     def _extract_rich_metadata(
         self, soup: BeautifulSoup, url: str, content: str
     ) -> ScannedDocumentMetadata:

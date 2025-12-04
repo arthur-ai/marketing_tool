@@ -137,6 +137,43 @@ class InternalDocsConfigModel(Base):
         }
 
 
+class PipelineSettingsModel(Base):
+    """Database model for pipeline settings."""
+
+    __tablename__ = "pipeline_settings"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    settings_data = Column(JSONB, nullable=False)  # Full pipeline settings as JSON
+    is_active = Column(Boolean, default=True, nullable=False, index=True)
+    created_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert model to dictionary."""
+        settings = (
+            self.settings_data
+            if isinstance(self.settings_data, dict)
+            else (
+                json.loads(self.settings_data)
+                if isinstance(self.settings_data, str)
+                else {}
+            )
+        )
+        return {
+            "settings_data": settings,
+            "is_active": self.is_active,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
 class JobModel(Base):
     """Database model for job storage and tracking."""
 

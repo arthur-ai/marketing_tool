@@ -5,7 +5,7 @@ Pydantic models for analytics and statistics responses.
 """
 
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -130,3 +130,52 @@ class AnalyticsResponse(BaseModel):
     success: bool = True
     message: str = "Analytics data retrieved successfully"
     data: Dict = Field(..., description="Analytics data payload")
+
+
+class CostMetrics(BaseModel):
+    """Cost tracking metrics."""
+
+    total_cost_usd: float = Field(..., description="Total cost in USD")
+    avg_cost_per_job: float = Field(..., description="Average cost per job")
+    cost_by_model: Dict[str, float] = Field(
+        default_factory=dict, description="Cost breakdown by model"
+    )
+    cost_by_step: Dict[str, float] = Field(
+        default_factory=dict, description="Cost breakdown by pipeline step"
+    )
+    token_usage: Dict[str, int] = Field(
+        default_factory=dict, description="Token usage statistics"
+    )
+
+
+class QualityTrends(BaseModel):
+    """Quality trend analysis."""
+
+    avg_quality_score: float = Field(
+        ..., ge=0.0, le=100.0, description="Average quality score"
+    )
+    quality_by_platform: Dict[str, float] = Field(
+        default_factory=dict, description="Average quality by platform"
+    )
+    quality_trend_data: List[Dict[str, Any]] = Field(
+        default_factory=list, description="Time-series quality data"
+    )
+    improvement_rate: Optional[float] = Field(
+        None, description="Quality improvement rate over time"
+    )
+
+
+class UnifiedMonitoringMetrics(BaseModel):
+    """Unified monitoring dashboard metrics."""
+
+    dashboard_stats: DashboardStats = Field(..., description="Dashboard statistics")
+    pipeline_stats: PipelineStats = Field(..., description="Pipeline statistics")
+    cost_metrics: Optional[CostMetrics] = Field(
+        None, description="Cost tracking metrics"
+    )
+    quality_trends: Optional[QualityTrends] = Field(
+        None, description="Quality trend analysis"
+    )
+    social_media_performance: Optional[Dict[str, Any]] = Field(
+        None, description="Social media performance metrics"
+    )

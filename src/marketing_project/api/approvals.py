@@ -1091,13 +1091,15 @@ async def get_job_approvals(
         # Force reload from Redis
         await manager._load_all_approvals_from_redis()
 
+        # Import and initialize job_manager early since it's used later
+        from ..services.job_manager import JobStatus, get_job_manager
+
+        job_manager = get_job_manager()
+
         # If no approvals found but job is waiting, try to recreate from pipeline context
         approvals = await manager.list_approvals(job_id=job_id, status=status)
         if len(approvals) == 0:
             # Check if job is waiting for approval and has pipeline context
-            from ..services.job_manager import JobStatus, get_job_manager
-
-            job_manager = get_job_manager()
             job = await job_manager.get_job(job_id)
             if job and job.status == JobStatus.WAITING_FOR_APPROVAL:
                 # Try to load pipeline context which has the approval step info

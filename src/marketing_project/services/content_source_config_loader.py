@@ -78,9 +78,32 @@ class ContentSourceConfigLoader:
                     f"Found {len(default_sources)} default content sources in configuration"
                 )
 
+                # Check if we're in local deployment (no AWS_S3_BUCKET set)
+                aws_s3_bucket = os.getenv("AWS_S3_BUCKET")
+                is_local_deployment = not aws_s3_bucket
+
+                if is_local_deployment:
+                    logger.info(
+                        "AWS_S3_BUCKET not set - detected local deployment. "
+                        "Auto-enabling local_content source and disabling s3_content source."
+                    )
+
                 for source_config in default_sources:
                     source_name = source_config.get("name", "unknown")
                     source_enabled = source_config.get("enabled", True)
+
+                    # Auto-enable local_content for local deployments
+                    if is_local_deployment and source_name == "local_content":
+                        source_enabled = True
+                        logger.info(
+                            f"Auto-enabling '{source_name}' for local deployment"
+                        )
+                    # Auto-disable s3_content for local deployments
+                    elif is_local_deployment and source_name == "s3_content":
+                        source_enabled = False
+                        logger.info(
+                            f"Auto-disabling '{source_name}' for local deployment (no AWS_S3_BUCKET)"
+                        )
 
                     logger.info(
                         f"Processing source '{source_name}': enabled={source_enabled}"

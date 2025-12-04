@@ -141,6 +141,57 @@ class ErrorHandlingMiddleware(BaseHTTPMiddleware):
     async def _handle_generic_exception(
         self, request: Request, exc: Exception, request_id: str
     ) -> JSONResponse:
+        """Handle generic exceptions with platform-specific error detection."""
+        # Check for platform-specific errors
+        platform = None
+        content = None
+        try:
+            # Try to extract platform from request if it's a social media request
+            if hasattr(request.state, "platform"):
+                platform = request.state.platform
+            # Try to get from request body if available
+            if hasattr(request, "_body"):
+                import json
+
+                try:
+                    body = json.loads(request._body)
+                    platform = body.get("social_media_platform") or body.get("platform")
+                    content = body.get("content")
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        # Format error message with platform-specific guidance if applicable
+        error_message = str(exc)
+        error_details = {"request_id": request_id}
+
+        if platform:
+            try:
+                from marketing_project.services.platform_error_handler import (
+                    PlatformErrorHandler,
+                )
+
+                is_platform_error, error_type, platform_error_details = (
+                    PlatformErrorHandler.detect_platform_error(exc, platform, content)
+                )
+                if is_platform_error:
+                    error_message = PlatformErrorHandler.get_error_guidance(
+                        error_type, platform, platform_error_details
+                    )
+                    error_details.update(
+                        {
+                            "platform": platform,
+                            "error_type": error_type,
+                            "platform_error_details": platform_error_details,
+                            "auto_fix_available": PlatformErrorHandler.should_retry_platform_error(
+                                error_type
+                            ),
+                        }
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to check for platform errors: {e}")
+
         """Handle generic exceptions."""
         # Log the full exception with traceback
         logger.error(

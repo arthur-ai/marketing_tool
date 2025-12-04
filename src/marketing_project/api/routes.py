@@ -9,13 +9,18 @@ from fastapi import APIRouter
 # Import all sub-routers directly from their modules to avoid circular imports
 from marketing_project.api.analytics import router as analytics_router
 from marketing_project.api.approvals import router as approvals_router
+from marketing_project.api.batch import router as batch_router
 from marketing_project.api.content import router as content_router
 from marketing_project.api.core import router as core_router
 from marketing_project.api.design_kit import router as design_kit_router
+from marketing_project.api.feedback import router as feedback_router
 from marketing_project.api.health import router as health_router
 from marketing_project.api.internal_docs import router as internal_docs_router
 from marketing_project.api.jobs import router as jobs_router
 from marketing_project.api.processors import router as processors_router
+from marketing_project.api.scheduling import router as scheduling_router
+from marketing_project.api.settings import router as settings_router
+from marketing_project.api.social_media import router as social_media_router
 from marketing_project.api.step_results import router as step_results_router
 from marketing_project.api.system import router as system_router
 from marketing_project.api.upload import router as upload_router
@@ -136,6 +141,44 @@ def register_routes() -> APIRouter:
     api_router.include_router(
         design_kit_router, prefix="/design-kit", tags=["Design Kit"]
     )
+
+    # ========================================
+    # SOCIAL MEDIA ROUTES
+    # ========================================
+    # POST /api/v1/social-media/preview - Preview post
+    # POST /api/v1/social-media/validate - Validate post
+    # POST /api/v1/social-media/update - Update post
+    api_router.include_router(social_media_router, tags=["Social Media"])
+
+    # ========================================
+    # SCHEDULING ROUTES
+    # ========================================
+    # POST /api/v1/schedule/post - Schedule a post
+    # GET /api/v1/schedule/posts - List scheduled posts
+    # GET /api/v1/schedule/posts/{schedule_id} - Get scheduled post
+    # DELETE /api/v1/schedule/posts/{schedule_id} - Cancel scheduled post
+    api_router.include_router(scheduling_router, tags=["Scheduling"])
+
+    # ========================================
+    # FEEDBACK ROUTES
+    # ========================================
+    # POST /api/v1/feedback - Submit feedback
+    # GET /api/v1/feedback/stats - Get feedback statistics
+    api_router.include_router(feedback_router, tags=["Feedback"])
+
+    # ========================================
+    # BATCH PROCESSING ROUTES
+    # ========================================
+    # POST /api/v1/batch/blog - Process multiple blog posts
+    # GET /api/v1/batch/campaign/{campaign_id}/jobs - Get campaign jobs
+    api_router.include_router(batch_router, tags=["Batch Processing"])
+
+    # ========================================
+    # SETTINGS ROUTES
+    # ========================================
+    # GET /api/v1/settings/pipeline - Get pipeline settings
+    # POST /api/v1/settings/pipeline - Save pipeline settings
+    api_router.include_router(settings_router, tags=["Settings"])
 
     return api_router
 

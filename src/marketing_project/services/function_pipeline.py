@@ -13,6 +13,7 @@ Key Benefits:
 """
 
 import asyncio
+import copy
 import json
 import logging
 import time
@@ -43,7 +44,9 @@ from marketing_project.models.pipeline_steps import (
     ContentFormattingResult,
     DesignKitResult,
     MarketingBriefResult,
+    PipelineConfig,
     PipelineResult,
+    PipelineStepConfig,
     PipelineStepInfo,
     SEOKeywordsResult,
     SEOOptimizationResult,
@@ -69,21 +72,44 @@ class FunctionPipeline:
     """
 
     def __init__(
-        self, model: str = "gpt-5.1", temperature: float = 0.7, lang: str = "en"
+        self,
+        model: str = "gpt-5.1",
+        temperature: float = 0.7,
+        lang: str = "en",
+        pipeline_config: Optional[PipelineConfig] = None,
     ):
         """
         Initialize the function pipeline.
 
         Args:
-            model: OpenAI model to use (default: gpt-5.1)
-            temperature: Sampling temperature (default: 0.7)
+            model: OpenAI model to use (default: gpt-5.1) - used if pipeline_config not provided
+            temperature: Sampling temperature (default: 0.7) - used if pipeline_config not provided
             lang: Language for prompts (default: "en")
+            pipeline_config: Optional PipelineConfig for per-step model configuration
         """
         self.client = AsyncOpenAI()
-        self.model = model
-        self.temperature = temperature
         self.lang = lang
         self.step_info: List[PipelineStepInfo] = []
+
+        # Support both old-style (model, temperature) and new-style (pipeline_config)
+        if pipeline_config:
+            self.pipeline_config = pipeline_config
+            self.model = pipeline_config.default_model
+            self.temperature = pipeline_config.default_temperature
+        else:
+            self.pipeline_config = PipelineConfig(
+                default_model=model,
+                default_temperature=temperature,
+            )
+            self.model = model
+            self.temperature = temperature
+
+        # Define optional steps that can fail without stopping the pipeline
+        # These are typically enhancement steps that aren't critical for core functionality
+        self.optional_steps = {
+            "suggested_links",  # Internal links are nice-to-have
+            "design_kit",  # Design kit is enhancement
+        }
 
     def _get_system_instruction(
         self, agent_name: str, context: Optional[Dict] = None
@@ -210,6 +236,44 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
         # Fallback prompt
         return f"Process the content for {step_name.replace('_', ' ')} step."
 
+    def _get_step_model(self, step_name: str) -> str:
+        """
+        Get the model to use for a specific step.
+
+        Checks step-specific config first, then falls back to pipeline default.
+
+        Args:
+            step_name: Name of the step
+
+        Returns:
+            Model name to use for this step
+        """
+        return self.pipeline_config.get_step_model(step_name)
+
+    def _get_step_temperature(self, step_name: str) -> float:
+        """
+        Get the temperature to use for a specific step.
+
+        Args:
+            step_name: Name of the step
+
+        Returns:
+            Temperature value to use for this step
+        """
+        return self.pipeline_config.get_step_temperature(step_name)
+
+    def _get_step_max_retries(self, step_name: str) -> int:
+        """
+        Get the max retries for a specific step.
+
+        Args:
+            step_name: Name of the step
+
+        Returns:
+            Max retries value to use for this step
+        """
+        return self.pipeline_config.get_step_max_retries(step_name)
+
     async def _execute_step_with_plugin(
         self,
         step_name: str,
@@ -235,6 +299,36 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
         if not plugin:
             raise ValueError(f"Plugin not found for step: {step_name}")
 
+        # Try to resolve missing context keys from context registry if available
+        if job_id:
+            try:
+                from marketing_project.services.context_registry import (
+                    get_context_registry,
+                )
+
+                context_registry = get_context_registry()
+                required_keys = plugin.get_required_context_keys()
+                missing_keys = [
+                    key for key in required_keys if key not in pipeline_context
+                ]
+
+                # Resolve missing keys from context registry
+                if missing_keys:
+                    resolved_context = await context_registry.query_context(
+                        job_id=job_id, keys=missing_keys
+                    )
+                    # Merge resolved context into pipeline_context
+                    for key, value in resolved_context.items():
+                        if key not in pipeline_context:
+                            pipeline_context[key] = value
+                            logger.debug(
+                                f"Resolved context key '{key}' from context registry for step {step_name}"
+                            )
+            except Exception as e:
+                logger.warning(
+                    f"Failed to resolve context from registry for step {step_name}: {e}"
+                )
+
         # Validate context
         if not plugin.validate_context(pipeline_context):
             missing = [
@@ -249,6 +343,10 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
         # Store execution step number in pipeline context for plugins to use
         if execution_step_number is not None:
             pipeline_context["_execution_step_number"] = execution_step_number
+
+        # Set model configuration on plugin if available
+        step_config = self.pipeline_config.get_step_config(step_name)
+        plugin.model_config = step_config
 
         # Execute plugin
         result = await plugin.execute(
@@ -265,7 +363,7 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
         step_name: str,
         step_number: int,
         context: Optional[Dict] = None,
-        max_retries: int = 2,
+        max_retries: Optional[int] = None,
         job_id: Optional[str] = None,
     ) -> BaseModel:
         """
@@ -280,7 +378,7 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
             step_name: Name of the current step
             step_number: Step sequence number
             context: Additional context from previous steps
-            max_retries: Maximum number of retry attempts
+            max_retries: Maximum number of retry attempts (uses step config if None)
             job_id: Optional job ID for approval tracking
 
         Returns:
@@ -291,6 +389,15 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
         """
         start_time = time.time()
 
+        # Get step-specific model and temperature
+        step_model = self._get_step_model(step_name)
+        step_temperature = self._get_step_temperature(step_name)
+        step_max_retries = (
+            max_retries
+            if max_retries is not None
+            else self._get_step_max_retries(step_name)
+        )
+
         messages = [
             {"role": "system", "content": system_instruction},
             {"role": "user", "content": prompt},
@@ -298,20 +405,73 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
 
         # Add context from previous steps if available
         if context:
-            context_msg = f"\n\n### Context from Previous Steps:\n```json\n{json.dumps(context, indent=2, default=_json_serializer)}\n```"
-            messages[-1]["content"] += context_msg
+            # Try to use context references if context registry is available
+            if job_id:
+                try:
+                    from marketing_project.services.context_registry import (
+                        get_context_registry,
+                    )
 
-        for attempt in range(max_retries):
+                    context_registry = get_context_registry()
+                    # Build context message with references
+                    context_refs = []
+                    for key in context.keys():
+                        if key not in (
+                            "input_content",
+                            "content_type",
+                            "output_content_type",
+                            "_execution_step_number",
+                        ):
+                            ref = await context_registry.get_context_reference(
+                                job_id, key
+                            )
+                            if ref:
+                                context_refs.append(
+                                    f"- {key}: [context reference: {ref.step_name}]"
+                                )
+
+                    if context_refs:
+                        context_msg = (
+                            f"\n\n### Context from Previous Steps (References):\n"
+                            + "\n".join(context_refs)
+                        )
+                        # Still include essential context directly
+                        essential_context = {
+                            k: v
+                            for k, v in context.items()
+                            if k
+                            in ("input_content", "content_type", "output_content_type")
+                        }
+                        if essential_context:
+                            context_msg += f"\n\n### Essential Context:\n```json\n{json.dumps(essential_context, indent=2, default=_json_serializer)}\n```"
+                        messages[-1]["content"] += context_msg
+                    else:
+                        # Fallback to full context dump
+                        context_msg = f"\n\n### Context from Previous Steps:\n```json\n{json.dumps(context, indent=2, default=_json_serializer)}\n```"
+                        messages[-1]["content"] += context_msg
+                except Exception as e:
+                    logger.debug(
+                        f"Failed to use context references, using direct context: {e}"
+                    )
+                    # Fallback to full context dump
+                    context_msg = f"\n\n### Context from Previous Steps:\n```json\n{json.dumps(context, indent=2, default=_json_serializer)}\n```"
+                    messages[-1]["content"] += context_msg
+            else:
+                # No job_id, use direct context
+                context_msg = f"\n\n### Context from Previous Steps:\n```json\n{json.dumps(context, indent=2, default=_json_serializer)}\n```"
+                messages[-1]["content"] += context_msg
+
+        for attempt in range(step_max_retries):
             try:
                 logger.info(
-                    f"Step {step_number}: {step_name} (attempt {attempt + 1}/{max_retries})"
+                    f"Step {step_number}: {step_name} (attempt {attempt + 1}/{step_max_retries}, model: {step_model})"
                 )
 
                 response = await self.client.beta.chat.completions.parse(
-                    model=self.model,
+                    model=step_model,
                     messages=messages,
                     response_format=response_model,
-                    temperature=self.temperature,
+                    temperature=step_temperature,
                 )
 
                 execution_time = time.time() - start_time
@@ -432,6 +592,15 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                                 else:
                                     result_data = parsed_result
 
+                                # Capture input snapshot and context keys used
+                                input_snapshot = None
+                                context_keys_used = []
+                                if context:
+                                    # Create a snapshot of the context state before execution
+                                    input_snapshot = copy.deepcopy(context)
+                                    # Get context keys that were available
+                                    context_keys_used = list(context.keys())
+
                                 await step_manager.save_step_result(
                                     job_id=job_id,
                                     step_number=step_number,
@@ -443,6 +612,8 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                                     },
                                     execution_context_id=None,  # Will be auto-determined
                                     root_job_id=None,  # Will be auto-determined
+                                    input_snapshot=input_snapshot,
+                                    context_keys_used=context_keys_used,
                                 )
                             except Exception as e:
                                 logger.warning(
@@ -466,6 +637,9 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                     execution_time=execution_time,
                     tokens_used=response.usage.total_tokens if response.usage else None,
                 )
+                # Store model used in metadata if available
+                if hasattr(step_info, "metadata") or True:  # For future extension
+                    pass  # Could add model to metadata
                 self.step_info.append(step_info)
 
                 # Save step result to disk if job_id is provided
@@ -486,6 +660,15 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                         else:
                             result_data = parsed_result
 
+                        # Capture input snapshot and context keys used
+                        input_snapshot = None
+                        context_keys_used = []
+                        if context:
+                            # Create a snapshot of the context state before execution
+                            input_snapshot = copy.deepcopy(context)
+                            # Get context keys that were available
+                            context_keys_used = list(context.keys())
+
                         await step_manager.save_step_result(
                             job_id=job_id,
                             step_number=step_number,
@@ -502,6 +685,8 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                             },
                             execution_context_id=None,  # Will be auto-determined
                             root_job_id=None,  # Will be auto-determined
+                            input_snapshot=input_snapshot,
+                            context_keys_used=context_keys_used,
                         )
                     except Exception as e:
                         logger.warning(
@@ -524,7 +709,7 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                     f"Step {step_number} failed (attempt {attempt + 1}): {e}"
                 )
 
-                if attempt == max_retries - 1:
+                if attempt == step_max_retries - 1:
                     # Final attempt failed
                     execution_time = time.time() - start_time
                     step_info = PipelineStepInfo(
@@ -544,6 +729,16 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                             )
 
                             step_manager = get_step_result_manager()
+
+                            # Capture input snapshot and context keys used (even for failed steps)
+                            input_snapshot = None
+                            context_keys_used = []
+                            if context:
+                                import copy
+
+                                input_snapshot = copy.deepcopy(context)
+                                context_keys_used = list(context.keys())
+
                             await step_manager.save_step_result(
                                 job_id=job_id,
                                 step_number=step_number,
@@ -556,6 +751,8 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                                 },
                                 execution_context_id=None,  # Will be auto-determined
                                 root_job_id=None,  # Will be auto-determined
+                                input_snapshot=input_snapshot,
+                                context_keys_used=context_keys_used,
                             )
                         except Exception as e2:
                             logger.warning(
@@ -563,7 +760,7 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                             )
 
                     logger.error(
-                        f"Step {step_number}: {step_name} failed after {max_retries} attempts: {e}"
+                        f"Step {step_number}: {step_name} failed after {step_max_retries} attempts: {e}"
                     )
                     raise
 
@@ -576,6 +773,7 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
         job_id: Optional[str] = None,
         content_type: str = "blog_post",
         output_content_type: Optional[str] = None,
+        pipeline_config: Optional[PipelineConfig] = None,
     ) -> Dict[str, Any]:
         """
         Execute the complete 7-step content pipeline using function calling.
@@ -587,10 +785,17 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
             content_json: Input content as JSON string
             job_id: Optional job ID for tracking
             content_type: Type of content being processed
+            output_content_type: Optional output content type (defaults to content_type)
+            pipeline_config: Optional PipelineConfig for per-step model configuration
 
         Returns:
             Dictionary with complete pipeline results including all step outputs
         """
+        # Update pipeline config if provided
+        if pipeline_config:
+            self.pipeline_config = pipeline_config
+            self.model = pipeline_config.default_model
+            self.temperature = pipeline_config.default_temperature
         pipeline_start = time.time()
         logger.info("=" * 80)
         logger.info(
@@ -668,6 +873,14 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
 
         # Use output_content_type if provided, otherwise default to content_type
         final_output_content_type = output_content_type or content_type
+        if output_content_type and output_content_type != content_type:
+            logger.info(
+                f"Function Pipeline: Converting {content_type} to {final_output_content_type}"
+            )
+        else:
+            logger.info(
+                f"Function Pipeline: Processing {content_type} (output_content_type={final_output_content_type})"
+            )
 
         # Store original content in context for first step (needed for resume)
         pipeline_context = {
@@ -727,23 +940,128 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                 active_plugins.append(plugin)
 
             # Execute each step using its plugin with dynamic step numbers
-            for execution_index, plugin in enumerate(active_plugins, start=1):
-                logger.info(f"Executing step {execution_index}: {plugin.step_name}")
+            failed_steps = []
+            total_steps = len(active_plugins)
+            pipeline_start_time = time.time()
 
-                # Execute step using plugin
-                step_result = await self._execute_step_with_plugin(
-                    step_name=plugin.step_name,
-                    pipeline_context=pipeline_context,
-                    job_id=job_id,
+            for execution_index, plugin in enumerate(active_plugins, start=1):
+                step_start_time = time.time()
+                logger.info(
+                    f"Executing step {execution_index}/{total_steps}: {plugin.step_name}"
                 )
 
-                # Store result - use model_dump(mode='json') to ensure datetime objects are serialized
+                # Update progress with detailed information
+                if job_id:
+                    try:
+                        from marketing_project.services.job_manager import (
+                            get_job_manager,
+                        )
+
+                        job_manager = get_job_manager()
+                        progress_percent = int(
+                            (execution_index - 1) / total_steps * 100
+                        )
+
+                        # Calculate ETA based on average step time so far
+                        if execution_index > 1:
+                            elapsed_time = time.time() - pipeline_start_time
+                            avg_step_time = elapsed_time / (execution_index - 1)
+                            remaining_steps = total_steps - (execution_index - 1)
+                            estimated_remaining = avg_step_time * remaining_steps
+                            eta_seconds = int(estimated_remaining)
+                            eta_message = f" (ETA: ~{eta_seconds}s)"
+                        else:
+                            eta_message = ""
+
+                        step_description = plugin.step_name.replace("_", " ").title()
+                        progress_message = f"Step {execution_index}/{total_steps}: {step_description}{eta_message}"
+                        await job_manager.update_job_progress(
+                            job_id, progress_percent, progress_message
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to update progress: {e}")
+
+                is_optional = plugin.step_name in self.optional_steps
+
                 try:
-                    results[plugin.step_name] = step_result.model_dump(mode="json")
-                except (TypeError, ValueError):
-                    # Fallback to regular model_dump if mode='json' fails
-                    results[plugin.step_name] = step_result.model_dump()
-                pipeline_context[plugin.step_name] = results[plugin.step_name]
+                    # Execute step using plugin
+                    step_result = await self._execute_step_with_plugin(
+                        step_name=plugin.step_name,
+                        pipeline_context=pipeline_context,
+                        job_id=job_id,
+                        execution_step_number=execution_index,
+                    )
+
+                    # Store result - use model_dump(mode='json') to ensure datetime objects are serialized
+                    try:
+                        results[plugin.step_name] = step_result.model_dump(mode="json")
+                    except (TypeError, ValueError):
+                        # Fallback to regular model_dump if mode='json' fails
+                        results[plugin.step_name] = step_result.model_dump()
+
+                    # Register step output in context registry for zero data loss
+                    if job_id:
+                        try:
+                            from marketing_project.services.context_registry import (
+                                get_context_registry,
+                            )
+
+                            context_registry = get_context_registry()
+                            # Capture input snapshot before adding result
+                            input_snapshot = copy.deepcopy(pipeline_context)
+                            context_keys_used = plugin.get_required_context_keys()
+
+                            await context_registry.register_step_output(
+                                job_id=job_id,
+                                step_name=plugin.step_name,
+                                step_number=execution_index,
+                                output_data=results[plugin.step_name],
+                                input_snapshot=input_snapshot,
+                                context_keys_used=context_keys_used,
+                            )
+                        except Exception as e:
+                            logger.warning(
+                                f"Failed to register step output in context registry: {e}"
+                            )
+
+                    # Add result to pipeline context for next steps
+                    pipeline_context[plugin.step_name] = results[plugin.step_name]
+
+                except Exception as e:
+                    error_msg = str(e)
+                    logger.error(
+                        f"Step {execution_index} ({plugin.step_name}) failed: {error_msg}"
+                    )
+
+                    if is_optional:
+                        # Optional step failed - log warning and continue
+                        logger.warning(
+                            f"Optional step {plugin.step_name} failed, continuing pipeline: {error_msg}"
+                        )
+                        failed_steps.append(
+                            {
+                                "step_name": plugin.step_name,
+                                "step_number": execution_index,
+                                "error": error_msg,
+                                "optional": True,
+                            }
+                        )
+                        quality_warnings.append(
+                            f"Optional step '{plugin.step_name}' failed: {error_msg}"
+                        )
+                        # Don't add to results or context, but continue
+                        continue
+                    else:
+                        # Critical step failed - stop pipeline
+                        failed_steps.append(
+                            {
+                                "step_name": plugin.step_name,
+                                "step_number": execution_index,
+                                "error": error_msg,
+                                "optional": False,
+                            }
+                        )
+                        raise
 
             # ========================================
             # Compile Final Result
@@ -770,6 +1088,34 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                 formatting = ContentFormattingResult(**results["content_formatting"])
                 final_content = formatting.formatted_html
 
+            # Build metadata with failed steps info
+            metadata = {
+                "job_id": job_id,
+                "content_id": content.get("id"),
+                "content_type": content_type,
+                "title": content.get("title"),
+                "steps_completed": len(results),
+                "execution_time_seconds": execution_time,
+                "total_tokens_used": total_tokens,
+                "model": self.model,
+                "completed_at": datetime.utcnow().isoformat(),
+                "step_info": [
+                    (
+                        step.model_dump(mode="json")
+                        if hasattr(step, "model_dump")
+                        else (
+                            step.model_dump() if hasattr(step, "model_dump") else step
+                        )
+                    )
+                    for step in self.step_info
+                ],
+            }
+
+            # Add failed steps info if any
+            if failed_steps:
+                metadata["failed_steps"] = failed_steps
+                metadata["partial_success"] = True
+
             return {
                 "pipeline_status": (
                     "completed_with_warnings" if quality_warnings else "completed"
@@ -778,29 +1124,7 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                 "quality_warnings": quality_warnings,
                 "final_content": final_content,
                 "input_content": content,  # Include input content in result
-                "metadata": {
-                    "job_id": job_id,
-                    "content_id": content.get("id"),
-                    "content_type": content_type,
-                    "title": content.get("title"),
-                    "steps_completed": len(results),
-                    "execution_time_seconds": execution_time,
-                    "total_tokens_used": total_tokens,
-                    "model": self.model,
-                    "completed_at": datetime.utcnow().isoformat(),
-                    "step_info": [
-                        (
-                            step.model_dump(mode="json")
-                            if hasattr(step, "model_dump")
-                            else (
-                                step.model_dump()
-                                if hasattr(step, "model_dump")
-                                else step
-                            )
-                        )
-                        for step in self.step_info
-                    ],
-                },
+                "metadata": metadata,
             }
 
         except Exception as e:
@@ -908,6 +1232,7 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
         context_data: Dict[str, Any],
         job_id: Optional[str] = None,
         content_type: str = "blog_post",
+        pipeline_config: Optional[PipelineConfig] = None,
     ) -> Dict[str, Any]:
         """
         Resume pipeline execution from a saved context (after approval).
@@ -920,10 +1245,16 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                 - step_result: Result from the last step
             job_id: Optional job ID for tracking
             content_type: Type of content being processed
+            pipeline_config: Optional PipelineConfig for per-step model configuration
 
         Returns:
             Dictionary with complete pipeline results
         """
+        # Update pipeline config if provided
+        if pipeline_config:
+            self.pipeline_config = pipeline_config
+            self.model = pipeline_config.default_model
+            self.temperature = pipeline_config.default_temperature
         pipeline_start = time.time()
         logger.info("=" * 80)
         logger.info(
@@ -1309,6 +1640,7 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
         content_json: str,
         context: Dict[str, Any],
         job_id: Optional[str] = None,
+        pipeline_config: Optional[PipelineConfig] = None,
     ) -> Dict[str, Any]:
         """
         Execute a single pipeline step independently.
@@ -1321,6 +1653,7 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
             content_json: Input content as JSON string
             context: Dictionary containing all required context keys for the step
             job_id: Optional job ID for tracking and result persistence
+            pipeline_config: Optional PipelineConfig for per-step model configuration
 
         Returns:
             Dictionary with step result and execution metadata
@@ -1328,6 +1661,11 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
         Raises:
             ValueError: If step not found or required context keys are missing
         """
+        # Update pipeline config if provided
+        if pipeline_config:
+            self.pipeline_config = pipeline_config
+            self.model = pipeline_config.default_model
+            self.temperature = pipeline_config.default_temperature
         import time
 
         step_start = time.time()

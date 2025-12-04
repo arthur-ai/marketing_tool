@@ -71,7 +71,40 @@ class StepResultManager:
         """
         self.base_dir = Path(base_dir or os.getenv("STEP_RESULTS_DIR", "results"))
         self.base_dir.mkdir(parents=True, exist_ok=True)
-        logger.info(f"Step Result Manager initialized with base_dir: {self.base_dir}")
+
+        # Check if S3 should be used
+        s3_bucket = os.getenv("AWS_S3_BUCKET")
+        s3_prefix = os.getenv("STEP_RESULTS_S3_PREFIX", "results/")
+        self._use_s3 = s3_bucket is not None
+
+        if self._use_s3:
+            try:
+                from marketing_project.services.s3_storage import S3Storage
+
+                self.s3_storage = S3Storage(bucket_name=s3_bucket, prefix=s3_prefix)
+                if not self.s3_storage.is_available():
+                    logger.warning(
+                        "S3 bucket configured but not available, falling back to local filesystem"
+                    )
+                    self._use_s3 = False
+                    self.s3_storage = None
+                else:
+                    logger.info(
+                        f"Step Result Manager using S3: s3://{s3_bucket}/{s3_prefix}"
+                    )
+            except Exception as e:
+                logger.warning(
+                    f"Failed to initialize S3 storage, falling back to local: {e}"
+                )
+                self._use_s3 = False
+                self.s3_storage = None
+        else:
+            self.s3_storage = None
+
+        storage_type = "S3" if self._use_s3 else "local filesystem"
+        logger.info(
+            f"Step Result Manager initialized with {storage_type}, base_dir: {self.base_dir}"
+        )
 
     def _get_job_dir(self, job_id: str) -> Path:
         """Get the directory for a specific job."""
@@ -94,6 +127,16 @@ class StepResultManager:
         safe_name = step_name.lower().replace(" ", "_").replace("-", "_")
         return f"{step_number:02d}_{safe_name}.json"
 
+    def _get_s3_key(
+        self, root_job_id: str, execution_context_id: str, filename: str
+    ) -> str:
+        """Get the S3 key for a step result file."""
+        return f"{root_job_id}/context_{execution_context_id}/{filename}"
+
+    def _get_metadata_s3_key(self, job_id: str) -> str:
+        """Get the S3 key for job metadata."""
+        return f"{job_id}/metadata.json"
+
     async def save_step_result(
         self,
         job_id: str,
@@ -103,6 +146,8 @@ class StepResultManager:
         metadata: Optional[Dict[str, Any]] = None,
         execution_context_id: Optional[str] = None,
         root_job_id: Optional[str] = None,
+        input_snapshot: Optional[Dict[str, Any]] = None,
+        context_keys_used: Optional[List[str]] = None,
     ) -> str:
         """
         Save a step result to disk.
@@ -115,6 +160,8 @@ class StepResultManager:
             metadata: Optional metadata to include in the file
             execution_context_id: Optional execution context ID (for tracking resume cycles)
             root_job_id: Optional root job ID (if different from job_id, saves to root directory)
+            input_snapshot: Optional snapshot of input context used for this step
+            context_keys_used: Optional list of context keys consumed by this step
 
         Returns:
             Path to the saved file
@@ -168,15 +215,61 @@ class StepResultManager:
                 "step_number": step_number,
                 "step_name": step_name,
                 "timestamp": datetime.utcnow().isoformat(),
+                "input_snapshot": input_snapshot,  # What was used as input
+                "context_keys_used": context_keys_used or [],  # Which keys consumed
                 "result": result_data,
                 "metadata": metadata or {},
             }
 
-            # Save to file with custom serializer for datetime objects
-            with open(file_path, "w", encoding="utf-8") as f:
-                json.dump(
-                    data, f, indent=2, ensure_ascii=False, default=_json_serializer
+            # Save to S3 or local filesystem
+            if self._use_s3 and self.s3_storage:
+                try:
+                    s3_key = self._get_s3_key(
+                        target_job_id, execution_context_id, filename
+                    )
+                    await self.s3_storage.upload_json(data, s3_key)
+                    logger.debug(f"Uploaded step result to S3: {s3_key}")
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to upload step result to S3, falling back to local: {e}"
+                    )
+                    # Fallback to local
+                    with open(file_path, "w", encoding="utf-8") as f:
+                        json.dump(
+                            data,
+                            f,
+                            indent=2,
+                            ensure_ascii=False,
+                            default=_json_serializer,
+                        )
+            else:
+                # Save to local filesystem
+                with open(file_path, "w", encoding="utf-8") as f:
+                    json.dump(
+                        data, f, indent=2, ensure_ascii=False, default=_json_serializer
+                    )
+
+            # Also register with context registry for zero data loss context management
+            try:
+                from marketing_project.services.context_registry import (
+                    get_context_registry,
                 )
+
+                context_registry = get_context_registry()
+                await context_registry.register_step_output(
+                    job_id=job_id,
+                    step_name=step_name,
+                    step_number=step_number,
+                    output_data=result_data,
+                    input_snapshot=input_snapshot,
+                    context_keys_used=context_keys_used,
+                    execution_context_id=execution_context_id,
+                    root_job_id=target_job_id,
+                )
+                logger.debug(f"Registered step output in context registry: {step_name}")
+            except Exception as e:
+                # Log but don't fail if context registry registration fails
+                logger.warning(f"Failed to register in context registry: {e}")
 
             logger.info(
                 f"Saved step result: {filename} for job {job_id} (context: {execution_context_id}, root: {target_job_id})"
@@ -226,8 +319,23 @@ class StepResultManager:
                 **(additional_metadata or {}),
             }
 
-            with open(metadata_path, "w", encoding="utf-8") as f:
-                json.dump(metadata, f, indent=2, ensure_ascii=False)
+            # Save to S3 or local filesystem
+            if self._use_s3 and self.s3_storage:
+                try:
+                    s3_key = self._get_metadata_s3_key(job_id)
+                    await self.s3_storage.upload_json(metadata, s3_key)
+                    logger.debug(f"Uploaded job metadata to S3: {s3_key}")
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to upload metadata to S3, falling back to local: {e}"
+                    )
+                    # Fallback to local
+                    with open(metadata_path, "w", encoding="utf-8") as f:
+                        json.dump(metadata, f, indent=2, ensure_ascii=False)
+            else:
+                # Save to local filesystem
+                with open(metadata_path, "w", encoding="utf-8") as f:
+                    json.dump(metadata, f, indent=2, ensure_ascii=False)
 
             logger.info(f"Saved job metadata for job {job_id}")
             return str(metadata_path)
@@ -284,14 +392,114 @@ class StepResultManager:
             # Try to get results from step files first
             # IMPORTANT: Load ALL steps from root job's context directories
             # All steps from all execution contexts are saved to the root job directory
-            root_job_dir = self._get_job_dir(root_job_id)
             steps = []
             metadata = {}
 
-            if root_job_dir.exists():
+            # Try S3 first if enabled
+            if self._use_s3 and self.s3_storage:
+                try:
+                    # Load metadata from S3
+                    metadata_s3_key = self._get_metadata_s3_key(root_job_id)
+                    full_metadata_key = self.s3_storage._get_s3_key(metadata_s3_key)
+                    if await self.s3_storage.file_exists(full_metadata_key):
+                        content = await self.s3_storage.get_file_content(
+                            full_metadata_key
+                        )
+                        if content:
+                            metadata = json.loads(content.decode("utf-8"))
+
+                    # List all step files for this job
+                    search_prefix = f"{root_job_id}/context_"
+                    keys = await self.s3_storage.list_files(prefix=search_prefix)
+
+                    # Group by context directory
+                    context_files = {}
+                    for key in keys:
+                        if not key.endswith(".json") or key.endswith("metadata.json"):
+                            continue
+
+                        # Remove S3Storage prefix to get relative path
+                        relative_key = key
+                        if self.s3_storage.prefix and key.startswith(
+                            self.s3_storage.prefix
+                        ):
+                            relative_key = key[len(self.s3_storage.prefix) :]
+
+                        # Extract context_id from key: {root_job_id}/context_{id}/{filename}
+                        if "/context_" in relative_key:
+                            parts = relative_key.split("/context_")
+                            if len(parts) > 1:
+                                context_id_part = parts[1]  # {id}/{filename}
+                                context_parts = context_id_part.split("/")
+                                if len(context_parts) >= 2:
+                                    context_id = context_parts[0]
+                                    filename = context_parts[1]
+                                    if context_id not in context_files:
+                                        context_files[context_id] = []
+                                    context_files[context_id].append(
+                                        (relative_key, filename)
+                                    )
+
+                    # Load all steps from all contexts
+                    for context_id in sorted(
+                        context_files.keys(),
+                        key=lambda x: int(x) if x.isdigit() else -1,
+                    ):
+                        for relative_key, filename in sorted(context_files[context_id]):
+                            try:
+                                full_s3_key = self.s3_storage._get_s3_key(relative_key)
+                                content = await self.s3_storage.get_file_content(
+                                    full_s3_key
+                                )
+                                if content:
+                                    step_data = json.loads(content.decode("utf-8"))
+                                    steps.append(
+                                        {
+                                            "job_id": step_data.get("job_id", job_id),
+                                            "root_job_id": step_data.get(
+                                                "root_job_id", root_job_id
+                                            ),
+                                            "execution_context_id": step_data.get(
+                                                "execution_context_id", context_id
+                                            ),
+                                            "filename": filename,
+                                            "step_number": step_data.get("step_number"),
+                                            "step_name": step_data.get("step_name"),
+                                            "timestamp": step_data.get("timestamp"),
+                                            "has_result": "result" in step_data,
+                                            "file_size": len(content),
+                                            "execution_time": step_data.get(
+                                                "metadata", {}
+                                            ).get("execution_time"),
+                                            "tokens_used": step_data.get(
+                                                "metadata", {}
+                                            ).get("tokens_used"),
+                                            "status": step_data.get("metadata", {}).get(
+                                                "status", "success"
+                                            ),
+                                            "error_message": step_data.get(
+                                                "metadata", {}
+                                            ).get("error_message"),
+                                        }
+                                    )
+                            except Exception as e:
+                                logger.warning(
+                                    f"Failed to load step from S3 {s3_key}: {e}"
+                                )
+
+                    if steps:
+                        logger.info(
+                            f"Loaded {len(steps)} steps from S3 for root job {root_job_id}"
+                        )
+                except Exception as e:
+                    logger.warning(f"Error loading from S3, trying local: {e}")
+
+            root_job_dir = self._get_job_dir(root_job_id)
+
+            if root_job_dir.exists() and not steps:
                 # Load metadata from file
                 metadata_path = root_job_dir / "metadata.json"
-                if metadata_path.exists():
+                if metadata_path.exists() and not metadata:
                     with open(metadata_path, "r", encoding="utf-8") as f:
                         metadata = json.load(f)
 
@@ -665,15 +873,70 @@ class StepResultManager:
                 else:
                     root_job_id = job.metadata.get("original_job_id")
 
+            # Try S3 first if enabled
+            if self._use_s3 and self.s3_storage:
+                try:
+                    if execution_context_id:
+                        # Search in specific context
+                        s3_key = self._get_s3_key(
+                            root_job_id, execution_context_id, step_filename
+                        )
+                        full_s3_key = self.s3_storage._get_s3_key(s3_key)
+                        if await self.s3_storage.file_exists(full_s3_key):
+                            content = await self.s3_storage.get_file_content(
+                                full_s3_key
+                            )
+                            if content:
+                                return json.loads(content.decode("utf-8"))
+                    else:
+                        # Search all contexts (list and find most recent)
+                        search_prefix = f"{root_job_id}/context_"
+                        keys = await self.s3_storage.list_files(prefix=search_prefix)
+                        # Filter for this step filename and sort by context ID
+                        matching_keys = []
+                        for key in keys:
+                            # Remove S3Storage prefix
+                            relative_key = key
+                            if self.s3_storage.prefix and key.startswith(
+                                self.s3_storage.prefix
+                            ):
+                                relative_key = key[len(self.s3_storage.prefix) :]
+                            if relative_key.endswith(f"/{step_filename}"):
+                                matching_keys.append(relative_key)
+
+                        if matching_keys:
+                            # Sort by context ID (most recent first)
+                            matching_keys.sort(
+                                key=lambda k: (
+                                    int(k.split("/context_")[1].split("/")[0])
+                                    if "/context_" in k
+                                    and k.split("/context_")[1].split("/")[0].isdigit()
+                                    else -1
+                                ),
+                                reverse=True,
+                            )
+                            full_s3_key = self.s3_storage._get_s3_key(matching_keys[0])
+                            content = await self.s3_storage.get_file_content(
+                                full_s3_key
+                            )
+                            if content:
+                                return json.loads(content.decode("utf-8"))
+                except Exception as e:
+                    logger.warning(f"Error loading from S3, trying local: {e}")
+
             root_job_dir = self._get_job_dir(root_job_id)
 
             # Try context directories first (new structure)
-            context_dirs = sorted(
-                [
-                    d
-                    for d in root_job_dir.iterdir()
-                    if d.is_dir() and d.name.startswith("context_")
-                ]
+            context_dirs = (
+                sorted(
+                    [
+                        d
+                        for d in root_job_dir.iterdir()
+                        if d.is_dir() and d.name.startswith("context_")
+                    ]
+                )
+                if root_job_dir.exists()
+                else []
             )
 
             if context_dirs:
@@ -752,18 +1015,62 @@ class StepResultManager:
                 else:
                     root_job_id = job.metadata.get("original_job_id")
 
-            root_job_dir = self._get_job_dir(root_job_id)
-
             # Normalize step name for matching
             normalized_step_name = step_name.lower().replace(" ", "_").replace("-", "_")
 
+            # Try S3 first if enabled
+            if self._use_s3 and self.s3_storage:
+                try:
+                    search_prefix = f"{root_job_id}/context_"
+                    keys = await self.s3_storage.list_files(prefix=search_prefix)
+
+                    # Filter by execution context if specified and load each file
+                    for key in keys:
+                        if not key.endswith(".json"):
+                            continue
+
+                        # Remove S3Storage prefix
+                        relative_key = key
+                        if self.s3_storage.prefix and key.startswith(
+                            self.s3_storage.prefix
+                        ):
+                            relative_key = key[len(self.s3_storage.prefix) :]
+
+                        # Filter by execution context if specified
+                        if (
+                            execution_context_id
+                            and f"/context_{execution_context_id}/" not in relative_key
+                        ):
+                            continue
+
+                        full_s3_key = self.s3_storage._get_s3_key(relative_key)
+                        content = await self.s3_storage.get_file_content(full_s3_key)
+                        if content:
+                            step_data = json.loads(content.decode("utf-8"))
+                            if (
+                                step_data.get("step_name", "")
+                                .lower()
+                                .replace(" ", "_")
+                                .replace("-", "_")
+                                == normalized_step_name
+                            ):
+                                return step_data
+                except Exception as e:
+                    logger.warning(f"Error loading from S3, trying local: {e}")
+
+            root_job_dir = self._get_job_dir(root_job_id)
+
             # Try context directories first (new structure)
-            context_dirs = sorted(
-                [
-                    d
-                    for d in root_job_dir.iterdir()
-                    if d.is_dir() and d.name.startswith("context_")
-                ]
+            context_dirs = (
+                sorted(
+                    [
+                        d
+                        for d in root_job_dir.iterdir()
+                        if d.is_dir() and d.name.startswith("context_")
+                    ]
+                )
+                if root_job_dir.exists()
+                else []
             )
 
             if context_dirs:
@@ -931,43 +1238,139 @@ class StepResultManager:
         """
         try:
             jobs = []
+            job_ids_seen = set()
 
-            for job_dir in sorted(
-                self.base_dir.iterdir(), key=lambda x: x.stat().st_mtime, reverse=True
-            ):
-                if not job_dir.is_dir():
-                    continue
+            # Try S3 first if enabled
+            if self._use_s3 and self.s3_storage:
+                try:
+                    # List all keys with prefix
+                    keys = await self.s3_storage.list_files(prefix="")
+                    # Extract unique job IDs from keys
+                    job_metadata_map = {}
+                    job_step_counts = {}
 
-                job_id = job_dir.name
+                    for key in keys:
+                        # Remove S3Storage prefix to get relative path
+                        relative_key = key
+                        if self.s3_storage.prefix and key.startswith(
+                            self.s3_storage.prefix
+                        ):
+                            relative_key = key[len(self.s3_storage.prefix) :]
 
-                # Load metadata
-                metadata_path = job_dir / "metadata.json"
-                metadata = {}
-                if metadata_path.exists():
-                    with open(metadata_path, "r", encoding="utf-8") as f:
-                        metadata = json.load(f)
+                        # Format: {job_id}/metadata.json or {job_id}/context_{id}/{filename}
+                        parts = relative_key.split("/")
+                        if parts:
+                            job_id = parts[0]
 
-                # Count steps
-                step_count = len(
-                    [f for f in job_dir.glob("*.json") if f.name != "metadata.json"]
-                )
+                            # Track metadata files
+                            if relative_key.endswith("metadata.json"):
+                                if job_id not in job_metadata_map:
+                                    job_metadata_map[job_id] = relative_key
 
-                jobs.append(
-                    {
-                        "job_id": job_id,
-                        "content_type": metadata.get("content_type"),
-                        "content_id": metadata.get("content_id"),
-                        "started_at": metadata.get("started_at"),
-                        "completed_at": metadata.get("completed_at"),
-                        "step_count": step_count,
-                        "created_at": metadata.get("created_at"),
-                    }
-                )
+                            # Count step files (all .json files except metadata.json)
+                            if relative_key.endswith(
+                                ".json"
+                            ) and not relative_key.endswith("metadata.json"):
+                                if job_id not in job_step_counts:
+                                    job_step_counts[job_id] = 0
+                                job_step_counts[job_id] += 1
 
-                if limit and len(jobs) >= limit:
-                    break
+                    # Load metadata and create job entries
+                    for job_id in set(
+                        list(job_metadata_map.keys()) + list(job_step_counts.keys())
+                    ):
+                        if job_id in job_ids_seen:
+                            continue
+                        job_ids_seen.add(job_id)
 
-            return jobs
+                        # Load metadata
+                        metadata = {}
+                        if job_id in job_metadata_map:
+                            full_metadata_key = self.s3_storage._get_s3_key(
+                                job_metadata_map[job_id]
+                            )
+                            content = await self.s3_storage.get_file_content(
+                                full_metadata_key
+                            )
+                            if content:
+                                metadata = json.loads(content.decode("utf-8"))
+
+                        step_count = job_step_counts.get(job_id, 0)
+
+                        jobs.append(
+                            {
+                                "job_id": job_id,
+                                "content_type": metadata.get("content_type"),
+                                "content_id": metadata.get("content_id"),
+                                "started_at": metadata.get("started_at"),
+                                "completed_at": metadata.get("completed_at"),
+                                "step_count": step_count,
+                                "created_at": metadata.get("created_at"),
+                            }
+                        )
+
+                        if limit and len(jobs) >= limit:
+                            break
+                except Exception as e:
+                    logger.warning(f"Error listing jobs from S3, trying local: {e}")
+
+            # Also check local filesystem
+            if self.base_dir.exists():
+                for job_dir in sorted(
+                    self.base_dir.iterdir(),
+                    key=lambda x: x.stat().st_mtime,
+                    reverse=True,
+                ):
+                    if not job_dir.is_dir():
+                        continue
+
+                    job_id = job_dir.name
+                    if job_id in job_ids_seen:
+                        continue  # Already loaded from S3
+                    job_ids_seen.add(job_id)
+
+                    # Load metadata
+                    metadata_path = job_dir / "metadata.json"
+                    metadata = {}
+                    if metadata_path.exists():
+                        with open(metadata_path, "r", encoding="utf-8") as f:
+                            metadata = json.load(f)
+
+                    # Count steps
+                    step_count = len(
+                        [f for f in job_dir.glob("*.json") if f.name != "metadata.json"]
+                    )
+                    # Also count steps in context directories
+                    context_dirs = [
+                        d
+                        for d in job_dir.iterdir()
+                        if d.is_dir() and d.name.startswith("context_")
+                    ]
+                    for context_dir in context_dirs:
+                        step_count += len([f for f in context_dir.glob("*.json")])
+
+                    jobs.append(
+                        {
+                            "job_id": job_id,
+                            "content_type": metadata.get("content_type"),
+                            "content_id": metadata.get("content_id"),
+                            "started_at": metadata.get("started_at"),
+                            "completed_at": metadata.get("completed_at"),
+                            "step_count": step_count,
+                            "created_at": metadata.get("created_at"),
+                        }
+                    )
+
+                    if limit and len(jobs) >= limit:
+                        break
+
+            # Sort by created_at or started_at (most recent first)
+            jobs.sort(
+                key=lambda x: x.get("created_at") or x.get("started_at") or "",
+                reverse=True,
+            )
+
+            return jobs[:limit] if limit else jobs
 
         except Exception as e:
             logger.error(f"Failed to list jobs: {e}")
@@ -1304,20 +1707,57 @@ class StepResultManager:
             True if successful
         """
         try:
+            deleted_any = False
+
+            # Delete from S3 if enabled
+            if self._use_s3 and self.s3_storage:
+                try:
+                    # List all keys for this job
+                    search_prefix = f"{job_id}/"
+                    keys = await self.s3_storage.list_files(prefix=search_prefix)
+
+                    # Delete all keys
+                    deleted_count = 0
+                    for key in keys:
+                        # Key already includes S3Storage prefix from list_files
+                        # But delete_file expects the full key, so use as-is
+                        if await self.s3_storage.delete_file(key):
+                            deleted_count += 1
+                            deleted_any = True
+
+                    if deleted_count > 0:
+                        logger.info(
+                            f"Deleted {deleted_count} files from S3 for job {job_id}"
+                        )
+                except Exception as e:
+                    logger.warning(f"Error deleting from S3, trying local: {e}")
+
+            # Also delete from local filesystem
             job_dir = self._get_job_dir(job_id)
+            if job_dir.exists():
+                # Delete all files in the directory
+                for file_path in job_dir.iterdir():
+                    if file_path.is_file():
+                        file_path.unlink()
+                        deleted_any = True
+                    elif file_path.is_dir():
+                        # Delete files in subdirectories
+                        for sub_file in file_path.rglob("*"):
+                            if sub_file.is_file():
+                                sub_file.unlink()
+                                deleted_any = True
+                        # Remove subdirectory
+                        file_path.rmdir()
 
-            if not job_dir.exists():
-                return False
+                # Remove the directory
+                try:
+                    job_dir.rmdir()
+                except OSError:
+                    pass  # Directory might not be empty yet
 
-            # Delete all files in the directory
-            for file_path in job_dir.iterdir():
-                file_path.unlink()
-
-            # Remove the directory
-            job_dir.rmdir()
-
-            logger.info(f"Cleaned up results for job {job_id}")
-            return True
+            if deleted_any:
+                logger.info(f"Cleaned up results for job {job_id}")
+            return deleted_any
 
         except Exception as e:
             logger.error(f"Failed to cleanup job {job_id}: {e}")
@@ -1388,6 +1828,162 @@ class StepResultManager:
                 f"Failed to determine execution context: {e}, defaulting to 0"
             )
             return "0"
+
+    async def get_full_context_history(self, job_id: str) -> Dict[str, Any]:
+        """
+        Get full context history for a job from the context registry.
+
+        This method retrieves all step outputs with their input snapshots and
+        context keys used, preserving complete history for debugging and audit.
+
+        Args:
+            job_id: Job identifier
+
+        Returns:
+            Dictionary with full context history organized by execution context
+        """
+        try:
+            from marketing_project.services.context_registry import get_context_registry
+
+            context_registry = get_context_registry()
+            history = await context_registry.get_full_history(job_id)
+            return history
+        except Exception as e:
+            logger.warning(f"Failed to get full context history for {job_id}: {e}")
+            # Fallback to empty history
+            return {}
+
+    async def get_pipeline_flow(self, job_id: str) -> Dict[str, Any]:
+        """
+        Get complete pipeline flow visualization data.
+
+        Builds a structured flow showing:
+        - Original input content
+        - Each step with its input snapshot and output
+        - Final output
+        - Execution summary
+
+        Args:
+            job_id: Job identifier
+
+        Returns:
+            Dictionary with pipeline flow data structured for visualization
+        """
+        try:
+            from marketing_project.services.job_manager import get_job_manager
+
+            job_manager = get_job_manager()
+            job = await job_manager.get_job(job_id)
+
+            if not job:
+                raise FileNotFoundError(f"Job {job_id} not found")
+
+            # Get input content from job metadata
+            input_content = job.metadata.get("input_content", {})
+
+            # Get all step results
+            job_results = await self.get_job_results(job_id)
+            steps = job_results.get("steps", [])
+
+            # Sort steps by step_number
+            steps_sorted = sorted(steps, key=lambda x: x.get("step_number", 0) or 0)
+
+            # Build step input/output list
+            step_flow = []
+            for step in steps_sorted:
+                step_name = step.get("step_name")
+                step_number = step.get("step_number")
+                if not step_name:
+                    continue
+
+                try:
+                    # Get full step result
+                    step_result = await self.get_step_result_by_name(job_id, step_name)
+
+                    # Extract input snapshot (with fallback to empty dict)
+                    input_snapshot = step_result.get("input_snapshot", {})
+
+                    # Extract output
+                    output = step_result.get("result", {})
+
+                    # Extract execution metadata
+                    metadata = step_result.get("metadata", {})
+                    execution_metadata = {
+                        "execution_time": metadata.get("execution_time"),
+                        "tokens_used": metadata.get("tokens_used"),
+                        "status": metadata.get("status", "success"),
+                        "error_message": metadata.get("error_message"),
+                    }
+
+                    # Get context keys used
+                    context_keys_used = step_result.get("context_keys_used", [])
+
+                    step_flow.append(
+                        {
+                            "step_name": step_name,
+                            "step_number": step_number,
+                            "input_snapshot": input_snapshot,
+                            "output": output,
+                            "context_keys_used": context_keys_used,
+                            "execution_metadata": execution_metadata,
+                        }
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to get step result for {step_name} in job {job_id}: {e}"
+                    )
+                    # Add step with minimal info if we can't load full result
+                    step_flow.append(
+                        {
+                            "step_name": step_name,
+                            "step_number": step_number,
+                            "input_snapshot": {},
+                            "output": {},
+                            "context_keys_used": [],
+                            "execution_metadata": {
+                                "status": step.get("status", "unknown"),
+                                "error_message": str(e),
+                            },
+                        }
+                    )
+
+            # Get final output from job result
+            final_output = {}
+            if job.result and isinstance(job.result, dict):
+                # Try to get final_content from various locations
+                final_output = (
+                    job.result.get("final_content")
+                    or job.result.get("result", {}).get("final_content")
+                    or {}
+                )
+                # If final_content is a string, wrap it
+                if isinstance(final_output, str):
+                    final_output = {"content": final_output}
+
+            # Build execution summary
+            performance_metrics = job_results.get("performance_metrics", {})
+            execution_summary = {
+                "total_execution_time_seconds": performance_metrics.get(
+                    "execution_time_seconds"
+                ),
+                "total_tokens_used": performance_metrics.get("total_tokens_used"),
+                "total_steps": len(step_flow),
+                "quality_warnings": job_results.get("quality_warnings", []),
+            }
+
+            return {
+                "job_id": job_id,
+                "input_content": input_content,
+                "steps": step_flow,
+                "final_output": final_output,
+                "execution_summary": execution_summary,
+            }
+
+        except FileNotFoundError:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to get pipeline flow for {job_id}: {e}")
+            raise
 
 
 # Global instance

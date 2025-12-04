@@ -6,12 +6,16 @@ from blog posts. It has 4 steps: SEO Keywords, Marketing Brief, Angle & Hook, Po
 """
 
 import asyncio
+import copy
 import json
 import logging
+import os
 import time
 from datetime import date, datetime
-from typing import Any, Dict, Optional
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
+import yaml
 from openai import AsyncOpenAI
 
 
@@ -24,7 +28,9 @@ def _json_serializer(obj: Any) -> Any:
 
 from marketing_project.models.pipeline_steps import (
     AngleHookResult,
+    PipelineConfig,
     PipelineResult,
+    PipelineStepConfig,
     PipelineStepInfo,
     SEOKeywordsResult,
     SocialMediaMarketingBriefResult,
@@ -59,27 +65,242 @@ class SocialMediaPipeline:
     """
 
     def __init__(
-        self, model: str = "gpt-5.1", temperature: float = 0.7, lang: str = "en"
+        self,
+        model: Optional[str] = None,
+        temperature: Optional[float] = None,
+        lang: str = "en",
+        pipeline_config: Optional[PipelineConfig] = None,
     ):
         """
         Initialize the social media pipeline.
 
         Args:
-            model: OpenAI model to use (default: gpt-5.1)
-            temperature: Sampling temperature (default: 0.7)
+            model: OpenAI model to use (deprecated: use pipeline_config instead)
+            temperature: Sampling temperature (deprecated: use pipeline_config instead)
             lang: Language for prompts (default: "en")
+            pipeline_config: Optional PipelineConfig for per-step model configuration
         """
         self.client = AsyncOpenAI()
-        self.model = model
-        self.temperature = temperature
         self.lang = lang
         self.step_info: list[PipelineStepInfo] = []
+        self._platform_config: Optional[Dict[str, Any]] = None
+
+        # Support both old-style (model, temperature) and new-style (pipeline_config)
+        if pipeline_config:
+            self.pipeline_config = pipeline_config
+            self.model = pipeline_config.default_model
+            self.temperature = pipeline_config.default_temperature
+        else:
+            # Use provided values or defaults (but note: models should be configured in settings)
+            self.model = model or "gpt-5.1"
+            self.temperature = temperature if temperature is not None else 0.7
+            self.pipeline_config = PipelineConfig(
+                default_model=self.model,
+                default_temperature=self.temperature,
+                default_max_retries=2,
+                step_configs={},
+            )
+
+    def _load_platform_config(self) -> Dict[str, Any]:
+        """
+        Load platform configuration from YAML file.
+
+        Returns:
+            Platform configuration dictionary
+        """
+        if self._platform_config is not None:
+            return self._platform_config
+
+        try:
+            base_dir = Path(__file__).parent.parent.parent
+            config_file = base_dir / "config" / "platform_config.yml"
+
+            if not config_file.exists():
+                logger.warning(
+                    f"Platform config file not found: {config_file}. Using defaults."
+                )
+                self._platform_config = {}
+                return self._platform_config
+
+            with open(config_file, "r") as f:
+                self._platform_config = yaml.safe_load(f) or {}
+
+            logger.debug(f"Loaded platform config from {config_file}")
+            return self._platform_config
+        except Exception as e:
+            logger.warning(f"Failed to load platform config: {e}. Using defaults.")
+            self._platform_config = {}
+            return self._platform_config
+
+    def _get_platform_config(self, platform: str) -> Dict[str, Any]:
+        """
+        Get configuration for a specific platform.
+
+        Args:
+            platform: Platform name (linkedin, hackernews, email)
+
+        Returns:
+            Platform-specific configuration
+        """
+        config = self._load_platform_config()
+        platforms = config.get("platforms", {})
+        return platforms.get(platform, {})
+
+    def _validate_content_length(
+        self, content: str, platform: str, email_type: Optional[str] = None
+    ) -> tuple[bool, Optional[str]]:
+        """
+        Validate content length against platform limits.
+
+        Args:
+            content: Content to validate
+            platform: Platform name
+            email_type: Email type if platform is email
+
+        Returns:
+            Tuple of (is_valid, warning_message)
+        """
+        platform_config = self._get_platform_config(platform)
+        if not platform_config:
+            return True, None
+
+        # Handle email type-specific limits
+        if platform == "email" and email_type:
+            email_types = platform_config.get("types", {})
+            type_config = email_types.get(email_type, {})
+            limit = type_config.get("character_limit") or platform_config.get(
+                "character_limit", 5000
+            )
+            warning_threshold = type_config.get("character_limit_warning") or limit
+        else:
+            limit = platform_config.get("character_limit", 3000)
+            warning_threshold = platform_config.get("character_limit_warning", limit)
+
+        content_length = len(content)
+        if content_length > limit:
+            return (
+                False,
+                f"Content exceeds {platform} limit of {limit} characters ({content_length} chars)",
+            )
+        elif content_length > warning_threshold:
+            return (
+                True,
+                f"Content is approaching {platform} limit ({content_length}/{limit} chars)",
+            )
+
+        return True, None
+
+    def _assess_platform_quality(
+        self, result: SocialMediaPostResult, platform: str
+    ) -> Dict[str, Optional[float]]:
+        """
+        Assess platform-specific quality scores from result.
+
+        Args:
+            result: SocialMediaPostResult with quality scores
+            platform: Platform name
+
+        Returns:
+            Dictionary with platform-specific quality scores
+        """
+        scores = {}
+        platform_config = self._get_platform_config(platform)
+
+        if platform == "linkedin":
+            scores["linkedin_score"] = result.linkedin_score
+        elif platform == "hackernews":
+            scores["hackernews_score"] = result.hackernews_score
+        elif platform == "email":
+            scores["email_score"] = result.email_score
+
+        # Log quality assessment
+        if platform_config:
+            quality_metrics = platform_config.get("quality_metrics", {})
+            if quality_metrics:
+                logger.debug(
+                    f"Platform quality metrics weights for {platform}: {quality_metrics}"
+                )
+
+        return scores
+
+    async def _generate_variations(
+        self,
+        pipeline_context: Dict[str, Any],
+        base_result: SocialMediaPostResult,
+        num_variations: int,
+        job_id: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Generate variations of a post with different approaches/temperatures.
+
+        Args:
+            pipeline_context: Pipeline context with angle/hook and brief
+            base_result: Base post result to generate variations from
+            num_variations: Number of variations to generate (1-2)
+            job_id: Optional job ID for tracking
+
+        Returns:
+            List of variation dictionaries
+        """
+        variations = []
+        platform = pipeline_context.get("social_media_platform", "linkedin")
+
+        # Different temperature settings for variations
+        variation_temperatures = [
+            0.8,
+            0.9,
+        ]  # Slightly higher temperatures for more creativity
+
+        for i in range(num_variations):
+            logger.info(f"Generating variation {i + 1}/{num_variations}")
+
+            # Use different temperature for variation
+            original_temperature = self.temperature
+            self.temperature = variation_temperatures[i % len(variation_temperatures)]
+
+            try:
+                # Re-execute post generation with different temperature
+                post_plugin = SocialMediaPostGenerationPlugin()
+                variation_result = await post_plugin.execute(
+                    pipeline_context, self, job_id
+                )
+
+                variation_dict = {
+                    "variation_id": f"variation_{i + 1}",
+                    "content": variation_result.content,
+                    "subject_line": variation_result.subject_line,
+                    "hashtags": variation_result.hashtags,
+                    "call_to_action": variation_result.call_to_action,
+                    "confidence_score": variation_result.confidence_score,
+                    "engagement_score": variation_result.engagement_score,
+                    "temperature_used": self.temperature,
+                }
+
+                # Add platform-specific scores
+                if platform == "linkedin" and variation_result.linkedin_score:
+                    variation_dict["linkedin_score"] = variation_result.linkedin_score
+                elif platform == "hackernews" and variation_result.hackernews_score:
+                    variation_dict["hackernews_score"] = (
+                        variation_result.hackernews_score
+                    )
+                elif platform == "email" and variation_result.email_score:
+                    variation_dict["email_score"] = variation_result.email_score
+
+                variations.append(variation_dict)
+            except Exception as e:
+                logger.warning(f"Failed to generate variation {i + 1}: {e}")
+            finally:
+                # Restore original temperature
+                self.temperature = original_temperature
+
+        return variations
 
     def _get_system_instruction(
         self, agent_name: str, context: Optional[Dict] = None
     ) -> str:
         """
         Load system instruction from .j2 template.
+        Supports platform-specific templates for social media agents.
 
         Args:
             agent_name: Name of the agent (e.g., "social_media_marketing_brief")
@@ -88,7 +309,20 @@ class SocialMediaPipeline:
         Returns:
             Complete system instruction
         """
+        # Check for platform-specific template first
+        platform = None
+        if context:
+            platform = context.get("social_media_platform") or context.get("platform")
+
+        # Try platform-specific template if platform is specified and agent is social media related
         template_name = f"{agent_name}_agent_instructions"
+        if platform and agent_name.startswith("social_media"):
+            platform_template_name = f"{agent_name}_{platform}_agent_instructions"
+            if has_template(self.lang, platform_template_name):
+                template_name = platform_template_name
+                logger.debug(
+                    f"Using platform-specific template: {platform_template_name}"
+                )
 
         if has_template(self.lang, template_name):
             try:
@@ -183,6 +417,105 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
         # Fallback prompt
         return f"Process the content for {step_name.replace('_', ' ')} step."
 
+    def _get_step_model(self, step_name: str) -> str:
+        """
+        Get model for a specific step from pipeline config.
+
+        Args:
+            step_name: Name of the step
+
+        Returns:
+            Model name to use for this step
+        """
+        return self.pipeline_config.get_step_model(step_name)
+
+    def _get_step_temperature(self, step_name: str) -> float:
+        """
+        Get temperature for a specific step from pipeline config.
+
+        Args:
+            step_name: Name of the step
+
+        Returns:
+            Temperature to use for this step
+        """
+        return self.pipeline_config.get_step_temperature(step_name)
+
+    def _fix_schema_additional_properties(
+        self, schema: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Recursively fix JSON schema to add additionalProperties: false to all object types.
+
+        OpenAI's structured outputs require that all object types in the schema
+        explicitly set additionalProperties: false for strict mode.
+
+        Args:
+            schema: JSON schema dictionary
+
+        Returns:
+            Fixed schema with additionalProperties set to false for all objects
+        """
+        if not isinstance(schema, dict):
+            return schema
+
+        # Create a copy to avoid modifying the original
+        fixed_schema = copy.deepcopy(schema)
+
+        # If this is an object type, ensure additionalProperties is set
+        if fixed_schema.get("type") == "object":
+            if "additionalProperties" not in fixed_schema:
+                fixed_schema["additionalProperties"] = False
+
+        # Recursively fix properties
+        if "properties" in fixed_schema:
+            for prop_name, prop_schema in fixed_schema["properties"].items():
+                fixed_schema["properties"][prop_name] = (
+                    self._fix_schema_additional_properties(prop_schema)
+                )
+
+        # Fix anyOf schemas (for Optional types)
+        if "anyOf" in fixed_schema:
+            fixed_schema["anyOf"] = [
+                self._fix_schema_additional_properties(sub_schema)
+                for sub_schema in fixed_schema["anyOf"]
+            ]
+
+        # Fix oneOf schemas
+        if "oneOf" in fixed_schema:
+            fixed_schema["oneOf"] = [
+                self._fix_schema_additional_properties(sub_schema)
+                for sub_schema in fixed_schema["oneOf"]
+            ]
+
+        # Fix allOf schemas
+        if "allOf" in fixed_schema:
+            fixed_schema["allOf"] = [
+                self._fix_schema_additional_properties(sub_schema)
+                for sub_schema in fixed_schema["allOf"]
+            ]
+
+        # Fix items in arrays
+        if "items" in fixed_schema:
+            fixed_schema["items"] = self._fix_schema_additional_properties(
+                fixed_schema["items"]
+            )
+
+        # Fix definitions/defs (for referenced schemas)
+        if "definitions" in fixed_schema:
+            for def_name, def_schema in fixed_schema["definitions"].items():
+                fixed_schema["definitions"][def_name] = (
+                    self._fix_schema_additional_properties(def_schema)
+                )
+
+        if "$defs" in fixed_schema:
+            for def_name, def_schema in fixed_schema["$defs"].items():
+                fixed_schema["$defs"][def_name] = (
+                    self._fix_schema_additional_properties(def_schema)
+                )
+
+        return fixed_schema
+
     async def _call_function(
         self,
         prompt: str,
@@ -197,6 +530,7 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
         Call OpenAI API with structured output.
 
         Integrates with approval system for human-in-the-loop review when enabled.
+        Uses model and temperature from pipeline_config for this step.
 
         Args:
             prompt: User prompt
@@ -220,6 +554,10 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
 
         start_time = time.time()
 
+        # Get step-specific model and temperature from pipeline config
+        step_model = self._get_step_model(step_name)
+        step_temperature = self._get_step_temperature(step_name)
+
         messages = [
             {"role": "system", "content": system_instruction},
             {"role": "user", "content": prompt},
@@ -230,20 +568,47 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
             context_msg = f"\n\n### Context from Previous Steps:\n```json\n{json.dumps(context, indent=2, default=_json_serializer)}\n```"
             messages[-1]["content"] += context_msg
 
+        # Add trend context for post generation step
+        if step_name == "social_media_post_generation":
+            try:
+                from marketing_project.services.trend_integration import (
+                    get_trend_service,
+                )
+
+                platform = context.get("social_media_platform", "linkedin")
+                trend_service = get_trend_service()
+                trending_hashtags = await trend_service.get_trending_hashtags(
+                    platform, limit=5
+                )
+                if trending_hashtags:
+                    trend_context = trend_service.get_trend_context_for_prompt(
+                        platform, trending_hashtags
+                    )
+                    messages[-1]["content"] += trend_context
+            except Exception as e:
+                logger.debug(f"Failed to add trend context to prompt: {e}")
+
         try:
-            # Call OpenAI API with structured output
-            response = await self.client.beta.chat.completions.create(
-                model=self.model,
+            # Generate JSON schema and fix additionalProperties for OpenAI compatibility
+            schema = response_model.model_json_schema()
+            schema = self._fix_schema_additional_properties(schema)
+
+            # Call OpenAI API with structured output using step-specific model
+            logger.debug(
+                f"Calling {step_model} for step {step_name} with temperature {step_temperature}"
+            )
+            response = await self.client.chat.completions.create(
+                model=step_model,
                 messages=messages,
                 response_format={
                     "type": "json_schema",
                     "json_schema": {
                         "name": step_name,
                         "strict": True,
-                        "schema": response_model.model_json_schema(),
+                        "schema": schema,
                     },
                 },
-                temperature=self.temperature,
+                temperature=step_temperature,
             )
 
             # Parse response
@@ -421,6 +786,13 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                     get_step_result_manager,
                 )
 
+                # Capture input snapshot and context keys used
+                input_snapshot = None
+                context_keys_used = []
+                if pipeline_context:
+                    input_snapshot = copy.deepcopy(pipeline_context)
+                    context_keys_used = list(pipeline_context.keys())
+
                 step_manager = get_step_result_manager()
                 await step_manager.save_step_result(
                     job_id=job_id,
@@ -437,6 +809,8 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                     },
                     execution_context_id=None,
                     root_job_id=None,
+                    input_snapshot=input_snapshot,
+                    context_keys_used=context_keys_used,
                 )
             except Exception as e:
                 logger.warning(
@@ -452,6 +826,8 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
         content_type: str = "blog_post",
         social_media_platform: str = "linkedin",
         email_type: Optional[str] = None,
+        generate_variations: int = 1,
+        pipeline_config: Optional[PipelineConfig] = None,
     ) -> Dict[str, Any]:
         """
         Execute the complete 4-step social media pipeline.
@@ -462,10 +838,17 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
             content_type: Type of content being processed (default: blog_post)
             social_media_platform: Platform (linkedin, hackernews, or email)
             email_type: Email type if platform is email (newsletter or promotional)
+            generate_variations: Number of variations to generate (1-3, default: 1)
+            pipeline_config: Optional PipelineConfig for per-step model configuration
 
         Returns:
             Dictionary with complete pipeline results
         """
+        # Update pipeline config if provided
+        if pipeline_config:
+            self.pipeline_config = pipeline_config
+            self.model = pipeline_config.default_model
+            self.temperature = pipeline_config.default_temperature
         pipeline_start = time.time()
         logger.info("=" * 80)
         logger.info(
@@ -520,6 +903,17 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
             "email_type": email_type,
         }
 
+        # Initialize context registry for this job if job_id is provided
+        context_registry = None
+        if job_id:
+            try:
+                from marketing_project.services.context_registry import ContextRegistry
+
+                context_registry = ContextRegistry()
+                logger.debug(f"Initialized context registry for job {job_id}")
+            except Exception as e:
+                logger.warning(f"Failed to initialize context registry: {e}")
+
         results = {}
         quality_warnings = []
 
@@ -535,6 +929,15 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
             # Execute each step
             for plugin in plugins:
                 logger.info(f"Executing step {plugin.step_number}: {plugin.step_name}")
+
+                # Set plugin model config from pipeline config
+                step_config = self.pipeline_config.get_step_config(plugin.step_name)
+                plugin.model_config = PipelineStepConfig(
+                    step_name=plugin.step_name,
+                    model=step_config.model,
+                    temperature=step_config.temperature,
+                    max_retries=step_config.max_retries,
+                )
 
                 # Update job progress
                 if job_id:
@@ -563,11 +966,32 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                     except Exception as e:
                         logger.warning(f"Failed to update job progress: {e}")
 
+                # Build optimized context for this step (reduce token usage)
+                try:
+                    from marketing_project.services.context_summarizer import (
+                        ContextSummarizer,
+                    )
+
+                    optimized_context = ContextSummarizer.build_optimized_context(
+                        full_context=pipeline_context,
+                        step_name=plugin.step_name,
+                        context_registry=context_registry,
+                        job_id=job_id,
+                    )
+                    logger.debug(
+                        f"Optimized context for {plugin.step_name}: {len(optimized_context)} keys (from {len(pipeline_context)} keys)"
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to optimize context for {plugin.step_name}: {e}. Using full context."
+                    )
+                    optimized_context = pipeline_context
+
                 # Check for approval requirements
                 try:
                     step_result = await self._execute_step_with_plugin(
                         plugin=plugin,
-                        pipeline_context=pipeline_context,
+                        pipeline_context=optimized_context,
                         job_id=job_id,
                     )
                 except Exception as e:
@@ -588,7 +1012,34 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                     results[plugin.step_name] = step_result.model_dump(mode="json")
                 except (TypeError, ValueError):
                     results[plugin.step_name] = step_result.model_dump()
+
+                # Add platform field to social_media_post_generation result
+                if plugin.step_name == "social_media_post_generation":
+                    results[plugin.step_name]["platform"] = social_media_platform
+
                 pipeline_context[plugin.step_name] = results[plugin.step_name]
+
+                # Register step output in context registry for efficient context passing
+                if job_id:
+                    try:
+                        from marketing_project.services.context_registry import (
+                            ContextRegistry,
+                        )
+
+                        context_registry = ContextRegistry()
+                        await context_registry.register_step_output(
+                            job_id=job_id,
+                            step_name=plugin.step_name,
+                            step_number=plugin.step_number,
+                            output_data=results[plugin.step_name],
+                        )
+                        logger.debug(
+                            f"Registered step output for {plugin.step_name} in context registry"
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to register step output in context registry: {e}"
+                        )
 
             # Compile final result
             pipeline_end = time.time()
@@ -605,13 +1056,66 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                 step.tokens_used for step in self.step_info if step.tokens_used
             )
 
-            # Get final post content
+            # Validate generate_variations parameter
+            generate_variations = max(
+                1, min(3, generate_variations)
+            )  # Clamp between 1 and 3
+            pipeline_context["generate_variations"] = generate_variations
+
+            # Get final post content and validate
             final_content = None
+            platform_quality_scores = {}
+            variations_list = []
             if "social_media_post_generation" in results:
                 post_result = SocialMediaPostResult(
                     **results["social_media_post_generation"]
                 )
                 final_content = post_result.content
+
+                # Generate variations if requested
+                if generate_variations > 1:
+                    logger.info(
+                        f"Generating {generate_variations} variations of the post"
+                    )
+                    variations_list = await self._generate_variations(
+                        pipeline_context=pipeline_context,
+                        base_result=post_result,
+                        num_variations=generate_variations
+                        - 1,  # -1 because we already have the base
+                        job_id=job_id,
+                    )
+                    # Add base result as first variation
+                    variations_list.insert(
+                        0,
+                        {
+                            "variation_id": "base",
+                            "content": post_result.content,
+                            "subject_line": post_result.subject_line,
+                            "hashtags": post_result.hashtags,
+                            "call_to_action": post_result.call_to_action,
+                            "confidence_score": post_result.confidence_score,
+                            "engagement_score": post_result.engagement_score,
+                        },
+                    )
+
+                # Validate content length against platform limits
+                is_valid, warning = self._validate_content_length(
+                    final_content, social_media_platform, email_type
+                )
+                if not is_valid:
+                    quality_warnings.append(warning)
+                    logger.warning(f"Content validation failed: {warning}")
+                elif warning:
+                    quality_warnings.append(warning)
+                    logger.info(f"Content validation warning: {warning}")
+
+                # Assess platform-specific quality scores
+                platform_quality_scores = self._assess_platform_quality(
+                    post_result, social_media_platform
+                )
+                logger.info(
+                    f"Platform quality scores for {social_media_platform}: {platform_quality_scores}"
+                )
 
             return {
                 "pipeline_status": (
@@ -620,6 +1124,7 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                 "step_results": results,
                 "quality_warnings": quality_warnings,
                 "final_content": final_content,
+                "variations": variations_list if variations_list else None,
                 "input_content": content,
                 "metadata": {
                     "job_id": job_id,
@@ -633,6 +1138,14 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                     "total_tokens_used": total_tokens,
                     "model": self.model,
                     "completed_at": datetime.utcnow().isoformat(),
+                    "platform_quality_scores": platform_quality_scores,
+                    "variations_generated": (
+                        len(variations_list) if variations_list else 0
+                    ),
+                    "context_optimization": {
+                        "enabled": context_registry is not None,
+                        "full_context_stored": context_registry is not None,
+                    },
                     "step_info": [
                         (
                             step.model_dump(mode="json")
@@ -753,3 +1266,184 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                     ],
                 },
             }
+
+    async def execute_multi_platform_pipeline(
+        self,
+        content_json: str,
+        platforms: list[str],
+        job_id: Optional[str] = None,
+        content_type: str = "blog_post",
+        email_type: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Execute pipeline for multiple platforms in parallel.
+        Shares SEO Keywords and Marketing Brief across platforms.
+
+        Args:
+            content_json: Input blog post content as JSON string
+            platforms: List of platforms (linkedin, hackernews, email)
+            job_id: Optional job ID for tracking
+            content_type: Type of content being processed (default: blog_post)
+            email_type: Email type if email is in platforms (newsletter or promotional)
+
+        Returns:
+            Dictionary with results for each platform
+        """
+        pipeline_start = time.time()
+        logger.info("=" * 80)
+        logger.info(
+            f"Starting Multi-Platform Social Media Pipeline (job_id: {job_id}, platforms: {platforms})"
+        )
+        logger.info("=" * 80)
+
+        # Validate platforms
+        valid_platforms = {"linkedin", "hackernews", "email"}
+        invalid_platforms = [p for p in platforms if p not in valid_platforms]
+        if invalid_platforms:
+            raise ValueError(f"Invalid platforms: {invalid_platforms}")
+
+        # Check max platforms limit
+        platform_config = self._load_platform_config()
+        max_platforms = platform_config.get("max_platforms_per_batch", 5)
+        if len(platforms) > max_platforms:
+            raise ValueError(
+                f"Maximum {max_platforms} platforms allowed per batch, got {len(platforms)}"
+            )
+
+        # Parse input content
+        try:
+            content = json.loads(content_json)
+        except json.JSONDecodeError as e:
+            logger.error(f"Invalid JSON input: {e}")
+            raise ValueError(f"Invalid JSON input: {e}")
+
+        # Execute SEO Keywords step once (shared across platforms)
+        logger.info("Executing shared SEO Keywords step...")
+        seo_plugin = SEOKeywordsPlugin()
+        seo_context = {
+            "input_content": content,
+            "content_type": content_type,
+        }
+        seo_result = await seo_plugin.execute(seo_context, self, job_id)
+        seo_result_dict = (
+            seo_result.model_dump(mode="json")
+            if hasattr(seo_result, "model_dump")
+            else seo_result.model_dump()
+        )
+
+        # Execute Marketing Brief step once (shared across platforms)
+        logger.info("Executing shared Marketing Brief step...")
+        brief_plugin = SocialMediaMarketingBriefPlugin()
+        brief_context = {
+            "input_content": content,
+            "content_type": content_type,
+            "seo_keywords": seo_result_dict,
+            "social_media_platform": platforms[0],  # Use first platform for brief
+        }
+        brief_result = await brief_plugin.execute(brief_context, self, job_id)
+        brief_result_dict = (
+            brief_result.model_dump(mode="json")
+            if hasattr(brief_result, "model_dump")
+            else brief_result.model_dump()
+        )
+
+        # Execute platform-specific steps in parallel
+        async def execute_platform_pipeline(
+            platform: str,
+        ) -> tuple[str, Dict[str, Any]]:
+            """Execute pipeline for a single platform."""
+            logger.info(f"Executing pipeline for platform: {platform}")
+
+            # Create platform-specific context
+            platform_context = {
+                "input_content": content,
+                "content_type": content_type,
+                "seo_keywords": seo_result_dict,
+                "social_media_marketing_brief": brief_result_dict,
+                "social_media_platform": platform,
+                "email_type": email_type if platform == "email" else None,
+            }
+
+            # Execute Angle & Hook step
+            angle_hook_plugin = SocialMediaAngleHookPlugin()
+            angle_hook_result = await angle_hook_plugin.execute(
+                platform_context, self, job_id
+            )
+            angle_hook_result_dict = (
+                angle_hook_result.model_dump(mode="json")
+                if hasattr(angle_hook_result, "model_dump")
+                else angle_hook_result.model_dump()
+            )
+            platform_context["social_media_angle_hook"] = angle_hook_result_dict
+
+            # Execute Post Generation step
+            post_plugin = SocialMediaPostGenerationPlugin()
+            post_result = await post_plugin.execute(platform_context, self, job_id)
+            post_result_dict = (
+                post_result.model_dump(mode="json")
+                if hasattr(post_result, "model_dump")
+                else post_result.model_dump()
+            )
+
+            # Validate content length
+            final_content = post_result_dict.get("content", "")
+            is_valid, warning = self._validate_content_length(
+                final_content, platform, email_type if platform == "email" else None
+            )
+
+            # Assess quality scores
+            platform_quality_scores = self._assess_platform_quality(
+                post_result, platform
+            )
+
+            return platform, {
+                "platform": platform,
+                "step_results": {
+                    "seo_keywords": seo_result_dict,
+                    "social_media_marketing_brief": brief_result_dict,
+                    "social_media_angle_hook": angle_hook_result_dict,
+                    "social_media_post_generation": post_result_dict,
+                },
+                "final_content": final_content,
+                "quality_warnings": [warning] if warning else [],
+                "platform_quality_scores": platform_quality_scores,
+            }
+
+        # Execute all platforms in parallel
+        platform_results = await asyncio.gather(
+            *[execute_platform_pipeline(platform) for platform in platforms]
+        )
+
+        # Organize results by platform
+        results_by_platform = {
+            platform: result for platform, result in platform_results
+        }
+
+        pipeline_end = time.time()
+        execution_time = pipeline_end - pipeline_start
+
+        logger.info(
+            f"Multi-Platform Pipeline completed in {execution_time:.2f}s for {len(platforms)} platforms"
+        )
+
+        return {
+            "pipeline_status": "completed",
+            "platforms": platforms,
+            "results_by_platform": results_by_platform,
+            "shared_steps": {
+                "seo_keywords": seo_result_dict,
+                "social_media_marketing_brief": brief_result_dict,
+            },
+            "input_content": content,
+            "metadata": {
+                "job_id": job_id,
+                "content_id": content.get("id"),
+                "content_type": content_type,
+                "platforms": platforms,
+                "email_type": email_type,
+                "title": content.get("title"),
+                "execution_time_seconds": execution_time,
+                "model": self.model,
+                "completed_at": datetime.utcnow().isoformat(),
+            },
+        }

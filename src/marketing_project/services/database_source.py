@@ -42,6 +42,16 @@ class DatabaseContentSource(ContentSource):
         self.connection = None
         self.connected = False
 
+    @property
+    def name(self) -> str:
+        """Get the name of the content source."""
+        return self.config.name
+
+    @property
+    def connection_string(self) -> str:
+        """Get the connection string."""
+        return self.config.connection_string
+
     async def initialize(self) -> bool:
         """Initialize database connection."""
         # This method should be implemented by subclasses

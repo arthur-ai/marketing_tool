@@ -1,0 +1,76 @@
+# Platform Configuration for Social Media Pipeline
+# Defines platform-specific settings, limits, and best practices
+
+platforms:
+  linkedin:
+    name: "LinkedIn"
+    character_limit: 3000
+    character_limit_warning: 2800
+    features:
+      - hashtags
+      - mentions
+      - links
+      - media
+    best_practices:
+      - Professional tone
+      - B2B focus
+      - Thought leadership
+      - Engagement-driven content
+      - Use 3-5 hashtags
+      - Ask questions to drive engagement
+    quality_metrics:
+      professional_tone_weight: 0.3
+      thought_leadership_weight: 0.3
+      engagement_potential_weight: 0.2
+      clarity_weight: 0.2
+
+  hackernews:
+    name: "HackerNews"
+    character_limit: 2000
+    character_limit_warning: 1800
+    features:
+      - links
+      - code_blocks
+    best_practices:
+      - Technical depth
+      - Developer-focused
+      - Discussion-oriented
+      - Avoid marketing language
+      - Focus on substance
+      - Encourage debate
+    quality_metrics:
+      technical_depth_weight: 0.4
+      discussion_potential_weight: 0.3
+      clarity_weight: 0.2
+      innovation_weight: 0.1
+
+  email:
+    name: "Email"
+    character_limit: 5000
+    character_limit_warning: 4500
+    features:
+      - subject_line
+      - html_formatting
+      - links
+      - images
+    best_practices:
+      - Clear subject line (50-60 characters)
+      - Scannable content
+      - Clear call-to-action
+      - Mobile-friendly
+    quality_metrics:
+      open_rate_potential_weight: 0.3
+      engagement_weight: 0.3
+      clarity_weight: 0.2
+      conversion_potential_weight: 0.2
+    types:
+      newsletter:
+        character_limit: 5000
+        focus: "informative, educational"
+      promotional:
+        character_limit: 3000
+        focus: "conversion-oriented, CTA-focused"
+
+# Global settings
+max_platforms_per_batch: 5
+default_platform: "linkedin"
