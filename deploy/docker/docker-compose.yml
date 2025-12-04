@@ -45,6 +45,12 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 512M
 
   # PostgreSQL - Required for configuration persistence
   # If DATABASE_URL is provided in .env file pointing to external database, this service won't be used

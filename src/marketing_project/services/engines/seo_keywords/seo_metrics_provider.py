@@ -71,7 +71,9 @@ class SEOMetricsProvider:
             "OPENPAGERANK_API_KEY", "owg04c8wgckoo0gk0c0go84s8gw48g0cso04080k"
         )
         self.pipeline = pipeline
+        # Cache for SERP analysis results (limited to prevent memory issues)
         self._serp_cache: Dict[str, Dict[str, Any]] = {}
+        self._serp_cache_max_size = int(os.getenv("SEO_METRICS_CACHE_SIZE", "200"))
 
     async def get_keyword_difficulty(
         self, keywords: List[str], serp_data: Optional[Dict[str, Any]] = None
@@ -307,7 +309,11 @@ Consider:
                 "serp_characteristics": serp_analysis.serp_characteristics,
             }
 
-            # Cache result
+            # Cache result (with size limit)
+            if len(self._serp_cache) >= self._serp_cache_max_size:
+                # Remove oldest entry (FIFO eviction)
+                oldest_key = next(iter(self._serp_cache))
+                del self._serp_cache[oldest_key]
             self._serp_cache[keyword] = result
             return result
 

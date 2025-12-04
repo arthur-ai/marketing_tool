@@ -110,7 +110,9 @@ class ContextRegistry:
             self.s3_storage = None
 
         # In-memory cache for frequently accessed contexts
+        # Limited to prevent memory issues (LRU eviction when limit reached)
         self._cache: Dict[str, Dict[str, Any]] = {}
+        self._cache_max_size = int(os.getenv("CONTEXT_REGISTRY_CACHE_SIZE", "100"))
         self._reference_index: Dict[str, Dict[str, ContextReference]] = (
             {}
         )  # job_id -> step_name -> reference
@@ -312,8 +314,12 @@ class ContextRegistry:
                 self._reference_index[target_job_id] = {}
             self._reference_index[target_job_id][step_name] = reference
 
-            # Cache the context data
+            # Cache the context data (with size limit)
             cache_key = f"{target_job_id}:{step_name}:{execution_context_id}"
+            if len(self._cache) >= self._cache_max_size:
+                # Remove oldest entry (FIFO eviction)
+                oldest_key = next(iter(self._cache))
+                del self._cache[oldest_key]
             self._cache[cache_key] = context_data
 
             logger.debug(
@@ -528,7 +534,11 @@ class ContextRegistry:
                     context_data = self._load_context_data_from_bytes(
                         content, reference.compressed
                     )
-                    # Cache it
+                    # Cache it (with size limit)
+                    if len(self._cache) >= self._cache_max_size:
+                        # Remove oldest entry (FIFO eviction)
+                        oldest_key = next(iter(self._cache))
+                        del self._cache[oldest_key]
                     self._cache[cache_key] = context_data
                     return context_data
                 else:
@@ -554,7 +564,11 @@ class ContextRegistry:
 
         try:
             context_data = self._load_context_data(file_path, reference.compressed)
-            # Cache it
+            # Cache it (with size limit)
+            if len(self._cache) >= self._cache_max_size:
+                # Remove oldest entry (FIFO eviction)
+                oldest_key = next(iter(self._cache))
+                del self._cache[oldest_key]
             self._cache[cache_key] = context_data
             return context_data
         except Exception as e:
