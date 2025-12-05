@@ -5,7 +5,7 @@ This module defines Pydantic models for incoming API requests.
 """
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Dict, Optional, Union
+from typing import Any, Dict, Optional, Union
 
 from pydantic import BaseModel, Field
 
@@ -15,9 +15,6 @@ from .content_models import (
     ReleaseNotesContext,
     TranscriptContext,
 )
-
-if TYPE_CHECKING:
-    from .pipeline_steps import PipelineConfig
 
 
 class AnalyzeRequest(BaseModel):
@@ -41,7 +38,7 @@ class PipelineRequest(BaseModel):
     options: Optional[Dict[str, Any]] = Field(
         default_factory=dict, description="Pipeline options"
     )
-    pipeline_config: Optional["PipelineConfig"] = Field(
+    pipeline_config: Optional[Any] = Field(
         None, description="Optional pipeline configuration for per-step model selection"
     )
 

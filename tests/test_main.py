@@ -178,7 +178,7 @@ async def test_content_sources_async_check_status():
 @pytest.mark.asyncio
 async def test_content_sources_async_test_sources():
     """Test _content_sources_async with test_sources flag."""
-    from marketing_project.services.content_source_factory import FetchResult
+    from marketing_project.core.content_sources import ContentSourceResult
 
     mock_config_loader = MagicMock()
     mock_config_loader.create_source_configs.return_value = []
@@ -187,14 +187,14 @@ async def test_content_sources_async_test_sources():
     mock_manager.add_source_from_config = AsyncMock()
     mock_manager.fetch_all_content = AsyncMock(
         return_value=[
-            FetchResult(
+            ContentSourceResult(
                 source_name="source1",
                 success=True,
                 total_count=5,
                 content_items=[],
                 error_message=None,
             ),
-            FetchResult(
+            ContentSourceResult(
                 source_name="source2",
                 success=False,
                 total_count=0,

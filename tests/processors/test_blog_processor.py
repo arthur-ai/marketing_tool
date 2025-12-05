@@ -79,7 +79,8 @@ class TestBlogProcessor:
     @pytest.mark.asyncio
     async def test_process_blog_post_invalid_input(self):
         """Test blog post processing with invalid input (missing required fields)."""
-        invalid_data = {"id": "test", "title": ""}  # Missing content and snippet
+        # Missing required 'id' field - this should fail validation
+        invalid_data = {"title": "Test"}  # Missing required 'id' field
         invalid_json = json.dumps(invalid_data)
 
         result_json = await process_blog_post(invalid_json)

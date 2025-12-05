@@ -179,7 +179,6 @@ def sample_blog_post():
         tags=["AI", "Marketing", "Technology"],
         category="Technology",
         word_count=500,
-        reading_time="3 minutes",
         created_at="2024-01-01T00:00:00Z",
     )
 

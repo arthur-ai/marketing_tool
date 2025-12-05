@@ -734,8 +734,6 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                             input_snapshot = None
                             context_keys_used = []
                             if context:
-                                import copy
-
                                 input_snapshot = copy.deepcopy(context)
                                 context_keys_used = list(context.keys())
 

@@ -54,7 +54,7 @@ def web_scraping_source_config():
     return WebScrapingSourceConfig(
         name="test_scraper",
         source_type=ContentSourceType.WEB_SCRAPING,
-        base_url="https://example.com",
+        urls=["https://example.com"],
         selectors={"title": "h1", "content": ".content"},
     )
 
@@ -176,8 +176,9 @@ async def test_web_scraping_content_source_initialization(web_scraping_source_co
     """Test WebScrapingContentSource initialization."""
     source = WebScrapingContentSource(web_scraping_source_config)
 
-    assert source.name == "test_scraper"
-    assert source.url == "https://example.com"
+    assert source.config.name == "test_scraper"
+    assert len(source.config.urls) > 0
+    assert "example.com" in source.config.urls[0]
 
 
 @pytest.mark.asyncio
@@ -207,7 +208,7 @@ async def test_web_scraping_content_source_fetch_content(web_scraping_source_con
         mock_client.get = AsyncMock(return_value=mock_response)
         mock_client_class.return_value.__aenter__.return_value = mock_client
 
-        with patch("beautifulsoup4.BeautifulSoup") as mock_bs:
+        with patch("bs4.BeautifulSoup") as mock_bs:
             mock_soup = MagicMock()
             mock_soup.find.return_value = MagicMock(text="Test Title")
             mock_bs.return_value = mock_soup

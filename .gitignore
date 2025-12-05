@@ -132,6 +132,7 @@ dmypy.json
 logs/
 context_registry/
 results/
+content/
 *.log
 secrets/
 uploads/
