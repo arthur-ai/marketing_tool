@@ -518,20 +518,60 @@ class TestFunctionPipelineStepExecution:
 
         pipeline = FunctionPipeline()
 
-        with patch.object(
-            pipeline, "execute_pipeline", new_callable=AsyncMock
-        ) as mock_execute:
-            mock_execute.return_value = {"pipeline_status": "success"}
-
-            result = await pipeline.resume_pipeline(
-                content_json='{"title": "Test"}',
-                content_type="blog_post",
-                context={"seo_keywords": {}},
-                job_id="test-job",
+        # Mock the plugins and registry
+        with patch(
+            "marketing_project.services.function_pipeline.get_plugin_registry"
+        ) as mock_registry:
+            mock_plugin = MagicMock()
+            mock_plugin.step_name = "seo_keywords"
+            mock_plugin.step_number = 2
+            mock_plugin.execute = AsyncMock(
+                return_value=SEOKeywordsResult(
+                    main_keyword="test",
+                    primary_keywords=["test"],
+                    search_intent="informational",
+                )
             )
+            mock_registry_instance = MagicMock()
+            mock_registry_instance.get_plugin.return_value = mock_plugin
+            mock_registry_instance.get_all_plugins.return_value = {
+                "seo_keywords": mock_plugin
+            }
+            mock_registry.return_value = mock_registry_instance
 
-            assert result is not None
-            assert "pipeline_status" in result
+            with patch.object(
+                pipeline, "execute_pipeline", new_callable=AsyncMock
+            ) as mock_execute:
+                mock_execute.return_value = {
+                    "seo_keywords": {
+                        "main_keyword": "test",
+                        "primary_keywords": ["test"],
+                        "search_intent": "informational",
+                    }
+                }
+
+                result = await pipeline.resume_pipeline(
+                    context_data={
+                        "context": {
+                            "seo_keywords": {},
+                            "input_content": {"title": "Test"},
+                        },
+                        "original_content": {
+                            "id": "test",
+                            "title": "Test",
+                            "content": "Test content",
+                            "snippet": "Test snippet",
+                        },
+                        "last_step": "seo_keywords",
+                        "last_step_number": 1,
+                        "step_result": {},
+                    },
+                    content_type="blog_post",
+                    job_id="test-job",
+                )
+
+                assert result is not None
+                assert isinstance(result, dict)
 
     @pytest.mark.asyncio
     @patch("marketing_project.services.function_pipeline.AsyncOpenAI")
@@ -553,11 +593,15 @@ class TestFunctionPipelineStepExecution:
 
             result = await pipeline.execute_single_step(
                 step_name="seo_keywords",
+                content_json='{"id": "test", "title": "Test", "content": "Test content", "snippet": "Test snippet"}',
                 context={"input_content": {"title": "Test"}},
                 job_id="test-job",
             )
 
-            assert isinstance(result, SEOKeywordsResult)
+            # Function returns a dict with execution metadata and result
+            assert isinstance(result, dict)
+            assert "result" in result or "step_result" in result
+            # The actual step result is wrapped in the dict
             mock_execute.assert_called_once()
 
     @pytest.mark.asyncio

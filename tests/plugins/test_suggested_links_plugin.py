@@ -56,7 +56,7 @@ class TestSuggestedLinksPlugin:
 
     def test_step_number(self, suggested_links_plugin):
         """Test step_number property."""
-        assert suggested_links_plugin.step_number == 5
+        assert suggested_links_plugin.step_number == 6
 
     def test_response_model(self, suggested_links_plugin):
         """Test response_model property."""

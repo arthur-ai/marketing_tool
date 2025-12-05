@@ -80,7 +80,7 @@ class TestReleaseNotesProcessor:
     @pytest.mark.asyncio
     async def test_process_release_notes_invalid_input(self):
         """Test release notes processing with invalid input."""
-        invalid_data = {"id": "test", "title": ""}  # Missing required fields
+        invalid_data = {"title": "Test"}  # Missing required 'id' field
         invalid_json = json.dumps(invalid_data)
 
         result_json = await process_release_notes(invalid_json)

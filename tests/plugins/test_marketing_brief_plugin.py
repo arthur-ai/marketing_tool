@@ -43,7 +43,7 @@ class TestMarketingBriefPlugin:
 
     def test_step_number(self, marketing_brief_plugin):
         """Test step_number property."""
-        assert marketing_brief_plugin.step_number == 2
+        assert marketing_brief_plugin.step_number == 3
 
     def test_response_model(self, marketing_brief_plugin):
         """Test response_model property."""

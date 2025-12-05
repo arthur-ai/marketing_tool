@@ -24,23 +24,25 @@ from marketing_project.services.step_retry_service import (
 @pytest.fixture
 def step_retry_service():
     """Create a StepRetryService instance for testing."""
-    service = StepRetryService(model="gpt-5.1", temperature=0.7, lang="en")
-    # Mock the pipeline
-    service.pipeline = MagicMock()
-    service.pipeline._call_function = AsyncMock()
-    service.pipeline._get_system_instruction = MagicMock(
-        return_value="System instruction"
-    )
-    return service
+    with patch("marketing_project.services.function_pipeline.AsyncOpenAI"):
+        service = StepRetryService(model="gpt-5.1", temperature=0.7, lang="en")
+        # Mock the pipeline
+        service.pipeline = MagicMock()
+        service.pipeline._call_function = AsyncMock()
+        service.pipeline._get_system_instruction = MagicMock(
+            return_value="System instruction"
+        )
+        return service
 
 
 def test_step_retry_service_initialization():
     """Test StepRetryService initialization."""
-    service = StepRetryService(model="gpt-4", temperature=0.5, lang="es")
-    assert service.pipeline is not None
-    assert service.pipeline.model == "gpt-4"
-    assert service.pipeline.temperature == 0.5
-    assert service.pipeline.lang == "es"
+    with patch("marketing_project.services.function_pipeline.AsyncOpenAI"):
+        service = StepRetryService(model="gpt-4", temperature=0.5, lang="es")
+        assert service.pipeline is not None
+        assert service.pipeline.model == "gpt-4"
+        assert service.pipeline.temperature == 0.5
+        assert service.pipeline.lang == "es"
 
 
 @pytest.mark.asyncio
@@ -144,6 +146,7 @@ async def test_retry_step_article_generation_success(step_retry_service):
         article_title="Test Article Title",
         article_content="Test article content",
         outline=["Section 1", "Section 2"],
+        call_to_action="Learn more about our product",
         key_takeaways=["Takeaway 1"],
     )
 
@@ -176,7 +179,7 @@ async def test_retry_step_seo_optimization_success(step_retry_service):
         optimized_content="Optimized content",
         meta_title="Meta Title",
         meta_description="Meta description",
-        url_slug="test-slug",
+        slug="test-slug",
     )
 
     step_retry_service.pipeline._call_function = AsyncMock(return_value=mock_result)

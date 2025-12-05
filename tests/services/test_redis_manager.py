@@ -7,7 +7,7 @@ and CloudWatch metrics integration.
 
 import asyncio
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
@@ -148,9 +148,9 @@ class TestCircuitBreaker:
     def test_circuit_breaker_open_blocks_operation(self, redis_manager):
         """Test that open circuit breaker blocks operations."""
         redis_manager._circuit_breaker_state = "open"
-        redis_manager._circuit_breaker_last_failure = datetime.utcnow() - timedelta(
-            seconds=30
-        )
+        redis_manager._circuit_breaker_last_failure = datetime.now(
+            timezone.utc
+        ) - timedelta(seconds=30)
         # Set recovery timeout to 60 seconds, so 30 seconds ago is still within timeout
         redis_manager._circuit_breaker_recovery_timeout = 60
 
@@ -171,9 +171,9 @@ class TestCircuitBreaker:
     def test_circuit_breaker_recovery_timeout(self, redis_manager):
         """Test that circuit breaker recovers after timeout."""
         redis_manager._circuit_breaker_state = "open"
-        redis_manager._circuit_breaker_last_failure = datetime.utcnow() - timedelta(
-            seconds=70
-        )
+        redis_manager._circuit_breaker_last_failure = datetime.now(
+            timezone.utc
+        ) - timedelta(seconds=70)
 
         assert redis_manager._check_circuit_breaker() is True
         assert redis_manager._circuit_breaker_state == "half_open"
@@ -240,7 +240,7 @@ class TestRetryLogic:
     async def test_execute_circuit_breaker_blocks_when_open(self, redis_manager):
         """Test that circuit breaker blocks operations when open."""
         redis_manager._circuit_breaker_state = "open"
-        redis_manager._circuit_breaker_last_failure = datetime.utcnow()
+        redis_manager._circuit_breaker_last_failure = datetime.now(timezone.utc)
 
         async def operation(client):
             return await client.get("test_key")
@@ -276,7 +276,7 @@ class TestHealthMonitoring:
     def test_get_health_status(self, redis_manager):
         """Test getting health status."""
         redis_manager._health_status = True
-        redis_manager._last_health_check = datetime.utcnow()
+        redis_manager._last_health_check = datetime.now(timezone.utc)
         redis_manager._success_count = 100
         redis_manager._error_count = 5
 

@@ -248,7 +248,7 @@ def extract_content_metadata_for_pipeline(content: ContentContext) -> Dict[str, 
                 "author": content.author,
                 "tags": content.tags,
                 "category": content.category,
-                "reading_time": content.reading_time,
+                "reading_time": getattr(content, "reading_time", None),
             }
         )
     elif isinstance(content, ReleaseNotesContext):

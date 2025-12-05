@@ -87,7 +87,7 @@ class TestTranscriptProcessor:
     @pytest.mark.asyncio
     async def test_process_transcript_invalid_input(self):
         """Test transcript processing with invalid input."""
-        invalid_data = {"id": "test", "title": ""}  # Missing required fields
+        invalid_data = {"title": "Test"}  # Missing required 'id' field
         invalid_json = json.dumps(invalid_data)
 
         result_json = await process_transcript(invalid_json)

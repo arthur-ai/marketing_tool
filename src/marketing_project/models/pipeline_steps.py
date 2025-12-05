@@ -5,9 +5,10 @@ These models define the structured output expected from each pipeline step,
 ensuring type safety and predictable results.
 """
 
+import json
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class KeywordMetadata(BaseModel):
@@ -347,6 +348,24 @@ class SEOOptimizationResult(BaseModel):
         None,
         description="Summary of changes made during SEO optimization (e.g., 'Meta description regenerated', 'H2 hierarchy corrected')",
     )
+
+    @field_validator("schema_markup", mode="before")
+    @classmethod
+    def convert_schema_markup_to_string(cls, v: Any) -> Optional[str]:
+        """
+        Convert schema_markup from dict to JSON string if needed.
+
+        The LLM may return schema_markup as a dict (JSON-LD object), but the model
+        expects it as a JSON string. This validator handles the conversion.
+        """
+        if v is None:
+            return None
+        if isinstance(v, str):
+            return v
+        if isinstance(v, dict):
+            return json.dumps(v)
+        # If it's already a string or something else, try to convert it
+        return str(v) if v else None
 
 
 class InternalLinkSuggestion(BaseModel):

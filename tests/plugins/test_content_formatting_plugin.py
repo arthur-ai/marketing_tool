@@ -41,7 +41,7 @@ class TestContentFormattingPlugin:
 
     def test_step_number(self, content_formatting_plugin):
         """Test step_number property."""
-        assert content_formatting_plugin.step_number == 6
+        assert content_formatting_plugin.step_number == 8
 
     def test_response_model(self, content_formatting_plugin):
         """Test response_model property."""

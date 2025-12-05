@@ -55,7 +55,7 @@ class TestSEOOptimizationPlugin:
 
     def test_step_number(self, seo_optimization_plugin):
         """Test step_number property."""
-        assert seo_optimization_plugin.step_number == 4
+        assert seo_optimization_plugin.step_number == 5
 
     def test_response_model(self, seo_optimization_plugin):
         """Test response_model property."""

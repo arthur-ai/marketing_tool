@@ -129,12 +129,25 @@ async def test_get_step_result(step_result_manager):
         result_data=result_data,
     )
 
-    # Retrieve it using step_filename instead of step_number
-    step_filename = step_result_manager._get_step_filename(1, "seo_keywords")
-    retrieved = await step_result_manager.get_step_result("test-job-1", step_filename)
+    # Mock job manager to return a job
+    with patch(
+        "marketing_project.services.job_manager.get_job_manager"
+    ) as mock_job_manager:
+        mock_job = MagicMock()
+        mock_job.id = "test-job-1"
+        mock_job.metadata = {}  # No original_job_id, so it's the root job
+        mock_job_mgr = MagicMock()
+        mock_job_mgr.get_job = AsyncMock(return_value=mock_job)
+        mock_job_manager.return_value = mock_job_mgr
 
-    assert retrieved is not None
-    assert retrieved["result"] == result_data
+        # Retrieve it using step_filename instead of step_number
+        step_filename = step_result_manager._get_step_filename(1, "seo_keywords")
+        retrieved = await step_result_manager.get_step_result(
+            "test-job-1", step_filename
+        )
+
+        assert retrieved is not None
+        assert retrieved["result"] == result_data
 
 
 @pytest.mark.asyncio
@@ -157,12 +170,29 @@ async def test_get_all_step_results(step_result_manager):
             result_data={"step": i},
         )
 
-    # Use get_job_results which returns all steps
-    results = await step_result_manager.get_job_results("test-job-1")
+    # Mock job manager to return a job
+    with patch(
+        "marketing_project.services.job_manager.get_job_manager"
+    ) as mock_job_manager:
+        mock_job = MagicMock()
+        mock_job.id = "test-job-1"
+        mock_job.metadata = {}  # No original_job_id, so it's the root job
+        mock_job_mgr = MagicMock()
+        mock_job_mgr.get_job = AsyncMock(return_value=mock_job)
+        mock_job_manager.return_value = mock_job_mgr
 
-    assert results is not None
-    assert "steps" in results
-    assert len(results["steps"]) == 3
+        # Mock find_related_jobs to return empty related jobs
+        with patch.object(
+            step_result_manager, "find_related_jobs", new_callable=AsyncMock
+        ) as mock_find_related:
+            mock_find_related.return_value = {"parent_job_id": None, "subjob_ids": []}
+
+            # Use get_job_results which returns all steps
+            results = await step_result_manager.get_job_results("test-job-1")
+
+            assert results is not None
+            assert "steps" in results
+            assert len(results["steps"]) == 3
 
 
 @pytest.mark.asyncio
@@ -193,11 +223,14 @@ async def test_save_job_metadata(step_result_manager):
     assert file_path is not None
     assert Path(file_path).exists()
 
-    # Verify contents
+    # Verify contents - metadata file contains additional_metadata plus system fields
     with open(file_path, "r") as f:
         saved_metadata = json.load(f)
 
-    assert saved_metadata == metadata
+    # Check that the provided metadata is included
+    assert saved_metadata["status"] == metadata["status"]
+    assert saved_metadata["created_at"] == metadata["created_at"]
+    # System may add additional fields like job_id, content_id, etc.
 
 
 @pytest.mark.asyncio
@@ -215,11 +248,28 @@ async def test_get_job_metadata(step_result_manager):
         additional_metadata=metadata,
     )
 
-    # Use get_job_results which includes metadata
-    retrieved = await step_result_manager.get_job_results("test-job-1")
+    # Mock job manager to return a job
+    with patch(
+        "marketing_project.services.job_manager.get_job_manager"
+    ) as mock_job_manager:
+        mock_job = MagicMock()
+        mock_job.id = "test-job-1"
+        mock_job.metadata = {}  # No original_job_id, so it's the root job
+        mock_job_mgr = MagicMock()
+        mock_job_mgr.get_job = AsyncMock(return_value=mock_job)
+        mock_job_manager.return_value = mock_job_mgr
 
-    assert retrieved is not None
-    assert "metadata" in retrieved
+        # Mock find_related_jobs to return empty related jobs
+        with patch.object(
+            step_result_manager, "find_related_jobs", new_callable=AsyncMock
+        ) as mock_find_related:
+            mock_find_related.return_value = {"parent_job_id": None, "subjob_ids": []}
+
+            # Use get_job_results which includes metadata
+            retrieved = await step_result_manager.get_job_results("test-job-1")
+
+            assert retrieved is not None
+            assert "metadata" in retrieved
 
 
 @pytest.mark.asyncio

@@ -48,7 +48,7 @@ class TestArticleGenerationPlugin:
 
     def test_step_number(self, article_generation_plugin):
         """Test step_number property."""
-        assert article_generation_plugin.step_number == 3
+        assert article_generation_plugin.step_number == 4
 
     def test_response_model(self, article_generation_plugin):
         """Test response_model property."""

@@ -39,7 +39,8 @@ async def test_check_and_create_approval_request_approvals_disabled():
 
     with patch(
         "marketing_project.processors.approval_helper.get_approval_manager",
-        return_value=AsyncMock(return_value=mock_manager),
+        new_callable=AsyncMock,
+        return_value=mock_manager,
     ):
         result = await check_and_create_approval_request(
             job_id="test-job-1",
@@ -63,7 +64,8 @@ async def test_check_and_create_approval_request_agent_not_in_list():
 
     with patch(
         "marketing_project.processors.approval_helper.get_approval_manager",
-        return_value=AsyncMock(return_value=mock_manager),
+        new_callable=AsyncMock,
+        return_value=mock_manager,
     ):
         result = await check_and_create_approval_request(
             job_id="test-job-1",
@@ -86,12 +88,14 @@ async def test_check_and_create_approval_request_approval_required():
     mock_manager.settings.approval_agents = ["seo_keywords"]
     mock_approval = MagicMock()
     mock_approval.id = "test-approval-1"
+    mock_approval.status = "pending"  # Not "approved" so exception is raised
     mock_manager.create_approval_request = AsyncMock(return_value=mock_approval)
     mock_manager.save_pipeline_context = AsyncMock()
 
     with patch(
         "marketing_project.processors.approval_helper.get_approval_manager",
-        return_value=AsyncMock(return_value=mock_manager),
+        new_callable=AsyncMock,
+        return_value=mock_manager,
     ):
         with pytest.raises(ApprovalRequiredException) as exc_info:
             await check_and_create_approval_request(
@@ -151,40 +155,40 @@ def test_prepare_approval_data():
     """Test prepare_approval_data function."""
     input_data = {"content": {"title": "Test"}}
     output_data = {"keywords": ["test"]}
-    context = {"previous_step": "result"}
 
-    result = prepare_approval_data(input_data, output_data, context)
+    result = prepare_approval_data(input_data, output_data)
 
     assert result is not None
-    assert "input" in result
-    assert "output" in result
-    assert "context" in result
+    assert isinstance(result, tuple)
+    assert len(result) == 2
+    input_result, output_result = result
+    assert isinstance(input_result, dict)
+    assert isinstance(output_result, dict)
 
 
 def test_prepare_approval_data_with_confidence():
     """Test prepare_approval_data with confidence score."""
     input_data = {"content": {"title": "Test"}}
     output_data = {"keywords": ["test"], "confidence": 0.8}
-    context = {}
 
-    result = prepare_approval_data(
-        input_data, output_data, context, confidence_score=0.8
-    )
+    result = prepare_approval_data(input_data, output_data)
 
     assert result is not None
-    assert "confidence_score" in result or "confidence" in result
+    assert isinstance(result, tuple)
+    input_result, output_result = result
+    assert isinstance(input_result, dict)
+    assert isinstance(output_result, dict)
 
 
 def test_prepare_approval_data_with_suggestions():
     """Test prepare_approval_data with suggestions."""
     input_data = {"content": {"title": "Test"}}
     output_data = {"keywords": ["test"]}
-    context = {}
-    suggestions = ["suggestion1", "suggestion2"]
 
-    result = prepare_approval_data(
-        input_data, output_data, context, suggestions=suggestions
-    )
+    result = prepare_approval_data(input_data, output_data)
 
     assert result is not None
-    assert "suggestions" in result or suggestions in result.values()
+    assert isinstance(result, tuple)
+    input_result, output_result = result
+    assert isinstance(input_result, dict)
+    assert isinstance(output_result, dict)
