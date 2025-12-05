@@ -7,6 +7,7 @@ This engine uses local NLP (spaCy, YAKE, RAKE, TF-IDF) and semantic processing
 
 import hashlib
 import logging
+import os
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -120,7 +121,11 @@ class LocalSemanticSEOKeywordsEngine(Engine):
         self._fasttext_model = None
         self._topic_model = None
         # Cache for parsed documents (keyed by content hash)
+        # Limited to prevent memory issues (FIFO eviction when limit reached)
         self._parsed_doc_cache: Dict[str, Dict[str, Any]] = {}
+        self._parsed_doc_cache_max_size = int(
+            os.getenv("LOCAL_SEMANTIC_ENGINE_CACHE_SIZE", "50")
+        )
 
     def _get_nlp(self):
         """Lazy load spaCy model."""
@@ -354,7 +359,11 @@ class LocalSemanticSEOKeywordsEngine(Engine):
             "sentences": [sent.text for sent in doc.sents],
         }
 
-        # Cache the parsed document
+        # Cache the parsed document (with size limit)
+        if len(self._parsed_doc_cache) >= self._parsed_doc_cache_max_size:
+            # Remove oldest entry (FIFO eviction)
+            oldest_key = next(iter(self._parsed_doc_cache))
+            del self._parsed_doc_cache[oldest_key]
         self._parsed_doc_cache[content_hash] = parsed_doc
         logger.debug(f"Cached parsed document for content hash: {content_hash[:8]}")
 

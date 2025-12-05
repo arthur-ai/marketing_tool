@@ -54,6 +54,10 @@ Metadata:
           - MaxCapacity
           - TargetCPUUtilization
           - TargetMemoryUtilization
+          - ApiTaskCPU
+          - ApiTaskMemory
+          - ArqWorkerTaskCPU
+          - ArqWorkerTaskMemory
 
 Parameters:
   Environment:
@@ -204,6 +208,30 @@ Parameters:
     MinValue: 1
     MaxValue: 100
     Description: Target memory utilization percentage for auto-scaling
+
+  ApiTaskCPU:
+    Type: String
+    Default: '512'
+    AllowedValues: ['256', '512', '1024', '2048', '4096']
+    Description: CPU units for API task (256 = 0.25 vCPU, 512 = 0.5 vCPU, 1024 = 1 vCPU, etc.)
+
+  ApiTaskMemory:
+    Type: String
+    Default: '2048'
+    AllowedValues: ['512', '1024', '2048', '3072', '4096', '5120', '6144', '7168', '8192']
+    Description: Memory for API task in MB (minimum 512, recommended 2048+ for production)
+
+  ArqWorkerTaskCPU:
+    Type: String
+    Default: '512'
+    AllowedValues: ['256', '512', '1024', '2048', '4096']
+    Description: CPU units for ARQ worker task (256 = 0.25 vCPU, 512 = 0.5 vCPU, 1024 = 1 vCPU, etc.)
+
+  ArqWorkerTaskMemory:
+    Type: String
+    Default: '2048'
+    AllowedValues: ['512', '1024', '2048', '3072', '4096', '5120', '6144', '7168', '8192']
+    Description: Memory for ARQ worker task in MB (minimum 512, recommended 2048+ for production)
 
   DeployVersion:
     Type: String
@@ -484,8 +512,8 @@ Resources:
       NetworkMode: awsvpc
       RequiresCompatibilities:
         - FARGATE
-      Cpu: '256'
-      Memory: '512'
+      Cpu: !Ref ApiTaskCPU
+      Memory: !Ref ApiTaskMemory
       ExecutionRoleArn: !Ref ECSTaskExecutionRole
       TaskRoleArn: !Ref ECSTaskRole
       ContainerDefinitions:
@@ -576,6 +604,13 @@ Resources:
               Value: '10'
             - Name: ARQ_JOB_TIMEOUT
               Value: '600'
+            # Cache size configuration to prevent memory issues
+            - Name: CONTEXT_REGISTRY_CACHE_SIZE
+              Value: '100'
+            - Name: LOCAL_SEMANTIC_ENGINE_CACHE_SIZE
+              Value: '50'
+            - Name: SEO_METRICS_CACHE_SIZE
+              Value: '200'
           Secrets:
             # Note: REDIS_PASSWORD not needed when TransitEncryptionEnabled is false
             # (AuthToken is only supported with transit encryption)
@@ -638,8 +673,8 @@ Resources:
       NetworkMode: awsvpc
       RequiresCompatibilities:
         - FARGATE
-      Cpu: '256'
-      Memory: '512'
+      Cpu: !Ref ArqWorkerTaskCPU
+      Memory: !Ref ArqWorkerTaskMemory
       ExecutionRoleArn: !Ref ECSTaskExecutionRole
       TaskRoleArn: !Ref ECSTaskRole
       ContainerDefinitions:
@@ -678,6 +713,13 @@ Resources:
               Value: '10'
             - Name: ARQ_JOB_TIMEOUT
               Value: '1800'
+            # Cache size configuration to prevent memory issues
+            - Name: CONTEXT_REGISTRY_CACHE_SIZE
+              Value: '100'
+            - Name: LOCAL_SEMANTIC_ENGINE_CACHE_SIZE
+              Value: '50'
+            - Name: SEO_METRICS_CACHE_SIZE
+              Value: '200'
           Secrets:
             - Name: OPENAI_API_KEY
               ValueFrom: !Ref OpenAISecret
@@ -752,6 +794,11 @@ Resources:
               Value: !Sub 'https://${DomainName}/api'
             - Name: NEXT_PUBLIC_BACKEND_WEBSOCKET_URL
               Value: !Sub 'wss://${DomainName}/api'
+            # Set Node.js memory limit to prevent OOM (leave ~256MB for system)
+            # For 1024MB container (default), use 768MB heap
+            # This prevents Node.js from using all available memory
+            - Name: NODE_OPTIONS
+              Value: '--max-old-space-size=768'
           LogConfiguration:
             LogDriver: awslogs
             Options:
