@@ -18,6 +18,6 @@
   "prConcurrentLimit": 5,
   "prHourlyLimit": 2,
   "schedule": [
-    "before 9am every day"
+    "before 9am"
   ]
 }
