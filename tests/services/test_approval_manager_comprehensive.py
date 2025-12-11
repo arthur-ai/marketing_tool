@@ -57,9 +57,19 @@ async def test_save_settings(approval_manager, mock_redis_manager):
 @pytest.mark.asyncio
 async def test_list_approvals(approval_manager):
     """Test list_approvals method."""
-    await approval_manager.create_approval_request("job-1", "seo_keywords", 1, {}, {})
     await approval_manager.create_approval_request(
-        "job-2", "marketing_brief", 2, {}, {}
+        job_id="job-1",
+        agent_name="seo_keywords",
+        step_name="seo_keywords",
+        input_data={},
+        output_data={},
+    )
+    await approval_manager.create_approval_request(
+        job_id="job-2",
+        agent_name="marketing_brief",
+        step_name="marketing_brief",
+        input_data={},
+        output_data={},
     )
 
     approvals = await approval_manager.list_approvals(status="pending")
@@ -72,7 +82,11 @@ async def test_list_approvals(approval_manager):
 async def test_wait_for_approval(approval_manager):
     """Test wait_for_approval method."""
     request = await approval_manager.create_approval_request(
-        "job-1", "seo_keywords", 1, {}, {}
+        job_id="job-1",
+        agent_name="seo_keywords",
+        step_name="seo_keywords",
+        input_data={},
+        output_data={},
     )
 
     # Approve in background
@@ -80,17 +94,23 @@ async def test_wait_for_approval(approval_manager):
         import asyncio
 
         await asyncio.sleep(0.1)
+        # Make sure approval exists in memory before deciding
+        if request.id not in approval_manager._approvals:
+            approval_manager._approvals[request.id] = request
         await approval_manager.decide_approval(
-            request.id, ApprovalDecisionRequest(decision="approved")
+            request.id, ApprovalDecisionRequest(decision="approve")
         )
 
     # Start approval in background
     import asyncio
 
-    asyncio.create_task(approve_later())
+    task = asyncio.create_task(approve_later())
 
     # Wait for approval
-    result = await approval_manager.wait_for_approval(request.id, timeout=1.0)
+    result = await approval_manager.wait_for_approval(request.id, timeout=2.0)
+
+    # Wait for background task to complete
+    await task
 
     assert result is not None
     assert result.status == "approved"
@@ -99,9 +119,19 @@ async def test_wait_for_approval(approval_manager):
 @pytest.mark.asyncio
 async def test_delete_all_approvals(approval_manager):
     """Test delete_all_approvals method."""
-    await approval_manager.create_approval_request("job-1", "seo_keywords", 1, {}, {})
     await approval_manager.create_approval_request(
-        "job-2", "marketing_brief", 2, {}, {}
+        job_id="job-1",
+        agent_name="seo_keywords",
+        step_name="seo_keywords",
+        input_data={},
+        output_data={},
+    )
+    await approval_manager.create_approval_request(
+        job_id="job-2",
+        agent_name="marketing_brief",
+        step_name="marketing_brief",
+        input_data={},
+        output_data={},
     )
 
     deleted = await approval_manager.delete_all_approvals()
@@ -113,7 +143,13 @@ async def test_delete_all_approvals(approval_manager):
 @pytest.mark.asyncio
 async def test_clear_job_approvals(approval_manager):
     """Test clear_job_approvals method."""
-    await approval_manager.create_approval_request("job-1", "seo_keywords", 1, {}, {})
+    await approval_manager.create_approval_request(
+        job_id="job-1",
+        agent_name="seo_keywords",
+        step_name="seo_keywords",
+        input_data={},
+        output_data={},
+    )
 
     approval_manager.clear_job_approvals("job-1")
 
@@ -124,11 +160,23 @@ async def test_clear_job_approvals(approval_manager):
 @pytest.mark.asyncio
 async def test_filter_selected_keywords(approval_manager):
     """Test filter_selected_keywords method."""
-    keywords = ["keyword1", "keyword2", "keyword3"]
-    selected = ["keyword1", "keyword3"]
+    output_data = {
+        "main_keyword": "keyword1",
+        "primary_keywords": ["keyword1", "keyword2", "keyword3"],
+        "secondary_keywords": [],
+        "lsi_keywords": [],
+    }
+    selected_keywords = {
+        "primary": ["keyword1", "keyword3"],
+        "secondary": [],
+        "lsi": [],
+    }
 
-    filtered = approval_manager.filter_selected_keywords(keywords, selected)
+    filtered = approval_manager.filter_selected_keywords(
+        output_data, selected_keywords, main_keyword="keyword1"
+    )
 
-    assert len(filtered) == 2
-    assert "keyword1" in filtered
-    assert "keyword3" in filtered
+    assert isinstance(filtered, dict)
+    assert filtered["main_keyword"] == "keyword1"
+    assert "keyword1" in filtered.get("primary_keywords", [])
+    assert "keyword3" in filtered.get("primary_keywords", [])

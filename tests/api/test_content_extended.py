@@ -22,7 +22,19 @@ def mock_content_manager():
     with patch("marketing_project.api.content.get_content_manager") as mock:
         manager = MagicMock()
         manager.list_sources = AsyncMock(return_value=[])
-        manager.get_source = AsyncMock(return_value=None)
+
+        # Create a mock source object for get_source_status test
+        mock_source = MagicMock()
+        mock_source.health_check = AsyncMock(return_value=True)
+        mock_source.config = MagicMock()
+        mock_source.config.name = "test-source"
+        mock_source.config.source_type = MagicMock()
+        mock_source.config.source_type.value = "api"
+        mock_source.config.enabled = True
+        mock_source.config.priority = 0
+        mock_source.config.metadata = {}
+
+        manager.get_source = MagicMock(return_value=mock_source)
         manager.fetch_from_source = AsyncMock(
             return_value={"content_items": [], "total_count": 0, "success": True}
         )

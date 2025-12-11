@@ -34,7 +34,11 @@ def approval_manager(mock_redis_manager):
 async def test_save_approval_to_redis(approval_manager):
     """Test _save_approval_to_redis method."""
     request = await approval_manager.create_approval_request(
-        "job-1", "seo_keywords", 1, {}, {}
+        job_id="job-1",
+        agent_name="seo_keywords",
+        step_name="seo_keywords",
+        input_data={},
+        output_data={},
     )
 
     await approval_manager._save_approval_to_redis(request)
@@ -47,7 +51,11 @@ async def test_save_approval_to_redis(approval_manager):
 async def test_load_approval_from_redis(approval_manager):
     """Test _load_approval_from_redis method."""
     request = await approval_manager.create_approval_request(
-        "job-1", "seo_keywords", 1, {}, {}
+        job_id="job-1",
+        agent_name="seo_keywords",
+        step_name="seo_keywords",
+        input_data={},
+        output_data={},
     )
 
     loaded = await approval_manager._load_approval_from_redis(request.id)
@@ -78,7 +86,11 @@ async def test_save_job_approval_mapping(approval_manager):
 async def test_get_approval(approval_manager):
     """Test get_approval method."""
     request = await approval_manager.create_approval_request(
-        "job-1", "seo_keywords", 1, {}, {}
+        job_id="job-1",
+        agent_name="seo_keywords",
+        step_name="seo_keywords",
+        input_data={},
+        output_data={},
     )
 
     retrieved = await approval_manager.get_approval(request.id)

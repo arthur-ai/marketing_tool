@@ -23,6 +23,16 @@ from typing import Any, Dict, List, Optional
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 
+# OpenTelemetry imports for tracing
+try:
+    from opentelemetry import trace
+    from opentelemetry.trace import Status, StatusCode
+
+    _tracing_available = True
+except ImportError:
+    _tracing_available = False
+    logger.debug("OpenTelemetry not available, tracing disabled")
+
 
 def _json_serializer(obj: Any) -> Any:
     """Custom JSON serializer for datetime and other non-serializable objects."""
@@ -467,15 +477,78 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                     f"Step {step_number}: {step_name} (attempt {attempt + 1}/{step_max_retries}, model: {step_model})"
                 )
 
-                response = await self.client.beta.chat.completions.parse(
-                    model=step_model,
-                    messages=messages,
-                    response_format=response_model,
-                    temperature=step_temperature,
-                )
+                # Create OpenTelemetry span for this LLM call
+                if _tracing_available:
+                    try:
+                        tracer = trace.get_tracer(__name__)
+                        with tracer.start_as_current_span(
+                            f"function_pipeline.{step_name}",
+                            kind=trace.SpanKind.CLIENT,
+                        ) as span:
+                            # Set span attributes
+                            span.set_attribute("step_name", step_name)
+                            span.set_attribute("step_number", step_number)
+                            span.set_attribute("model", step_model)
+                            span.set_attribute("temperature", step_temperature)
+                            span.set_attribute("attempt", attempt + 1)
+                            span.set_attribute("max_retries", step_max_retries)
+                            if job_id:
+                                span.set_attribute("job_id", job_id)
+                            if context:
+                                content_type = context.get("content_type")
+                                if content_type:
+                                    span.set_attribute("content_type", content_type)
 
-                execution_time = time.time() - start_time
-                parsed_result = response.choices[0].message.parsed
+                            response = await self.client.beta.chat.completions.parse(
+                                model=step_model,
+                                messages=messages,
+                                response_format=response_model,
+                                temperature=step_temperature,
+                            )
+
+                            execution_time = time.time() - start_time
+                            parsed_result = response.choices[0].message.parsed
+
+                            # Update span with response metadata
+                            try:
+                                if response.usage:
+                                    span.set_attribute(
+                                        "input_tokens",
+                                        response.usage.prompt_tokens or 0,
+                                    )
+                                    span.set_attribute(
+                                        "output_tokens",
+                                        response.usage.completion_tokens or 0,
+                                    )
+                                    span.set_attribute(
+                                        "total_tokens", response.usage.total_tokens or 0
+                                    )
+                                span.set_status(Status(StatusCode.OK))
+                            except Exception as e:
+                                logger.debug(
+                                    f"Failed to update span with response: {e}"
+                                )
+                    except Exception as span_error:
+                        logger.debug(f"Failed to create span: {span_error}")
+                        # Fallback to non-instrumented call
+                        response = await self.client.beta.chat.completions.parse(
+                            model=step_model,
+                            messages=messages,
+                            response_format=response_model,
+                            temperature=step_temperature,
+                        )
+                        execution_time = time.time() - start_time
+                        parsed_result = response.choices[0].message.parsed
+                else:
+                    # No tracing available, make direct call
+                    response = await self.client.beta.chat.completions.parse(
+                        model=step_model,
+                        messages=messages,
+                        response_format=response_model,
+                        temperature=step_temperature,
+                    )
+                    execution_time = time.time() - start_time
+                    parsed_result = response.choices[0].message.parsed
 
                 # ========================================
                 # Human-in-the-Loop Approval Integration
@@ -492,7 +565,8 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                         )
 
                         logger.info(
-                            f"[APPROVAL] Checking approval for step {step_number} ({step_name}) in job {job_id}"
+                            f"[APPROVAL] Checking approval for step {step_number} ({step_name}) in job {job_id}. "
+                            f"Content type: {context.get('content_type', 'unknown') if context else 'unknown'}"
                         )
 
                         # Convert result to dict for approval system
@@ -911,6 +985,22 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                 logger.error(error_msg)
                 raise ValueError(error_msg)
 
+            # Log approval configuration for debugging
+            try:
+                from marketing_project.services.approval_manager import (
+                    get_approval_manager,
+                )
+
+                approval_manager = await get_approval_manager(reload_from_db=True)
+                settings = approval_manager.settings
+                logger.info(
+                    f"[APPROVAL CONFIG] require_approval={settings.require_approval}, "
+                    f"approval_agents={settings.approval_agents}, "
+                    f"content_type={content_type}"
+                )
+            except Exception as e:
+                logger.warning(f"Failed to load approval settings for logging: {e}")
+
             plugins = registry.get_plugins_in_order()
 
             # Filter out steps that should be skipped based on content type
@@ -1079,12 +1169,25 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
             # Get final content from formatting result if available
             final_content = None
             if "content_formatting" in results:
-                from marketing_project.models.pipeline_steps import (
-                    ContentFormattingResult,
-                )
+                try:
+                    from marketing_project.models.pipeline_steps import (
+                        ContentFormattingResult,
+                    )
 
-                formatting = ContentFormattingResult(**results["content_formatting"])
-                final_content = formatting.formatted_html
+                    formatting = ContentFormattingResult(
+                        **results["content_formatting"]
+                    )
+                    final_content = formatting.formatted_html
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to parse content_formatting result: {e}. "
+                        "Skipping final_content extraction."
+                    )
+                    # Try to extract formatted_html directly if it's a dict
+                    if isinstance(results["content_formatting"], dict):
+                        final_content = results["content_formatting"].get(
+                            "formatted_html"
+                        )
 
             # Build metadata with failed steps info
             metadata = {
@@ -1511,12 +1614,25 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
             # Get final formatting result if available
             final_content = None
             if "content_formatting" in results:
-                from marketing_project.models.pipeline_steps import (
-                    ContentFormattingResult,
-                )
+                try:
+                    from marketing_project.models.pipeline_steps import (
+                        ContentFormattingResult,
+                    )
 
-                formatting = ContentFormattingResult(**results["content_formatting"])
-                final_content = formatting.formatted_html
+                    formatting = ContentFormattingResult(
+                        **results["content_formatting"]
+                    )
+                    final_content = formatting.formatted_html
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to parse content_formatting result: {e}. "
+                        "Skipping final_content extraction."
+                    )
+                    # Try to extract formatted_html directly if it's a dict
+                    if isinstance(results["content_formatting"], dict):
+                        final_content = results["content_formatting"].get(
+                            "formatted_html"
+                        )
 
             # Get input content from context
             input_content = context_data.get("input_content") or context_data.get(

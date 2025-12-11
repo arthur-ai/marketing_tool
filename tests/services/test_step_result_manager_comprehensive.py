@@ -90,9 +90,11 @@ async def test_get_step_file_path(step_result_manager):
             "test-job-1", "01_seo_keywords.json", "0"
         )
 
-        # May return None if not found, or path if found
-        assert file_path is None or (
-            isinstance(file_path, str) and Path(file_path).exists()
+        # May return None if not found, or Path object if found
+        assert (
+            file_path is None
+            or isinstance(file_path, Path)
+            or (isinstance(file_path, str) and Path(file_path).exists())
         )
 
 
@@ -172,8 +174,14 @@ async def test_get_pipeline_flow(step_result_manager):
         "marketing_project.services.job_manager.get_job_manager"
     ) as mock_job_mgr:
         mock_job = MagicMock()
-        mock_job.metadata = {}
-        mock_job_mgr.return_value.get_job = AsyncMock(return_value=mock_job)
+        mock_job.id = "test-job-1"
+        mock_job.metadata = {"input_content": {}}
+        mock_job.result = None
+        mock_job.type = "blog"
+        mock_job.content_id = "test-content-1"
+        mock_manager_instance = MagicMock()
+        mock_manager_instance.get_job = AsyncMock(return_value=mock_job)
+        mock_job_mgr.return_value = mock_manager_instance
 
         await step_result_manager.save_step_result(
             "test-job-1", 1, "seo_keywords", {"main_keyword": "test"}, "0"

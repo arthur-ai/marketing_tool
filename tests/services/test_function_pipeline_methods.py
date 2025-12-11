@@ -78,6 +78,7 @@ async def test_call_function_success(function_pipeline, mock_openai):
     mock_response.choices[0].message.parsed = SEOKeywordsResult(
         main_keyword="test",
         primary_keywords=["test1"],
+        search_intent="informational",
         confidence_score=0.9,
     )
     mock_openai.beta.chat.completions.parse = AsyncMock(return_value=mock_response)
@@ -105,6 +106,7 @@ async def test_call_function_with_retry(function_pipeline, mock_openai):
     mock_response_success.choices[0].message.parsed = SEOKeywordsResult(
         main_keyword="test",
         primary_keywords=["test1"],
+        search_intent="informational",
         confidence_score=0.9,
     )
 
@@ -128,29 +130,34 @@ async def test_call_function_with_retry(function_pipeline, mock_openai):
 @pytest.mark.asyncio
 async def test_execute_step_with_plugin_success(function_pipeline):
     """Test _execute_step_with_plugin with successful execution."""
+    from marketing_project.models.pipeline_steps import SEOKeywordsResult
+
     with patch(
         "marketing_project.services.function_pipeline.get_plugin_registry"
     ) as mock_registry:
         mock_plugin = MagicMock()
-        mock_plugin.step_name = "seo_keywords"
+        # step_name should be a property that returns a string
+        type(mock_plugin).step_name = "seo_keywords"
         mock_plugin.step_number = 1
         mock_plugin.get_required_context_keys.return_value = ["input_content"]
         mock_plugin.validate_context.return_value = True
-        mock_plugin.execute = AsyncMock(
-            return_value=MagicMock(
-                main_keyword="test",
-                primary_keywords=["test1"],
-                confidence_score=0.9,
-            )
+        mock_result = SEOKeywordsResult(
+            main_keyword="test",
+            primary_keywords=["test1"],
+            search_intent="informational",
+            confidence_score=0.9,
         )
+        mock_plugin.execute = AsyncMock(return_value=mock_result)
         mock_registry.return_value.get_plugin.return_value = mock_plugin
 
         context = {
             "input_content": {"id": "test", "title": "Test", "content": "Content"},
         }
 
+        # _execute_step_with_plugin takes step_name as string, not plugin object
         result = await function_pipeline._execute_step_with_plugin(
-            mock_plugin, context, "test-job"
+            "seo_keywords", context, "test-job"
         )
 
         assert result is not None
+        assert hasattr(result, "main_keyword")

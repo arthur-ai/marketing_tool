@@ -18,6 +18,16 @@ from typing import Any, Dict, List, Optional
 import yaml
 from openai import AsyncOpenAI
 
+# OpenTelemetry imports for tracing
+try:
+    from opentelemetry import trace
+    from opentelemetry.trace import Status, StatusCode
+
+    _tracing_available = True
+except ImportError:
+    _tracing_available = False
+    logger.debug("OpenTelemetry not available, tracing disabled")
+
 
 def _json_serializer(obj: Any) -> Any:
     """Custom JSON serializer for datetime and other non-serializable objects."""
@@ -597,19 +607,92 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
             logger.debug(
                 f"Calling {step_model} for step {step_name} with temperature {step_temperature}"
             )
-            response = await self.client.chat.completions.create(
-                model=step_model,
-                messages=messages,
-                response_format={
-                    "type": "json_schema",
-                    "json_schema": {
-                        "name": step_name,
-                        "strict": True,
-                        "schema": schema,
+
+            # Create OpenTelemetry span for this LLM call
+            if _tracing_available:
+                try:
+                    tracer = trace.get_tracer(__name__)
+                    with tracer.start_as_current_span(
+                        f"social_media_pipeline.{step_name}",
+                        kind=trace.SpanKind.CLIENT,
+                    ) as span:
+                        # Set span attributes
+                        span.set_attribute("step_name", step_name)
+                        span.set_attribute("step_number", step_number)
+                        span.set_attribute("model", step_model)
+                        span.set_attribute("temperature", step_temperature)
+                        if job_id:
+                            span.set_attribute("job_id", job_id)
+                        if context:
+                            content_type = context.get("content_type")
+                            if content_type:
+                                span.set_attribute("content_type", content_type)
+                            platform = context.get("social_media_platform")
+                            if platform:
+                                span.set_attribute("platform", platform)
+                                span.set_attribute("social_media_platform", platform)
+
+                        response = await self.client.chat.completions.create(
+                            model=step_model,
+                            messages=messages,
+                            response_format={
+                                "type": "json_schema",
+                                "json_schema": {
+                                    "name": step_name,
+                                    "strict": True,
+                                    "schema": schema,
+                                },
+                            },
+                            temperature=step_temperature,
+                        )
+
+                        # Update span with response metadata
+                        try:
+                            if response.usage:
+                                span.set_attribute(
+                                    "input_tokens", response.usage.prompt_tokens or 0
+                                )
+                                span.set_attribute(
+                                    "output_tokens",
+                                    response.usage.completion_tokens or 0,
+                                )
+                                span.set_attribute(
+                                    "total_tokens", response.usage.total_tokens or 0
+                                )
+                            span.set_status(Status(StatusCode.OK))
+                        except Exception as e:
+                            logger.debug(f"Failed to update span with response: {e}")
+                except Exception as span_error:
+                    logger.debug(f"Failed to create span: {span_error}")
+                    # Fallback to non-instrumented call
+                    response = await self.client.chat.completions.create(
+                        model=step_model,
+                        messages=messages,
+                        response_format={
+                            "type": "json_schema",
+                            "json_schema": {
+                                "name": step_name,
+                                "strict": True,
+                                "schema": schema,
+                            },
+                        },
+                        temperature=step_temperature,
+                    )
+            else:
+                # No tracing available, make direct call
+                response = await self.client.chat.completions.create(
+                    model=step_model,
+                    messages=messages,
+                    response_format={
+                        "type": "json_schema",
+                        "json_schema": {
+                            "name": step_name,
+                            "strict": True,
+                            "schema": schema,
+                        },
                     },
-                },
-                temperature=step_temperature,
-            )
+                    temperature=step_temperature,
+                )
 
             # Parse response
             content = response.choices[0].message.content

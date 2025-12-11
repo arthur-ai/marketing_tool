@@ -44,19 +44,27 @@ async def test_get_or_create_execution_context(step_result_manager):
 @pytest.mark.asyncio
 async def test_extract_step_info_from_job_result(step_result_manager):
     """Test extract_step_info_from_job_result method."""
-    job_result = {
-        "steps": [
-            {
-                "step_number": 1,
-                "step_name": "seo_keywords",
-                "result": {"main_keyword": "test"},
-            }
-        ]
-    }
+    from marketing_project.services.job_manager import get_job_manager
 
-    step_info = await step_result_manager.extract_step_info_from_job_result(
-        "test-job-1", job_result
-    )
+    job_manager = get_job_manager()
+    job = await job_manager.create_job("blog", "content-1")
+
+    # Set up job result with step info in metadata
+    job.result = {
+        "status": "success",
+        "metadata": {
+            "step_info": [
+                {
+                    "step_number": 1,
+                    "step_name": "seo_keywords",
+                    "result": {"main_keyword": "test"},
+                }
+            ]
+        },
+    }
+    await job_manager._save_job(job)
+
+    step_info = await step_result_manager.extract_step_info_from_job_result(job.id)
 
     assert isinstance(step_info, list)
     assert len(step_info) >= 0

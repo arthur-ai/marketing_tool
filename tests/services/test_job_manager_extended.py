@@ -71,9 +71,8 @@ async def test_update_job_status(job_manager):
     """Test updating job status."""
     job = await job_manager.create_job("blog", "test-content-1")
 
-    updated = await job_manager.update_job_status(job.id, JobStatus.PROCESSING)
+    await job_manager.update_job_status(job.id, JobStatus.PROCESSING)
 
-    assert updated is True
     retrieved = await job_manager.get_job(job.id)
     assert retrieved.status == JobStatus.PROCESSING
 
@@ -83,9 +82,8 @@ async def test_update_job_progress(job_manager):
     """Test updating job progress."""
     job = await job_manager.create_job("blog", "test-content-1")
 
-    updated = await job_manager.update_job_progress(job.id, 50, "Processing step 2")
+    await job_manager.update_job_progress(job.id, 50, "Processing step 2")
 
-    assert updated is True
     retrieved = await job_manager.get_job(job.id)
     assert retrieved.progress == 50
     assert retrieved.current_step == "Processing step 2"

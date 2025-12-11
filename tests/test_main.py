@@ -117,8 +117,11 @@ def test_content_sources_command_fetch():
 @pytest.mark.asyncio
 async def test_content_sources_async_list_sources():
     """Test _content_sources_async with list_sources flag."""
+    # Create mock configs so add_source_from_config gets called
+    mock_config1 = MagicMock()
+    mock_config2 = MagicMock()
     mock_config_loader = MagicMock()
-    mock_config_loader.create_source_configs.return_value = []
+    mock_config_loader.create_source_configs.return_value = [mock_config1, mock_config2]
 
     mock_manager = MagicMock()
     mock_manager.sources = {
@@ -142,7 +145,8 @@ async def test_content_sources_async_list_sources():
                 fetch_content=False,
             )
 
-    mock_manager.add_source_from_config.assert_called()
+    # Should be called for each config
+    assert mock_manager.add_source_from_config.call_count == 2
 
 
 @pytest.mark.asyncio

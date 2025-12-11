@@ -36,27 +36,31 @@ async def test_retry_step_seo_keywords(step_retry_service, mock_openai):
     context = {"input_content": input_data["content"]}
 
     with patch.object(
-        step_retry_service.pipeline, "execute_single_step", new_callable=AsyncMock
-    ) as mock_execute:
-        mock_result = SEOKeywordsResult(
-            main_keyword="test",
-            primary_keywords=["test1"],
-            confidence_score=0.9,
-        )
-        mock_execute.return_value = {
-            "result": mock_result,
-            "step_name": "seo_keywords",
-        }
+        step_retry_service.pipeline, "_call_function", new_callable=AsyncMock
+    ) as mock_call_function:
+        with patch.object(
+            step_retry_service.pipeline,
+            "_get_system_instruction",
+            return_value="System instruction",
+        ) as mock_get_instruction:
+            mock_result = SEOKeywordsResult(
+                main_keyword="test",
+                primary_keywords=["test1"],
+                search_intent="informational",
+                confidence_score=0.9,
+            )
+            mock_call_function.return_value = mock_result
 
-        result = await step_retry_service.retry_step(
-            step_name="seo_keywords",
-            input_data=input_data,
-            context=context,
-            job_id="test-job-1",
-        )
+            result = await step_retry_service.retry_step(
+                step_name="seo_keywords",
+                input_data=input_data,
+                context=context,
+                job_id="test-job-1",
+            )
 
-        assert result is not None
-        assert "result" in result
+            assert result is not None
+            assert "result" in result
+            assert result["status"] == "success"
 
 
 @pytest.mark.asyncio
@@ -70,28 +74,35 @@ async def test_retry_step_with_user_guidance(step_retry_service, mock_openai):
     }
 
     with patch.object(
-        step_retry_service.pipeline, "execute_single_step", new_callable=AsyncMock
-    ) as mock_execute:
-        mock_result = SEOKeywordsResult(
-            main_keyword="test",
-            primary_keywords=["test1"],
-            confidence_score=0.9,
-        )
-        mock_execute.return_value = {
-            "result": mock_result,
-            "step_name": "seo_keywords",
-        }
+        step_retry_service.pipeline, "_call_function", new_callable=AsyncMock
+    ) as mock_call_function:
+        with patch.object(
+            step_retry_service.pipeline,
+            "_get_system_instruction",
+            return_value="System instruction",
+        ) as mock_get_instruction:
+            mock_result = SEOKeywordsResult(
+                main_keyword="test",
+                primary_keywords=["test1"],
+                search_intent="informational",
+                confidence_score=0.9,
+            )
+            mock_call_function.return_value = mock_result
 
-        result = await step_retry_service.retry_step(
-            step_name="seo_keywords",
-            input_data=input_data,
-            context={},
-            user_guidance="Focus on technical keywords",
-        )
+            result = await step_retry_service.retry_step(
+                step_name="seo_keywords",
+                input_data=input_data,
+                context={},
+                user_guidance="Focus on technical keywords",
+            )
 
-        assert result is not None
-        # User guidance should be included in the prompt
-        assert mock_execute.called
+            assert result is not None
+            assert result["status"] == "success"
+            # User guidance should be included in the prompt
+            assert mock_call_function.called
+            # Verify user guidance was passed to _build_prompt (which is called before _call_function)
+            call_args = mock_call_function.call_args
+            assert call_args is not None
 
 
 def test_build_prompt(step_retry_service):

@@ -6,10 +6,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from marketing_project.services.analytics_service import (
-    AnalyticsService,
-    get_analytics_service,
-)
+# Patch the circular import before importing analytics_service
+with patch("marketing_project.api.content.get_content_manager"):
+    from marketing_project.services.analytics_service import (
+        AnalyticsService,
+        get_analytics_service,
+    )
 
 
 @pytest.fixture
@@ -44,7 +46,9 @@ async def test_get_dashboard_stats(analytics_service, mock_redis_manager):
             mock_job_manager.list_jobs = AsyncMock(return_value=[])
             mock_job_mgr.return_value = mock_job_manager
 
-            mock_content_manager.return_value = MagicMock()
+            mock_content_manager_instance = MagicMock()
+            mock_content_manager_instance.list_sources = AsyncMock(return_value=[])
+            mock_content_mgr.return_value = mock_content_manager_instance
 
             stats = await analytics_service.get_dashboard_stats()
 
@@ -81,7 +85,11 @@ async def test_get_content_stats(analytics_service, mock_redis_manager):
         stats = await analytics_service.get_content_stats()
 
         assert stats is not None
-        assert isinstance(stats, dict) or hasattr(stats, "total_items")
+        assert (
+            isinstance(stats, dict)
+            or hasattr(stats, "total_content")
+            or hasattr(stats, "total_items")
+        )
 
 
 @pytest.mark.asyncio
@@ -97,16 +105,31 @@ async def test_get_cost_metrics(analytics_service, mock_redis_manager):
         metrics = await analytics_service.get_cost_metrics()
 
         assert metrics is not None
-        assert isinstance(metrics, dict) or hasattr(metrics, "total_cost")
+        assert (
+            isinstance(metrics, dict)
+            or hasattr(metrics, "total_cost")
+            or hasattr(metrics, "total_cost_usd")
+        )
 
 
 @pytest.mark.asyncio
 async def test_get_quality_trends(analytics_service, mock_redis_manager):
     """Test getting quality trends."""
-    trends = await analytics_service.get_quality_trends()
+    with patch(
+        "marketing_project.services.analytics_service.get_job_manager"
+    ) as mock_job_mgr:
+        mock_job_manager = MagicMock()
+        mock_job_manager.list_jobs = AsyncMock(return_value=[])
+        mock_job_mgr.return_value = mock_job_manager
 
-    assert trends is not None
-    assert isinstance(trends, dict) or hasattr(trends, "trends")
+        trends = await analytics_service.get_quality_trends()
+
+        assert trends is not None
+        assert (
+            isinstance(trends, dict)
+            or hasattr(trends, "trends")
+            or hasattr(trends, "quality_trend_data")
+        )
 
 
 @pytest.mark.asyncio
@@ -128,10 +151,25 @@ async def test_get_recent_activity(analytics_service, mock_redis_manager):
 @pytest.mark.asyncio
 async def test_get_unified_metrics(analytics_service, mock_redis_manager):
     """Test getting unified metrics."""
-    metrics = await analytics_service.get_unified_metrics()
+    with patch(
+        "marketing_project.services.analytics_service.get_job_manager"
+    ) as mock_job_mgr:
+        with patch(
+            "marketing_project.services.analytics_service.get_content_manager"
+        ) as mock_content_mgr:
+            mock_job_manager = MagicMock()
+            mock_job_manager.list_jobs = AsyncMock(return_value=[])
+            mock_job_mgr.return_value = mock_job_manager
 
-    assert metrics is not None
-    assert isinstance(metrics, dict)
+            mock_content_manager_instance = MagicMock()
+            mock_content_manager_instance.list_sources = AsyncMock(return_value=[])
+            mock_content_mgr.return_value = mock_content_manager_instance
+
+            metrics = await analytics_service.get_unified_metrics()
+
+            assert metrics is not None
+            # UnifiedMonitoringMetrics is a Pydantic model, not a dict
+            assert hasattr(metrics, "dashboard_stats") or isinstance(metrics, dict)
 
 
 def test_get_analytics_service_singleton():

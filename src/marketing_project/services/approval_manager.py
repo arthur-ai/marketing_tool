@@ -427,7 +427,37 @@ class ApprovalManager:
 
             if approval_json:
                 approval_dict = json.loads(approval_json)
-                return ApprovalRequest(**approval_dict)
+                # Handle datetime strings - convert to datetime objects if needed
+                # Pydantic v2 can handle ISO format strings, but let's ensure compatibility
+                try:
+                    return ApprovalRequest.model_validate(approval_dict)
+                except Exception as e:
+                    # Fallback: try manual datetime parsing
+                    if "created_at" in approval_dict and isinstance(
+                        approval_dict["created_at"], str
+                    ):
+                        from datetime import datetime
+
+                        try:
+                            approval_dict["created_at"] = datetime.fromisoformat(
+                                approval_dict["created_at"].replace("Z", "+00:00")
+                            )
+                        except (ValueError, AttributeError):
+                            pass
+                    if (
+                        "reviewed_at" in approval_dict
+                        and isinstance(approval_dict["reviewed_at"], str)
+                        and approval_dict["reviewed_at"]
+                    ):
+                        from datetime import datetime
+
+                        try:
+                            approval_dict["reviewed_at"] = datetime.fromisoformat(
+                                approval_dict["reviewed_at"].replace("Z", "+00:00")
+                            )
+                        except (ValueError, AttributeError):
+                            pass
+                    return ApprovalRequest(**approval_dict)
         except Exception as e:
             logger.warning(
                 f"Failed to load approval {approval_id} from Redis (key: {approval_key}): {type(e).__name__}: {e}",

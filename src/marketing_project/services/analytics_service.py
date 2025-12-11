@@ -612,6 +612,294 @@ class AnalyticsService:
         await self._set_cached(cache_key, result)
         return result
 
+    async def get_cost_metrics(self, days: int = 30) -> CostMetrics:
+        """
+        Get cost tracking metrics.
+
+        Args:
+            days: Number of days to look back (default: 30)
+
+        Returns:
+            CostMetrics with cost breakdown and token usage
+        """
+        # Try cache first
+        cache_key = f"cost_metrics_{days}"
+        cached = await self._get_cached(cache_key)
+        if cached:
+            return CostMetrics(**cached)
+
+        # Compute cost metrics
+        job_manager = get_job_manager()
+        all_jobs = await job_manager.list_jobs(limit=1000)
+
+        # Filter jobs from the last N days
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
+        recent_jobs = [j for j in all_jobs if j.created_at >= cutoff_date]
+
+        # Calculate costs from job metadata
+        total_cost = 0.0
+        cost_by_model = {}
+        cost_by_step = {}
+        token_usage = {"total_tokens": 0, "prompt_tokens": 0, "completion_tokens": 0}
+
+        for job in recent_jobs:
+            if job.metadata:
+                # Extract cost information from metadata
+                job_cost = job.metadata.get("cost", 0.0)
+                if isinstance(job_cost, (int, float)):
+                    total_cost += float(job_cost)
+
+                # Cost by model
+                model = job.metadata.get("model", "unknown")
+                if model not in cost_by_model:
+                    cost_by_model[model] = 0.0
+                cost_by_model[model] += (
+                    float(job_cost) if isinstance(job_cost, (int, float)) else 0.0
+                )
+
+                # Cost by step
+                step_name = job.metadata.get("step_name") or job.metadata.get(
+                    "pipeline_step"
+                )
+                if step_name:
+                    if step_name not in cost_by_step:
+                        cost_by_step[step_name] = 0.0
+                    cost_by_step[step_name] += (
+                        float(job_cost) if isinstance(job_cost, (int, float)) else 0.0
+                    )
+
+                # Token usage
+                tokens = job.metadata.get("tokens_used", 0)
+                if isinstance(tokens, int):
+                    token_usage["total_tokens"] += tokens
+
+                prompt_tokens = job.metadata.get("prompt_tokens", 0)
+                if isinstance(prompt_tokens, int):
+                    token_usage["prompt_tokens"] += prompt_tokens
+
+                completion_tokens = job.metadata.get("completion_tokens", 0)
+                if isinstance(completion_tokens, int):
+                    token_usage["completion_tokens"] += completion_tokens
+
+        # Calculate average cost per job
+        avg_cost_per_job = total_cost / len(recent_jobs) if recent_jobs else 0.0
+
+        metrics = CostMetrics(
+            total_cost_usd=total_cost,
+            avg_cost_per_job=avg_cost_per_job,
+            cost_by_model=cost_by_model,
+            cost_by_step=cost_by_step,
+            token_usage=token_usage,
+        )
+
+        # Cache the result
+        await self._set_cached(cache_key, metrics.model_dump())
+
+        return metrics
+
+    async def get_quality_trends(self, days: int = 30) -> QualityTrends:
+        """
+        Get quality trend analysis.
+
+        Args:
+            days: Number of days to look back (default: 30)
+
+        Returns:
+            QualityTrends with quality scores and trends
+        """
+        # Try cache first
+        cache_key = f"quality_trends_{days}"
+        cached = await self._get_cached(cache_key)
+        if cached:
+            return QualityTrends(**cached)
+
+        # Compute quality trends
+        job_manager = get_job_manager()
+        all_jobs = await job_manager.list_jobs(limit=1000)
+
+        # Filter jobs from the last N days
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
+        recent_jobs = [
+            j
+            for j in all_jobs
+            if j.created_at >= cutoff_date and j.status == JobStatus.COMPLETED
+        ]
+
+        # Collect quality scores
+        quality_scores = []
+        quality_by_platform = {}
+        quality_trend_data = []
+
+        for job in recent_jobs:
+            try:
+                result = await job_manager.get_job_result(job.job_id)
+                if result:
+                    # Extract quality scores from result
+                    quality_score = None
+                    if "metadata" in result:
+                        quality_score = result["metadata"].get("quality_score")
+                        if quality_score is None:
+                            # Try to get from step results
+                            step_results = result.get("step_results", {})
+                            for step_result in step_results.values():
+                                if isinstance(step_result, dict):
+                                    quality_score = step_result.get(
+                                        "confidence_score"
+                                    ) or step_result.get("quality_score")
+                                    if quality_score is not None:
+                                        break
+
+                    if quality_score is not None and isinstance(
+                        quality_score, (int, float)
+                    ):
+                        quality_scores.append(float(quality_score))
+
+                    # Quality by platform
+                    platform = (
+                        job.metadata.get("social_media_platform")
+                        if job.metadata
+                        else None
+                    )
+                    if platform:
+                        platform_scores = result.get("metadata", {}).get(
+                            "platform_quality_scores", {}
+                        )
+                        if platform in platform_scores:
+                            if platform not in quality_by_platform:
+                                quality_by_platform[platform] = []
+                            quality_by_platform[platform].append(
+                                float(platform_scores[platform])
+                            )
+            except Exception:
+                pass
+
+        # Calculate averages
+        avg_quality_score = (
+            sum(quality_scores) / len(quality_scores) if quality_scores else 0.0
+        )
+
+        # Average by platform
+        quality_by_platform_avg = {
+            platform: sum(scores) / len(scores)
+            for platform, scores in quality_by_platform.items()
+            if scores
+        }
+
+        # Calculate improvement rate (simple: compare first half vs second half)
+        improvement_rate = None
+        if len(quality_scores) > 10:
+            mid_point = len(quality_scores) // 2
+            first_half_avg = sum(quality_scores[:mid_point]) / mid_point
+            second_half_avg = sum(quality_scores[mid_point:]) / (
+                len(quality_scores) - mid_point
+            )
+            if first_half_avg > 0:
+                improvement_rate = (
+                    (second_half_avg - first_half_avg) / first_half_avg
+                ) * 100
+
+        # Create trend data (daily averages)
+        end_date = datetime.now(timezone.utc).date()
+        start_date = end_date - timedelta(days=days - 1)
+        daily_quality = {}
+        current_date = start_date
+        while current_date <= end_date:
+            daily_quality[current_date.strftime("%Y-%m-%d")] = []
+            current_date += timedelta(days=1)
+
+        # Group quality scores by date
+        for job in recent_jobs:
+            try:
+                result = await job_manager.get_job_result(job.job_id)
+                if result:
+                    quality_score = None
+                    if "metadata" in result:
+                        quality_score = result["metadata"].get("quality_score")
+                    if quality_score is None:
+                        step_results = result.get("step_results", {})
+                        for step_result in step_results.values():
+                            if isinstance(step_result, dict):
+                                quality_score = step_result.get(
+                                    "confidence_score"
+                                ) or step_result.get("quality_score")
+                                if quality_score is not None:
+                                    break
+
+                    if quality_score is not None and isinstance(
+                        quality_score, (int, float)
+                    ):
+                        date_str = job.created_at.strftime("%Y-%m-%d")
+                        if date_str in daily_quality:
+                            daily_quality[date_str].append(float(quality_score))
+            except Exception:
+                pass
+
+        # Calculate daily averages
+        for date_str, scores in daily_quality.items():
+            avg_score = sum(scores) / len(scores) if scores else 0.0
+            quality_trend_data.append(
+                {
+                    "date": date_str,
+                    "average_quality": avg_score,
+                    "sample_count": len(scores),
+                }
+            )
+
+        trends = QualityTrends(
+            avg_quality_score=avg_quality_score,
+            quality_by_platform=quality_by_platform_avg,
+            quality_trend_data=quality_trend_data,
+            improvement_rate=improvement_rate,
+        )
+
+        # Cache the result
+        await self._set_cached(cache_key, trends.model_dump())
+
+        return trends
+
+    async def get_unified_metrics(self, days: int = 30) -> UnifiedMonitoringMetrics:
+        """
+        Get unified monitoring dashboard metrics.
+
+        Args:
+            days: Number of days to look back (default: 30)
+
+        Returns:
+            UnifiedMonitoringMetrics with all metrics combined
+        """
+        # Try cache first
+        cache_key = f"unified_metrics_{days}"
+        cached = await self._get_cached(cache_key)
+        if cached:
+            return UnifiedMonitoringMetrics(**cached)
+
+        # Get all metrics
+        dashboard_stats = await self.get_dashboard_stats()
+        pipeline_stats = await self.get_pipeline_stats()
+        cost_metrics = await self.get_cost_metrics(days=days)
+        quality_trends = await self.get_quality_trends(days=days)
+        social_media_performance = await self.get_social_media_performance(days=days)
+
+        metrics = UnifiedMonitoringMetrics(
+            dashboard_stats=dashboard_stats,
+            pipeline_stats=pipeline_stats,
+            cost_metrics=cost_metrics,
+            quality_trends=quality_trends,
+            social_media_performance=social_media_performance,
+        )
+
+        # Cache the result
+        await self._set_cached(cache_key, metrics.model_dump())
+
+        return metrics
+
+    # Alias for backward compatibility
+    async def get_unified_monitoring_metrics(
+        self, days: int = 30
+    ) -> UnifiedMonitoringMetrics:
+        """Alias for get_unified_metrics for backward compatibility."""
+        return await self.get_unified_metrics(days=days)
+
 
 async def cleanup(self):
     """Cleanup Redis connections."""

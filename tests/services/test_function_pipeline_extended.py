@@ -67,15 +67,25 @@ class TestFunctionPipelineHelpers:
     @pytest.mark.asyncio
     async def test_call_function(self, function_pipeline, mock_openai):
         """Test _call_function method."""
+        from marketing_project.models.pipeline_steps import SEOKeywordsResult
+
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = '{"main_keyword": "test"}'
-        mock_openai.chat.completions.create = AsyncMock(return_value=mock_response)
+        mock_response.choices[0].message.parsed = SEOKeywordsResult(
+            main_keyword="test",
+            primary_keywords=["test"],
+            search_intent="informational",
+        )
+        mock_response.usage = MagicMock()
+        mock_response.usage.total_tokens = 100
+        mock_openai.beta.chat.completions.parse = AsyncMock(return_value=mock_response)
 
         result = await function_pipeline._call_function(
             prompt="Test prompt",
             system_instruction="Test instruction",
-            response_model=None,
+            response_model=SEOKeywordsResult,
+            step_name="seo_keywords",
+            step_number=1,
         )
 
         assert result is not None

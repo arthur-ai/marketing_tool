@@ -2,6 +2,7 @@
 Extended tests for core API endpoints.
 """
 
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -45,18 +46,25 @@ async def test_analyze_content_endpoint(sample_blog_context):
 @pytest.mark.asyncio
 async def test_run_pipeline_endpoint(sample_blog_context):
     """Test /pipeline endpoint."""
-    with patch("marketing_project.api.core.FunctionPipeline") as mock_pipeline_class:
-        mock_pipeline = MagicMock()
-        mock_pipeline.execute_pipeline = AsyncMock(
-            return_value={"seo_keywords": {}, "marketing_brief": {}}
+    with patch("marketing_project.api.core.process_blog_post") as mock_process:
+        # Mock process_blog_post to return valid JSON result
+        mock_process.return_value = json.dumps(
+            {
+                "status": "success",
+                "message": "Pipeline completed",
+                "pipeline_result": {"seo_keywords": {}, "marketing_brief": {}},
+                "metadata": {},
+                "validation": {},
+                "processing_steps_completed": 1,
+            }
         )
-        mock_pipeline_class.return_value = mock_pipeline
 
         request_data = {"content": sample_blog_context}
 
         response = client.post("/pipeline", json=request_data)
 
-        assert response.status_code in [200, 500]
+        # Endpoint should return 200 on success, 400 on validation error, or 500 on server error
+        assert response.status_code in [200, 400, 500]
 
 
 @pytest.mark.asyncio

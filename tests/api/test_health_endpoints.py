@@ -191,9 +191,18 @@ class TestNoAuthentication:
 
     def test_readiness_check_no_auth_required(self, client):
         """Test that readiness check doesn't require authentication."""
+        mock_redis_manager = Mock()
+        mock_redis_manager.get_health_status.return_value = {
+            "healthy": True,
+            "circuit_breaker_state": "closed",
+        }
         with (
             patch("marketing_project.api.health.PIPELINE_SPEC", {"test": "config"}),
             patch("marketing_project.api.health.os.path.exists", return_value=True),
+            patch(
+                "marketing_project.api.health.get_redis_manager",
+                return_value=mock_redis_manager,
+            ),
         ):
             response = client.get("/ready")
             assert response.status_code == 200

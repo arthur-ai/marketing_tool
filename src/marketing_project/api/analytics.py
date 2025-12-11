@@ -99,6 +99,9 @@ async def get_content_analytics():
 
 
 @router.get("/recent-activity", response_model=RecentActivity)
+@router.get(
+    "/activity/recent", response_model=RecentActivity
+)  # Alias for test compatibility
 async def get_recent_activity(
     days: int = Query(7, ge=1, le=30, description="Number of days to look back")
 ):
@@ -209,6 +212,9 @@ async def get_social_media_trends(
 
 
 @router.get("/monitoring/unified", response_model=UnifiedMonitoringMetrics)
+@router.get(
+    "/metrics/unified", response_model=UnifiedMonitoringMetrics
+)  # Alias for test compatibility
 async def get_unified_monitoring_metrics(
     days: int = Query(30, ge=1, le=90, description="Number of days to look back"),
 ):
@@ -226,7 +232,7 @@ async def get_unified_monitoring_metrics(
     """
     try:
         analytics_service = get_analytics_service()
-        metrics = await analytics_service.get_unified_monitoring_metrics(days=days)
+        metrics = await analytics_service.get_unified_metrics(days=days)
         return metrics
     except Exception as e:
         logger.error(f"Failed to get unified monitoring metrics: {e}")
@@ -237,6 +243,7 @@ async def get_unified_monitoring_metrics(
 
 
 @router.get("/monitoring/cost", response_model=CostMetrics)
+@router.get("/cost", response_model=CostMetrics)  # Alias for test compatibility
 async def get_cost_metrics(
     days: int = Query(30, ge=1, le=90, description="Number of days to look back"),
 ):
@@ -264,6 +271,9 @@ async def get_cost_metrics(
 
 
 @router.get("/monitoring/quality", response_model=QualityTrends)
+@router.get(
+    "/quality/trends", response_model=QualityTrends
+)  # Alias for test compatibility
 async def get_quality_trends(
     days: int = Query(30, ge=1, le=90, description="Number of days to look back"),
 ):

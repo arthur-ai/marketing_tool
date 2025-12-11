@@ -1156,8 +1156,9 @@ async def retry_step_job(
         # Import retry service
         from marketing_project.services.step_retry_service import get_retry_service
 
-        # Update job manager
+        # Update job manager - mark as processing and update progress
         job_manager = get_job_manager()
+        await job_manager.update_job_status(job_id, JobStatus.PROCESSING)
         await job_manager.update_job_progress(job_id, 10, f"Retrying step: {step_name}")
 
         # Get retry service and execute the step
@@ -1173,17 +1174,93 @@ async def retry_step_job(
         if result["status"] == "error":
             raise Exception(result.get("error_message", "Step retry failed"))
 
+        # Get the original approval to retrieve job_id and other metadata
+        from marketing_project.services.approval_manager import get_approval_manager
+        from marketing_project.services.step_retry_service import STEP_NUMBER_MAP
+
+        approval_manager = await get_approval_manager(reload_from_db=True)
+        original_approval = await approval_manager.get_approval(approval_id)
+
+        if not original_approval:
+            logger.error(
+                f"ARQ Worker: Original approval {approval_id} not found, cannot create new approval"
+            )
+            raise Exception(f"Original approval {approval_id} not found")
+
+        # Get step number for this step
+        step_number = STEP_NUMBER_MAP.get(step_name, 1)
+
+        # Load existing pipeline context
+        context_data = await approval_manager.load_pipeline_context(
+            original_approval.job_id
+        )
+        if not context_data:
+            logger.warning(
+                f"ARQ Worker: No pipeline context found for job {original_approval.job_id}, "
+                f"creating new context for rerun"
+            )
+            context_data = {
+                "context": context,
+                "last_step": step_name,
+                "last_step_number": step_number,
+                "step_result": result.get("result", {}),
+                "original_content": input_data.get("content"),
+                "content_type": context.get("content_type", "blog_post"),
+                "timestamp": datetime.utcnow().isoformat(),
+                "job_id": original_approval.job_id,
+            }
+        else:
+            # Update context with the new rerun result
+            updated_context = context_data.get("context", {}).copy()
+            updated_context[step_name] = result.get("result", {})
+
+            # Update context_data with new result
+            context_data["context"] = updated_context
+            context_data["last_step"] = step_name
+            context_data["last_step_number"] = step_number
+            context_data["step_result"] = result.get("result", {})
+            context_data["timestamp"] = datetime.utcnow().isoformat()
+
+        # Save updated pipeline context so pipeline can resume after approval
+        await approval_manager.save_pipeline_context(
+            job_id=original_approval.job_id,
+            context=context_data["context"],
+            step_name=step_name,
+            step_number=step_number,
+            step_result=result.get("result", {}),
+            original_content=context_data.get("original_content"),
+        )
+
+        # Create a new approval request for the rerun result
+        # Use the original job_id so it's associated with the same pipeline
+        new_approval = await approval_manager.create_approval_request(
+            job_id=original_approval.job_id,
+            agent_name=step_name,
+            step_name=step_name,
+            input_data=input_data,
+            output_data=result.get("result", {}),
+            pipeline_step=step_name,
+        )
+
+        logger.info(
+            f"ARQ Worker: Created new approval {new_approval.id} for rerun of step '{step_name}' "
+            f"(original approval: {approval_id}, job: {original_approval.job_id}). "
+            f"Pipeline context updated and saved for resume after approval."
+        )
+
         await job_manager.update_job_progress(
             job_id, 100, f"Step '{step_name}' retry completed"
         )
+        await job_manager.update_job_status(job_id, JobStatus.COMPLETED)
         logger.info(
             f"ARQ Worker: Step '{step_name}' retry completed successfully "
-            f"for job {job_id} (approval: {approval_id})"
+            f"for job {job_id} (approval: {approval_id}, new approval: {new_approval.id})"
         )
 
         return {
             "status": "success",
             "approval_id": approval_id,
+            "new_approval_id": new_approval.id,
             "step_name": step_name,
             "result": result,
             "message": f"Step '{step_name}' retried successfully",
@@ -1191,8 +1268,12 @@ async def retry_step_job(
 
     except Exception as e:
         logger.error(
-            f"ARQ Worker: Step '{step_name}' retry failed for job {job_id}: {e}"
+            f"ARQ Worker: Step '{step_name}' retry failed for job {job_id}: {e}",
+            exc_info=True,
         )
+        job_manager = get_job_manager()
+        await job_manager.update_job_status(job_id, JobStatus.FAILED)
+        await job_manager.update_job_progress(job_id, 0, f"Step retry failed: {str(e)}")
         raise
 
 
@@ -1576,6 +1657,19 @@ async def startup(ctx):
             )
     except Exception as e:
         logger.warning(f"⚠ Failed to initialize database connection: {e}")
+
+    # Initialize telemetry
+    try:
+        from marketing_project.services.telemetry import setup_tracing
+
+        if setup_tracing():
+            logger.info("✓ Telemetry initialized successfully")
+        else:
+            logger.info(
+                "⚠ Telemetry not configured (missing ARTHUR_API_KEY or ARTHUR_TASK_ID)"
+            )
+    except Exception as e:
+        logger.warning(f"⚠ Failed to initialize telemetry: {e}")
 
 
 async def shutdown(ctx):

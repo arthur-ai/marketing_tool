@@ -98,16 +98,18 @@ async def test_add_multiple_sources(content_source_manager):
 @pytest.mark.asyncio
 async def test_fetch_content_with_cache(content_source_manager):
     """Test fetch_content_with_cache method."""
-    result = await content_source_manager.fetch_content_with_cache(limit=10)
+    result = await content_source_manager.fetch_content_with_cache(limit_per_source=10)
 
     assert result is not None
-    assert isinstance(result, dict)
+    assert isinstance(result, list)
 
 
 @pytest.mark.asyncio
 async def test_get_content_by_type(content_source_manager):
     """Test get_content_by_type method."""
-    result = await content_source_manager.get_content_by_type("blog_post", limit=10)
+    result = await content_source_manager.get_content_by_type(
+        "blog_post", limit_per_source=10
+    )
 
     assert isinstance(result, list)
 

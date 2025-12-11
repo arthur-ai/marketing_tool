@@ -90,7 +90,8 @@ def test_filter_selected_keywords_no_selection(approval_manager):
         "primary_keywords": ["original", "keyword1"],
     }
 
-    with pytest.raises(ValueError, match="At least one keyword must be selected"):
+    # When main_keyword is None, it should raise "Main keyword is required"
+    with pytest.raises(ValueError, match="Main keyword is required"):
         approval_manager.filter_selected_keywords(output_data, {}, main_keyword=None)
 
 

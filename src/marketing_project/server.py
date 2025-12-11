@@ -109,6 +109,19 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"⚠ Failed to initialize scanned documents database: {e}")
 
+    # Initialize telemetry
+    try:
+        from marketing_project.services.telemetry import setup_tracing
+
+        if setup_tracing():
+            logger.info("✓ Telemetry initialized successfully")
+        else:
+            logger.info(
+                "⚠ Telemetry not configured (missing ARTHUR_API_KEY or ARTHUR_TASK_ID)"
+            )
+    except Exception as e:
+        logger.warning(f"⚠ Failed to initialize telemetry: {e}")
+
     logger.info("=" * 80)
     logger.info("Startup completed successfully")
     logger.info("=" * 80)
@@ -138,6 +151,15 @@ async def lifespan(app: FastAPI):
         logger.info("Redis connections cleaned up")
     except Exception as e:
         logger.warning(f"Error cleaning up Redis connections: {e}")
+
+    # Cleanup telemetry
+    try:
+        from marketing_project.services.telemetry import cleanup_tracing
+
+        cleanup_tracing()
+        logger.info("Telemetry cleaned up")
+    except Exception as e:
+        logger.warning(f"Error cleaning up telemetry: {e}")
 
     # Cleanup other services
     try:

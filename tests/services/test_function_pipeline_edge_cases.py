@@ -60,7 +60,7 @@ async def test_execute_pipeline_with_internal_docs_config(function_pipeline):
     content_json = '{"id": "test-1", "title": "Test", "content": "Content"}'
 
     with patch(
-        "marketing_project.services.function_pipeline.get_internal_docs_manager"
+        "marketing_project.services.internal_docs_manager.get_internal_docs_manager"
     ) as mock_manager:
         mock_config = MagicMock()
         mock_config.base_url = "https://example.com"
@@ -89,7 +89,7 @@ async def test_execute_pipeline_with_design_kit_config(function_pipeline):
     content_json = '{"id": "test-1", "title": "Test", "content": "Content"}'
 
     with patch(
-        "marketing_project.services.function_pipeline.get_design_kit_manager"
+        "marketing_project.services.design_kit_manager.get_design_kit_manager"
     ) as mock_manager:
         mock_config = MagicMock()
         mock_config.version = "1.0.0"
