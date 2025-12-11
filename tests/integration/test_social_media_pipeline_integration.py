@@ -35,6 +35,162 @@ SAMPLE_BLOG_POST = {
 }
 
 
+def create_mock_openai_client(platform="linkedin"):
+    """Create a properly mocked AsyncOpenAI client with async methods.
+
+    Args:
+        platform: Platform type (linkedin, hackernews, email) to customize responses
+    """
+    mock_client = MagicMock()
+
+    # Create responses for different steps
+    responses = []
+
+    # SEO Keywords response
+    seo_response = MagicMock()
+    seo_message = MagicMock()
+    seo_message.content = json.dumps(
+        {
+            "primary_keywords": [
+                "machine learning",
+                "artificial intelligence",
+                "data science",
+            ],
+            "lsi_keywords": [
+                "supervised learning",
+                "unsupervised learning",
+                "reinforcement learning",
+                "neural networks",
+                "deep learning",
+            ],
+            "main_keyword": "machine learning",
+        }
+    )
+    seo_choice = MagicMock()
+    seo_choice.message = seo_message
+    seo_response.choices = [seo_choice]
+    seo_usage = MagicMock()
+    seo_usage.prompt_tokens = 100
+    seo_usage.completion_tokens = 50
+    seo_usage.total_tokens = 150
+    seo_response.usage = seo_usage
+    responses.append(seo_response)
+
+    # Social Media Marketing Brief response
+    brief_response = MagicMock()
+    brief_message = MagicMock()
+    brief_message.content = json.dumps(
+        {
+            "platform": platform,
+            "target_audience": [
+                "Data scientists",
+                "ML engineers",
+                "Tech professionals",
+            ],
+            "key_messages": [
+                "ML is transforming industries",
+                "Practical applications matter",
+                "Education is key",
+            ],
+            "tone_and_voice": "Professional yet approachable",
+            "content_strategy": "Focus on practical applications and real-world examples",
+            "distribution_strategy": "Post during business hours, engage with comments",
+            "platform_specific_notes": None,
+            "confidence_score": 0.9,
+        }
+    )
+    brief_choice = MagicMock()
+    brief_choice.message = brief_message
+    brief_response.choices = [brief_choice]
+    brief_usage = MagicMock()
+    brief_usage.prompt_tokens = 150
+    brief_usage.completion_tokens = 100
+    brief_usage.total_tokens = 250
+    brief_response.usage = brief_usage
+    responses.append(brief_response)
+
+    # Angle Hook response
+    angle_response = MagicMock()
+    angle_message = MagicMock()
+    angle_message.content = json.dumps(
+        {
+            "platform": platform,
+            "angles": ["Educational", "Practical application", "Industry impact"],
+            "hooks": [
+                "Discover how ML is changing everything",
+                "Learn the fundamentals",
+                "See real-world applications",
+            ],
+            "recommended_angle": "Educational",
+            "recommended_hook": "Discover how ML is changing everything",
+        }
+    )
+    angle_choice = MagicMock()
+    angle_choice.message = angle_message
+    angle_response.choices = [angle_choice]
+    angle_usage = MagicMock()
+    angle_usage.prompt_tokens = 120
+    angle_usage.completion_tokens = 80
+    angle_usage.total_tokens = 200
+    angle_response.usage = angle_usage
+    responses.append(angle_response)
+
+    # Post Generation response - customize based on platform
+    post_response = MagicMock()
+    post_message = MagicMock()
+    if platform == "email":
+        post_content = json.dumps(
+            {
+                "platform": "email",
+                "content": "Discover how machine learning is transforming industries...",
+                "subject_line": "Discover How Machine Learning is Transforming Industries",
+                "call_to_action": "Read more about ML applications",
+                "confidence_score": 0.85,
+            }
+        )
+    elif platform == "hackernews":
+        post_content = json.dumps(
+            {
+                "platform": "hackernews",
+                "content": "Machine learning fundamentals: supervised, unsupervised, and reinforcement learning...",
+                "call_to_action": "What are your thoughts?",
+                "confidence_score": 0.85,
+            }
+        )
+    else:  # linkedin
+        post_content = json.dumps(
+            {
+                "platform": "linkedin",
+                "content": "Discover how machine learning is transforming industries...",
+                "hashtags": ["#MachineLearning", "#AI", "#DataScience"],
+                "call_to_action": "What are your thoughts on ML applications?",
+                "confidence_score": 0.85,
+            }
+        )
+    post_message.content = post_content
+    post_choice = MagicMock()
+    post_choice.message = post_message
+    post_response.choices = [post_choice]
+    post_usage = MagicMock()
+    post_usage.prompt_tokens = 200
+    post_usage.completion_tokens = 150
+    post_usage.total_tokens = 350
+    post_response.usage = post_usage
+    responses.append(post_response)
+
+    # Make chat.completions.create an async method that returns different responses
+    mock_chat = MagicMock()
+    mock_completions = MagicMock()
+    # Use side_effect to return different responses for each call
+    # Create a cycle of responses to handle any number of calls
+    response_cycle = responses * 10  # Repeat enough times for multiple pipeline runs
+    mock_completions.create = AsyncMock(side_effect=response_cycle)
+    mock_chat.completions = mock_completions
+    mock_client.chat = mock_chat
+
+    return mock_client
+
+
 class TestEndToEndPipeline:
     """Test end-to-end pipeline execution for each platform."""
 
@@ -44,7 +200,7 @@ class TestEndToEndPipeline:
         with patch(
             "marketing_project.services.social_media_pipeline.AsyncOpenAI"
         ) as mock_openai:
-            mock_client = MagicMock()
+            mock_client = create_mock_openai_client()
             mock_openai.return_value = mock_client
             pipeline = SocialMediaPipeline()
         content_json = json.dumps(SAMPLE_BLOG_POST)
@@ -89,7 +245,7 @@ class TestEndToEndPipeline:
         with patch(
             "marketing_project.services.social_media_pipeline.AsyncOpenAI"
         ) as mock_openai:
-            mock_client = MagicMock()
+            mock_client = create_mock_openai_client()
             mock_openai.return_value = mock_client
             pipeline = SocialMediaPipeline()
         content_json = json.dumps(SAMPLE_BLOG_POST)
@@ -127,7 +283,7 @@ class TestEndToEndPipeline:
         with patch(
             "marketing_project.services.social_media_pipeline.AsyncOpenAI"
         ) as mock_openai:
-            mock_client = MagicMock()
+            mock_client = create_mock_openai_client()
             mock_openai.return_value = mock_client
             pipeline = SocialMediaPipeline()
         content_json = json.dumps(SAMPLE_BLOG_POST)
@@ -166,7 +322,7 @@ class TestEndToEndPipeline:
         with patch(
             "marketing_project.services.social_media_pipeline.AsyncOpenAI"
         ) as mock_openai:
-            mock_client = MagicMock()
+            mock_client = create_mock_openai_client()
             mock_openai.return_value = mock_client
             pipeline = SocialMediaPipeline()
         content_json = json.dumps(SAMPLE_BLOG_POST)
@@ -197,7 +353,7 @@ class TestMultiPlatformGeneration:
         with patch(
             "marketing_project.services.social_media_pipeline.AsyncOpenAI"
         ) as mock_openai:
-            mock_client = MagicMock()
+            mock_client = create_mock_openai_client()
             mock_openai.return_value = mock_client
             pipeline = SocialMediaPipeline()
         content_json = json.dumps(SAMPLE_BLOG_POST)
@@ -239,7 +395,7 @@ class TestErrorScenarios:
         with patch(
             "marketing_project.services.social_media_pipeline.AsyncOpenAI"
         ) as mock_openai:
-            mock_client = MagicMock()
+            mock_client = create_mock_openai_client()
             mock_openai.return_value = mock_client
             pipeline = SocialMediaPipeline()
 
@@ -257,7 +413,7 @@ class TestErrorScenarios:
         with patch(
             "marketing_project.services.social_media_pipeline.AsyncOpenAI"
         ) as mock_openai:
-            mock_client = MagicMock()
+            mock_client = create_mock_openai_client()
             mock_openai.return_value = mock_client
             pipeline = SocialMediaPipeline()
         incomplete_content = {"title": "Test"}
@@ -282,7 +438,7 @@ class TestErrorScenarios:
         with patch(
             "marketing_project.services.social_media_pipeline.AsyncOpenAI"
         ) as mock_openai:
-            mock_client = MagicMock()
+            mock_client = create_mock_openai_client()
             mock_openai.return_value = mock_client
             pipeline = SocialMediaPipeline()
 
@@ -300,7 +456,7 @@ class TestPerformanceBenchmarks:
         with patch(
             "marketing_project.services.social_media_pipeline.AsyncOpenAI"
         ) as mock_openai:
-            mock_client = MagicMock()
+            mock_client = create_mock_openai_client()
             mock_openai.return_value = mock_client
             pipeline = SocialMediaPipeline()
         content_json = json.dumps(SAMPLE_BLOG_POST)
@@ -333,7 +489,7 @@ class TestPerformanceBenchmarks:
         with patch(
             "marketing_project.services.social_media_pipeline.AsyncOpenAI"
         ) as mock_openai:
-            mock_client = MagicMock()
+            mock_client = create_mock_openai_client()
             mock_openai.return_value = mock_client
             pipeline = SocialMediaPipeline()
         content_json = json.dumps(SAMPLE_BLOG_POST)
@@ -367,7 +523,7 @@ class TestContentValidation:
         with patch(
             "marketing_project.services.social_media_pipeline.AsyncOpenAI"
         ) as mock_openai:
-            mock_client = MagicMock()
+            mock_client = create_mock_openai_client()
             mock_openai.return_value = mock_client
             pipeline = SocialMediaPipeline()
 
@@ -421,7 +577,7 @@ class TestPlatformSpecificFeatures:
         with patch(
             "marketing_project.services.social_media_pipeline.AsyncOpenAI"
         ) as mock_openai:
-            mock_client = MagicMock()
+            mock_client = create_mock_openai_client()
             mock_openai.return_value = mock_client
             pipeline = SocialMediaPipeline()
         content_json = json.dumps(SAMPLE_BLOG_POST)
@@ -457,7 +613,7 @@ class TestPlatformSpecificFeatures:
         with patch(
             "marketing_project.services.social_media_pipeline.AsyncOpenAI"
         ) as mock_openai:
-            mock_client = MagicMock()
+            mock_client = create_mock_openai_client(platform="email")
             mock_openai.return_value = mock_client
             pipeline = SocialMediaPipeline()
         content_json = json.dumps(SAMPLE_BLOG_POST)

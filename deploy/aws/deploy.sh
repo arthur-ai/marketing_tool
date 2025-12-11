@@ -95,6 +95,9 @@ REQUIRED ENVIRONMENT VARIABLES:
 
 OPTIONAL ENVIRONMENT VARIABLES:
     EXISTING_MONGODB_ENDPOINT  Existing MongoDB/DocumentDB endpoint (optional - provide to use existing MongoDB)
+    ARTHUR_BASE_URL            Base URL for Arthur API (optional - default: http://localhost:3030)
+    ARTHUR_API_KEY             API key for Arthur authentication (optional - leave empty to disable telemetry)
+    ARTHUR_TASK_ID             Task ID for Arthur (optional - leave empty to disable telemetry, must have is_agentic=True if provided)
 
 EXAMPLES:
     # Deploy to production
@@ -414,6 +417,22 @@ if [[ -n "$FRONTEND_CONTAINER_IMAGE" ]]; then
     fi
     PARAMETERS="$PARAMETERS ParameterKey=FrontendDockerRegistryUsername,ParameterValue=$FRONTEND_DOCKER_REGISTRY_USERNAME"
     PARAMETERS="$PARAMETERS ParameterKey=FrontendDockerRegistryPassword,ParameterValue=$FRONTEND_DOCKER_REGISTRY_PASSWORD"
+fi
+
+# Telemetry parameters (optional)
+ARTHUR_BASE_URL="${ARTHUR_BASE_URL:-http://localhost:3030}"
+ARTHUR_API_KEY="${ARTHUR_API_KEY:-}"
+ARTHUR_TASK_ID="${ARTHUR_TASK_ID:-}"
+PARAMETERS="$PARAMETERS ParameterKey=ArthurBaseUrl,ParameterValue=$ARTHUR_BASE_URL"
+if [[ -n "$ARTHUR_API_KEY" ]]; then
+    PARAMETERS="$PARAMETERS ParameterKey=ArthurApiKey,ParameterValue=$ARTHUR_API_KEY"
+else
+    PARAMETERS="$PARAMETERS ParameterKey=ArthurApiKey,ParameterValue="
+fi
+if [[ -n "$ARTHUR_TASK_ID" ]]; then
+    PARAMETERS="$PARAMETERS ParameterKey=ArthurTaskId,ParameterValue=$ARTHUR_TASK_ID"
+else
+    PARAMETERS="$PARAMETERS ParameterKey=ArthurTaskId,ParameterValue="
 fi
 
 # Validate CloudFormation template

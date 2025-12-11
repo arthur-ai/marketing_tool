@@ -1197,7 +1197,7 @@ Resources:
       SecretString: !If
         - HasArthurApiKey
         - !Ref ArthurApiKey
-        - ''
+        - 'disabled'
 
   FrontendDockerRegistrySecret:
     Type: AWS::SecretsManager::Secret

@@ -202,6 +202,10 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           FRONTEND_DOCKER_REGISTRY_USERNAME: ${{ github.event.inputs.frontend_docker_registry_username || secrets.FRONTEND_DOCKER_REGISTRY_USERNAME || secrets.NEXUS_USERNAME || '' }}
           FRONTEND_DOCKER_REGISTRY_PASSWORD: ${{ github.event.inputs.frontend_docker_registry_password || secrets.FRONTEND_DOCKER_REGISTRY_PASSWORD || secrets.NEXUS_PASSWORD || '' }}
+          # Telemetry configuration (optional)
+          ARTHUR_BASE_URL: ${{ secrets.ARTHUR_BASE_URL || 'http://localhost:3030' }}
+          ARTHUR_API_KEY: ${{ secrets.ARTHUR_API_KEY || '' }}
+          ARTHUR_TASK_ID: ${{ secrets.ARTHUR_TASK_ID || '' }}
         run: |
           cd deploy/aws
           chmod +x deploy.sh

@@ -214,7 +214,7 @@ def analyze_content_for_pipeline(
         if analysis["content_quality"]["readability_score"] < 60:
             recommendations.append("Improve readability with shorter sentences")
 
-        if not analysis["seo_potential"]["has_keywords"]:
+        if not analysis["seo_potential_details"]["has_keywords"]:
             recommendations.append("Add relevant keywords for SEO")
 
         analysis["processing_recommendations"] = recommendations
