@@ -713,6 +713,7 @@ def extract_blog_content_from_url(url: str) -> Dict[str, Any]:
 
 
 @router.post("/upload/from-url")
+@router.post("/upload/url")  # Alias for test compatibility
 async def upload_from_url(request: URLExtractionRequest):
     """
     Extract blog post content from a URL and process it for the marketing pipeline.

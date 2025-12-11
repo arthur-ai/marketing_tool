@@ -61,10 +61,12 @@ async def test_get_keyword_metadata(seo_metrics_provider):
 @pytest.mark.asyncio
 async def test_analyze_serp_with_llm(seo_metrics_provider):
     """Test analyze_serp_with_llm method."""
-    keywords = ["test keyword"]
+    keyword = "test keyword"  # Method takes a single keyword string, not a list
 
     with patch.object(seo_metrics_provider, "pipeline") as mock_pipeline:
-        from marketing_project.models.pipeline_steps import SERPAnalysisResult
+        from marketing_project.services.engines.seo_keywords.seo_metrics_provider import (
+            SERPAnalysisResult,
+        )
 
         mock_result = SERPAnalysisResult(
             result_count_estimate="1000000",
@@ -75,7 +77,7 @@ async def test_analyze_serp_with_llm(seo_metrics_provider):
             return_value={"result": mock_result}
         )
 
-        serp_data = await seo_metrics_provider.analyze_serp_with_llm(keywords)
+        serp_data = await seo_metrics_provider.analyze_serp_with_llm(keyword)
 
         assert isinstance(serp_data, dict)
 

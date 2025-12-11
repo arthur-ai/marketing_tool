@@ -51,9 +51,9 @@ async def test_submit_to_arq_with_retry(job_manager):
         mock_pool.return_value = mock_arq_pool
 
         arq_job_id = await job_manager.submit_to_arq(
-            "process_blog_job",
-            content_json='{"id": "test"}',
             job_id=job.id,
+            function_name="process_blog_job",
+            content_json='{"id": "test"}',
             max_retries=5,
             retry_delay=60,
         )
@@ -66,5 +66,7 @@ async def test_submit_to_arq_job_not_found(job_manager):
     """Test submit_to_arq with non-existent job."""
     with pytest.raises(ValueError, match="not found"):
         await job_manager.submit_to_arq(
-            "process_blog_job", content_json='{"id": "test"}', job_id="non-existent"
+            job_id="non-existent",
+            function_name="process_blog_job",
+            content_json='{"id": "test"}',
         )

@@ -7,11 +7,11 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from marketing_project.core.content_sources import (
-    ContentSourceManager,
     ContentSourceStatus,
     ContentSourceType,
     FileSourceConfig,
 )
+from marketing_project.services.content_source_factory import ContentSourceManager
 
 
 class TestContentSource:
@@ -97,7 +97,7 @@ async def test_fetch_content_as_models(content_source_manager):
     )
     await content_source_manager.add_source(source)
 
-    models = await content_source_manager.fetch_content_as_models("blog_post", limit=10)
+    models = await content_source_manager.fetch_content_as_models(limit_per_source=10)
 
     assert isinstance(models, list)
 
@@ -111,7 +111,7 @@ async def test_get_content_models_by_type(content_source_manager):
     await content_source_manager.add_source(source)
 
     models = await content_source_manager.get_content_models_by_type(
-        "blog_post", limit=10
+        "blog_post", limit_per_source=10
     )
 
     assert isinstance(models, list)

@@ -45,12 +45,14 @@ async def test_call_function(social_media_pipeline, mock_openai):
 
     mock_response = MagicMock()
     mock_response.choices = [MagicMock()]
-    mock_response.choices[0].message.parsed = SocialMediaPostResult(
-        platform="linkedin",
-        content="Test post",
-        confidence_score=0.9,
+    # _call_function uses chat.completions.create with response_format, not beta.chat.completions.parse
+    # The response has choices[0].message.content which is parsed as JSON
+    mock_response.choices[0].message.content = (
+        '{"platform": "linkedin", "content": "Test post", "confidence_score": 0.9}'
     )
-    mock_openai.beta.chat.completions.parse = AsyncMock(return_value=mock_response)
+    mock_response.usage = MagicMock()
+    mock_response.usage.total_tokens = 100
+    mock_openai.chat.completions.create = AsyncMock(return_value=mock_response)
 
     result = await social_media_pipeline._call_function(
         prompt="Test prompt",
@@ -58,6 +60,7 @@ async def test_call_function(social_media_pipeline, mock_openai):
         response_model=SocialMediaPostResult,
         step_name="social_media_post_generation",
         step_number=4,
+        context={},
     )
 
     assert result is not None
@@ -89,7 +92,7 @@ async def test_execute_step_with_plugin(social_media_pipeline, mock_openai):
         }
 
         result = await social_media_pipeline._execute_step_with_plugin(
-            "social_media_post_generation", context, "test-job"
+            mock_plugin, context, "test-job"
         )
 
         assert result is not None

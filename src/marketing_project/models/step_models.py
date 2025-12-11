@@ -4,12 +4,11 @@ Step execution models for individual pipeline step triggers.
 This module defines Pydantic models for executing individual pipeline steps.
 """
 
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from __future__ import annotations
+
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
-
-if TYPE_CHECKING:
-    from .pipeline_steps import PipelineConfig
 
 
 class StepExecutionRequest(BaseModel):
@@ -22,9 +21,19 @@ class StepExecutionRequest(BaseModel):
         ...,
         description="Context dictionary containing all required inputs for the step",
     )
-    pipeline_config: Optional["PipelineConfig"] = Field(
+    pipeline_config: Optional[PipelineConfig] = Field(
         None, description="Optional pipeline configuration for per-step model selection"
     )
+
+
+# Import PipelineConfig and rebuild model to resolve forward references
+try:
+    from .pipeline_steps import PipelineConfig
+
+    StepExecutionRequest.model_rebuild()
+except ImportError:
+    # PipelineConfig not available, forward reference will be resolved later
+    pass
 
 
 class StepExecutionResponse(BaseModel):

@@ -103,31 +103,28 @@ async def test_save_step_result_with_input_snapshot(step_result_manager):
 @pytest.mark.asyncio
 async def test_get_step_result_not_found(step_result_manager):
     """Test get_step_result with non-existent file."""
-    result = await step_result_manager.get_step_result(
-        "non-existent-job", "01_seo_keywords.json", "0"
-    )
-
-    assert result is None
+    with pytest.raises(FileNotFoundError):
+        await step_result_manager.get_step_result(
+            "non-existent-job", "01_seo_keywords.json", "0"
+        )
 
 
 @pytest.mark.asyncio
 async def test_get_step_result_by_name_not_found(step_result_manager):
     """Test get_step_result_by_name with non-existent step."""
-    result = await step_result_manager.get_step_result_by_name(
-        "non-existent-job", "seo_keywords", "0"
-    )
-
-    assert result is None
+    with pytest.raises(FileNotFoundError):
+        await step_result_manager.get_step_result_by_name(
+            "non-existent-job", "seo_keywords", "0"
+        )
 
 
 @pytest.mark.asyncio
 async def test_get_step_file_path_not_found(step_result_manager):
     """Test get_step_file_path with non-existent file."""
-    file_path = await step_result_manager.get_step_file_path(
-        "non-existent-job", "01_seo_keywords.json", "0"
-    )
-
-    assert file_path is None
+    with pytest.raises(FileNotFoundError):
+        await step_result_manager.get_step_file_path(
+            "non-existent-job", "01_seo_keywords.json", "0"
+        )
 
 
 @pytest.mark.asyncio
@@ -174,9 +171,8 @@ async def test_get_full_context_history_empty(step_result_manager):
 @pytest.mark.asyncio
 async def test_get_pipeline_flow_empty(step_result_manager):
     """Test get_pipeline_flow with no steps."""
-    flow = await step_result_manager.get_pipeline_flow("non-existent-job")
-
-    assert isinstance(flow, dict)
+    with pytest.raises(FileNotFoundError):
+        await step_result_manager.get_pipeline_flow("non-existent-job")
 
 
 @pytest.mark.asyncio

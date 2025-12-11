@@ -65,9 +65,14 @@ async def test_call_function_with_approval_required(function_pipeline, mock_open
     mock_openai.beta.chat.completions.parse = AsyncMock(return_value=mock_response)
 
     with patch(
-        "marketing_project.services.function_pipeline.check_and_create_approval_request"
+        "marketing_project.processors.approval_helper.check_and_create_approval_request"
     ) as mock_check:
-        mock_check.side_effect = ApprovalRequiredException("Approval required")
+        mock_check.side_effect = ApprovalRequiredException(
+            approval_id="approval-1",
+            job_id="test-job-1",
+            step_name="seo_keywords",
+            step_number=1,
+        )
 
         with pytest.raises(ApprovalRequiredException):
             await function_pipeline._call_function(

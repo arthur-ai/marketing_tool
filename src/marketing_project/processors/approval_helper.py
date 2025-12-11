@@ -82,16 +82,17 @@ async def check_and_create_approval_request(
 
     # Check if this agent requires approval
     logger.info(
-        f"[APPROVAL] Checking if {agent_name} requires approval. Enabled agents: {settings.approval_agents}"
+        f"[APPROVAL] Checking if {agent_name} requires approval. Enabled agents: {settings.approval_agents}, require_approval={settings.require_approval}"
     )
     if agent_name not in settings.approval_agents:
-        logger.info(
-            f"[APPROVAL] Agent '{agent_name}' not in approval_agents list ({settings.approval_agents}), skipping approval"
+        logger.warning(
+            f"[APPROVAL] Agent '{agent_name}' not in approval_agents list ({settings.approval_agents}), skipping approval. "
+            f"To enable approvals for this step, add '{agent_name}' to the approval_agents list in settings."
         )
         return False
 
     logger.info(
-        f"[APPROVAL] Agent '{agent_name}' requires approval, creating approval request..."
+        f"[APPROVAL] Agent '{agent_name}' requires approval, creating approval request for job {job_id}..."
     )
 
     # Create approval request
@@ -104,6 +105,10 @@ async def check_and_create_approval_request(
         confidence_score=confidence_score,
         suggestions=suggestions,
         pipeline_step=agent_name,
+    )
+
+    logger.info(
+        f"[APPROVAL] Created approval request {approval.id} for agent '{agent_name}' (step: {step_name}) in job {job_id}"
     )
 
     # If auto-approved, return False to continue

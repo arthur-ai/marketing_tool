@@ -37,6 +37,12 @@ async def test_execute(local_semantic_engine):
     context = {}
 
     # Use a supported operation
+    # Skip if spaCy model is not available
+    try:
+        local_semantic_engine._get_nlp()
+    except (OSError, ImportError) as e:
+        pytest.skip(f"spaCy model not available: {e}")
+
     result = await local_semantic_engine.execute(
         operation="extract_main_keyword",
         inputs=inputs,

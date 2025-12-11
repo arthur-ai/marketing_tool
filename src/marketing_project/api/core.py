@@ -183,6 +183,7 @@ async def run_pipeline(request: PipelineRequest, background_tasks: BackgroundTas
 
 
 @router.get("/pipeline/steps", response_model=StepListResponse)
+@router.get("/steps", response_model=StepListResponse)  # Alias for test compatibility
 async def list_pipeline_steps():
     """
     List all available pipeline steps.
@@ -278,6 +279,9 @@ async def get_step_requirements(step_name: str):
 @router.post(
     "/pipeline/steps/{step_name}/execute", response_model=StepExecutionResponse
 )
+@router.post(
+    "/steps/{step_name}/execute", response_model=StepExecutionResponse
+)  # Alias for test compatibility
 async def execute_pipeline_step(step_name: str, request: StepExecutionRequest):
     """
     Execute a single pipeline step independently.

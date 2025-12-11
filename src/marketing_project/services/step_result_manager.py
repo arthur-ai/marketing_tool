@@ -962,17 +962,20 @@ class StepResultManager:
                 with open(file_path, "r", encoding="utf-8") as f:
                     return json.load(f)
 
+            # Step result not found - raise FileNotFoundError
             raise FileNotFoundError(
                 f"Step result not found: {step_filename} for job {job_id}"
             )
 
         except FileNotFoundError:
-            raise
+            raise  # Re-raise FileNotFoundError
         except Exception as e:
             logger.error(
                 f"Failed to get step result {step_filename} for job {job_id}: {e}"
             )
-            raise
+            raise FileNotFoundError(
+                f"Step result not found: {step_filename} for job {job_id}"
+            ) from e
 
     async def get_step_result_by_name(
         self,
@@ -1132,15 +1135,18 @@ class StepResultManager:
                         ):
                             return value
 
+            # Step result not found - raise FileNotFoundError
             raise FileNotFoundError(
                 f"Step result not found: {step_name} for job {job_id}"
             )
 
         except FileNotFoundError:
-            raise
+            raise  # Re-raise FileNotFoundError
         except Exception as e:
             logger.error(f"Failed to get step result {step_name} for job {job_id}: {e}")
-            raise
+            raise FileNotFoundError(
+                f"Step result not found: {step_name} for job {job_id}"
+            ) from e
 
     async def get_step_file_path(
         self,
@@ -1214,17 +1220,20 @@ class StepResultManager:
             if file_path.exists():
                 return file_path
 
+            # Step file not found - raise FileNotFoundError
             raise FileNotFoundError(
-                f"Step result not found: {step_filename} for job {job_id}"
+                f"Step file not found: {step_filename} for job {job_id}"
             )
 
         except FileNotFoundError:
-            raise
+            raise  # Re-raise FileNotFoundError
         except Exception as e:
             logger.error(
                 f"Failed to get step file path {step_filename} for job {job_id}: {e}"
             )
-            raise
+            raise FileNotFoundError(
+                f"Step file not found: {step_filename} for job {job_id}"
+            ) from e
 
     async def list_all_jobs(self, limit: Optional[int] = None) -> List[Dict[str, Any]]:
         """
@@ -1883,6 +1892,14 @@ class StepResultManager:
 
             # Get all step results
             job_results = await self.get_job_results(job_id)
+            # Ensure job_results is a dict (safeguard against unexpected return types)
+            if not isinstance(job_results, dict):
+                logger.error(
+                    f"get_job_results returned non-dict type: {type(job_results)}"
+                )
+                raise ValueError(
+                    f"get_job_results returned unexpected type: {type(job_results)}"
+                )
             steps = job_results.get("steps", [])
 
             # Sort steps by step_number

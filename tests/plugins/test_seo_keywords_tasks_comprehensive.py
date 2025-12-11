@@ -22,7 +22,9 @@ def test_step_name(seo_keywords_plugin):
 
 def test_step_number(seo_keywords_plugin):
     """Test step_number property."""
-    assert seo_keywords_plugin.step_number == 1
+    assert (
+        seo_keywords_plugin.step_number == 2
+    )  # SEO keywords is step 2 in the pipeline
 
 
 def test_get_required_context_keys(seo_keywords_plugin):

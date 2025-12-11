@@ -45,6 +45,7 @@ def test_post_process_keywords(seo_keywords_plugin):
     result = SEOKeywordsResult(
         main_keyword="test",
         primary_keywords=["test1", "test2"],
+        search_intent="informational",
         confidence_score=0.9,
     )
 
@@ -70,13 +71,15 @@ def test_calculate_overall_relevance(seo_keywords_plugin):
     result = SEOKeywordsResult(
         main_keyword="test",
         primary_keywords=["test1", "test2"],
+        search_intent="informational",
         confidence_score=0.9,
     )
 
-    relevance = seo_keywords_plugin._calculate_overall_relevance(result, {})
+    # Method returns score 0-100, not 0-1
+    relevance = seo_keywords_plugin._calculate_overall_relevance(result, "test content")
 
     assert isinstance(relevance, float)
-    assert 0 <= relevance <= 1
+    assert 0 <= relevance <= 100  # Score is 0-100, not 0-1
 
 
 def test_convert_difficulty_to_scores(seo_keywords_plugin):
@@ -84,14 +87,17 @@ def test_convert_difficulty_to_scores(seo_keywords_plugin):
     result = SEOKeywordsResult(
         main_keyword="test",
         primary_keywords=["test1", "test2"],
+        search_intent="informational",
         confidence_score=0.9,
     )
 
-    # Add difficulty scores if they exist
-    if hasattr(result, "primary_keywords_metadata"):
-        converted = seo_keywords_plugin._convert_difficulty_to_scores(result)
+    # Method requires difficulty_str and keywords as arguments
+    converted = seo_keywords_plugin._convert_difficulty_to_scores(
+        "medium", result.primary_keywords
+    )
 
-        assert converted is not None
+    assert isinstance(converted, dict)
+    assert len(converted) == len(result.primary_keywords)
 
 
 def test_generate_lsi_keywords(seo_keywords_plugin):
@@ -99,6 +105,7 @@ def test_generate_lsi_keywords(seo_keywords_plugin):
     result = SEOKeywordsResult(
         main_keyword="artificial intelligence",
         primary_keywords=["AI", "machine learning"],
+        search_intent="informational",
         confidence_score=0.9,
     )
 
@@ -113,12 +120,12 @@ def test_calculate_derived_metrics(seo_keywords_plugin):
     result = SEOKeywordsResult(
         main_keyword="test",
         primary_keywords=["test1", "test2"],
+        search_intent="informational",
         confidence_score=0.9,
     )
 
-    metrics = seo_keywords_plugin._calculate_derived_metrics(result, {})
+    # Method returns SEOKeywordsResult, not dict
+    metrics_result = seo_keywords_plugin._calculate_derived_metrics(result, {})
 
-    assert isinstance(metrics, dict)
-    assert (
-        "total_keywords" in metrics or "coverage_score" in metrics or len(metrics) >= 0
-    )
+    assert isinstance(metrics_result, SEOKeywordsResult)
+    assert metrics_result.main_keyword == "test"

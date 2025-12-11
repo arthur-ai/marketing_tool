@@ -37,6 +37,12 @@ Metadata:
           - OpenAIApiKey
           - ApiKey
       - Label:
+          default: "Telemetry Configuration (Optional)"
+        Parameters:
+          - ArthurBaseUrl
+          - ArthurApiKey
+          - ArthurTaskId
+      - Label:
           default: "Database Configuration"
         Parameters:
           - DatabasePassword
@@ -166,6 +172,22 @@ Parameters:
     NoEcho: true
     Description: API authentication key
     MinLength: 32
+
+  ArthurBaseUrl:
+    Type: String
+    Default: 'http://localhost:3030'
+    Description: Base URL for Arthur API (optional - leave default to disable telemetry)
+
+  ArthurApiKey:
+    Type: String
+    NoEcho: true
+    Default: ''
+    Description: API key for Arthur authentication (optional - leave empty to disable telemetry)
+
+  ArthurTaskId:
+    Type: String
+    Default: ''
+    Description: Task ID for Arthur (optional - leave empty to disable telemetry, must have is_agentic=True if provided)
 
   DatabasePassword:
     Type: String
@@ -305,6 +327,7 @@ Conditions:
   FrontendVersionEmpty: !Or
     - !Equals [!Ref FrontendDeployVersion, '']
     - !Equals [!Ref FrontendDeployVersion, 'latest']
+  HasArthurApiKey: !Not [!Equals [!Ref ArthurApiKey, '']]
 
 Resources:
   # Note: Using existing VPC and subnets - no networking resources created
@@ -611,6 +634,11 @@ Resources:
               Value: '50'
             - Name: SEO_METRICS_CACHE_SIZE
               Value: '200'
+            # Telemetry configuration (optional)
+            - Name: ARTHUR_BASE_URL
+              Value: !Ref ArthurBaseUrl
+            - Name: ARTHUR_TASK_ID
+              Value: !Ref ArthurTaskId
           Secrets:
             # Note: REDIS_PASSWORD not needed when TransitEncryptionEnabled is false
             # (AuthToken is only supported with transit encryption)
@@ -618,6 +646,8 @@ Resources:
               ValueFrom: !Ref OpenAISecret
             - Name: API_KEY
               ValueFrom: !Ref ApiKeySecret
+            - Name: ARTHUR_API_KEY
+              ValueFrom: !Ref ArthurSecret
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -720,11 +750,18 @@ Resources:
               Value: '50'
             - Name: SEO_METRICS_CACHE_SIZE
               Value: '200'
+            # Telemetry configuration (optional)
+            - Name: ARTHUR_BASE_URL
+              Value: !Ref ArthurBaseUrl
+            - Name: ARTHUR_TASK_ID
+              Value: !Ref ArthurTaskId
           Secrets:
             - Name: OPENAI_API_KEY
               ValueFrom: !Ref OpenAISecret
             - Name: API_KEY
               ValueFrom: !Ref ApiKeySecret
+            - Name: ARTHUR_API_KEY
+              ValueFrom: !Ref ArthurSecret
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -1086,6 +1123,7 @@ Resources:
                   - !Ref OpenAISecret
                   - !Ref ApiKeySecret
                   - !Ref FrontendDockerRegistrySecret
+                  - !Ref ArthurSecret
         - PolicyName: SSMParameterAccess
           PolicyDocument:
             Version: '2012-10-17'
@@ -1150,6 +1188,16 @@ Resources:
       Name: !Sub '${ProjectName}-${Environment}-api-key'
       Description: API authentication key for marketing tool
       SecretString: !Ref ApiKey
+
+  ArthurSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub '${ProjectName}-${Environment}-arthur-key'
+      Description: Arthur API key for telemetry (optional - leave empty to disable)
+      SecretString: !If
+        - HasArthurApiKey
+        - !Ref ArthurApiKey
+        - ''
 
   FrontendDockerRegistrySecret:
     Type: AWS::SecretsManager::Secret

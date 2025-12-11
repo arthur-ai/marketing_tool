@@ -9,6 +9,9 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from marketing_project.models.processor_models import BlogProcessorRequest
+from marketing_project.processors import (  # Exported for test compatibility
+    process_blog_post,
+)
 from marketing_project.services.job_manager import get_job_manager
 
 logger = logging.getLogger("marketing_project.api.batch")

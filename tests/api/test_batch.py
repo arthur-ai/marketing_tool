@@ -22,7 +22,10 @@ def mock_job_manager():
     """Mock job manager."""
     with patch("marketing_project.api.batch.get_job_manager") as mock:
         mock_manager = MagicMock()
-        mock_manager.create_job = AsyncMock(return_value=MagicMock(id="test-job-1"))
+        mock_job = MagicMock()
+        mock_job.id = "test-job-1"
+        mock_manager.create_job = AsyncMock(return_value=mock_job)
+        mock_manager.submit_to_arq = AsyncMock(return_value="arq-job-id-1")
         mock.return_value = mock_manager
         yield mock_manager
 

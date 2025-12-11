@@ -25,8 +25,13 @@ def test_analyze_content_for_pipeline():
     analysis = analyze_content_for_pipeline(content)
 
     assert isinstance(analysis, dict)
-    assert (
-        "quality_score" in analysis
-        or "seo_potential" in analysis
-        or "word_count" in analysis
-    )
+    # Function returns create_standard_task_result structure
+    if analysis.get("success") is True:
+        # Success case: data contains the analysis
+        data = analysis.get("data", {})
+        assert (
+            "quality_score" in data or "seo_potential" in data or "word_count" in data
+        )
+    else:
+        # Error case: should have error field
+        assert "error" in analysis

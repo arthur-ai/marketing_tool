@@ -53,6 +53,17 @@ from .step_models import (
 )
 from .validation import validate_api_key_format, validate_content_length
 
+# Rebuild models to resolve forward references after all imports
+# This ensures Pydantic v2 can properly validate models with forward references
+try:
+    # Import PipelineConfig to ensure it's available for model rebuild
+    from .pipeline_steps import PipelineConfig  # noqa: F401
+
+    StepExecutionRequest.model_rebuild()
+except (NameError, AttributeError, ImportError):
+    # Model not imported, PipelineConfig not available, or already rebuilt
+    pass
+
 # Re-export everything for backward compatibility
 __all__ = [
     # Content models

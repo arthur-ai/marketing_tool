@@ -331,6 +331,17 @@ See `deploy/AWS_DEPLOYMENT.md` for detailed AWS deployment instructions.
 
 ### **Environment Configuration**
 Copy `env.example` to `.env` and configure:
+
+#### **Telemetry Configuration (Optional)**
+To enable telemetry tracing with Arthur, set the following environment variables:
+
+- `ARTHUR_BASE_URL`: Base URL for Arthur API (default: `http://localhost:3030`)
+- `ARTHUR_API_KEY`: API key for Arthur authentication (required for telemetry)
+- `ARTHUR_TASK_ID`: Task ID for Arthur (required for telemetry, must have `is_agentic=True`)
+
+If these variables are not set, the application will run normally without telemetry. Telemetry initialization is non-blocking and will not prevent the application from starting if misconfigured.
+
+#### **Other Environment Variables**
 - API keys and authentication
 - Database connections
 - Security settings
