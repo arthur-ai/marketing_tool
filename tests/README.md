@@ -11,6 +11,9 @@ This folder contains comprehensive tests for the function-based pipeline, proces
 - `worker/` - Tests for ARQ worker functions
 - `integrations/` - End-to-end integration tests for complete pipeline flows
 - `integration/` - Integration tests for Redis and other external services
+- `middleware/` - Tests for authentication and RBAC middleware
+- `models/` - Tests for user context and other models
+- `utils/` - Test utilities and helpers (JWT generation, etc.)
 - `conftest.py` - Global test fixtures and mocks
 - `requirements-test.txt` - All requirements to run these tests
 
@@ -114,6 +117,12 @@ python -m pytest tests/ --pdb
 ### Workers
 - **ARQ Worker Functions** - Background job processing (blog, transcript, release notes)
 
+### Authentication & Authorization
+- **Keycloak Authentication** - JWT token validation and user context extraction
+- **RBAC Middleware** - Role-based access control testing
+- **User Context Models** - User context model validation
+- **Integration Tests** - End-to-end authentication flow testing
+
 Each test suite includes:
 - ✅ Unit tests for core functionality
 - ✅ Error handling and edge cases
@@ -135,6 +144,15 @@ python -m pytest tests/ -k "integration"
 **Error Handling Tests:**
 ```bash
 python -m pytest tests/ -k "error"
+```
+
+**Authentication Tests:**
+```bash
+# Run all authentication-related tests
+python -m pytest tests/middleware/test_keycloak_auth.py tests/middleware/test_rbac.py tests/models/test_user_context.py
+
+# Run integration tests for authentication
+python -m pytest tests/integration/test_keycloak_integration.py -v
 ```
 
 ## Continuous Integration

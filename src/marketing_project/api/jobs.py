@@ -98,7 +98,7 @@ async def list_jobs(
 
 
 @router.get("/{job_id}", response_model=JobResponse)
-async def get_job(job_id: str):
+async def get_job(job_id: str, user: UserContext = Depends(get_current_user)):
     """
     Get detailed information about a specific job.
 
@@ -167,7 +167,7 @@ async def get_job(job_id: str):
 
 
 @router.get("/{job_id}/chain")
-async def get_job_chain(job_id: str):
+async def get_job_chain(job_id: str, user: UserContext = Depends(get_current_user)):
     """
     Get complete job chain hierarchy for a given job.
 
@@ -234,7 +234,7 @@ async def get_job_chain(job_id: str):
 
 
 @router.get("/{job_id}/status", response_model=JobStatusResponse)
-async def get_job_status(job_id: str):
+async def get_job_status(job_id: str, user: UserContext = Depends(get_current_user)):
     """
     Get the current status of a job.
 
@@ -266,7 +266,7 @@ async def get_job_status(job_id: str):
 
 
 @router.get("/{job_id}/result")
-async def get_job_result(job_id: str):
+async def get_job_result(job_id: str, user: UserContext = Depends(get_current_user)):
     """
     Get the result of a completed job.
 
@@ -395,7 +395,7 @@ async def get_job_result(job_id: str):
 
 
 @router.delete("/all", summary="Delete all jobs")
-async def delete_all_jobs():
+async def delete_all_jobs(user: UserContext = Depends(get_current_user)):
     """
     Delete all jobs from the system.
 
@@ -425,7 +425,7 @@ async def delete_all_jobs():
 
 
 @router.delete("/clear-arq", summary="Clear all ARQ jobs")
-async def clear_all_arq_jobs():
+async def clear_all_arq_jobs(user: UserContext = Depends(get_current_user)):
     """
     Clear all jobs from the ARQ queue.
 
@@ -458,7 +458,7 @@ async def clear_all_arq_jobs():
 
 
 @router.delete("/{job_id}")
-async def cancel_job(job_id: str):
+async def cancel_job(job_id: str, user: UserContext = Depends(get_current_user)):
     """
     Cancel a running or queued job.
 
@@ -562,7 +562,7 @@ async def cancel_job(job_id: str):
 
 
 @router.post("/{job_id}/resume")
-async def resume_job(job_id: str):
+async def resume_job(job_id: str, user: UserContext = Depends(get_current_user)):
     """
     Resume a pipeline that was stopped for approval.
 
