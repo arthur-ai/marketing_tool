@@ -63,3 +63,7 @@ boto3>=1.34.0
 # Telemetry dependencies
 openinference-instrumentation-langchain>=1.0.0
 opentelemetry-exporter-otlp>=1.25.0
+
+# Keycloak authentication dependencies
+python-jose[cryptography]>=3.3.0
+python-keycloak>=2.15.0
