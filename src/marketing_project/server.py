@@ -40,6 +40,8 @@ from fastapi.responses import JSONResponse
 # Import using the same path as routes.py to ensure same module instance
 from marketing_project.api import content
 
+from . import __version__
+
 # Import API endpoints
 from .api import api_router
 
@@ -72,7 +74,7 @@ async def lifespan(app: FastAPI):
     logger.info("FASTAPI APPLICATION STARTUP")
     logger.info("=" * 80)
     logger.info("Marketing Project API server starting up...")
-    logger.info(f"API version: 1.0.0")
+    logger.info(f"API version: {__version__}")
     logger.info(f"Template version: {TEMPLATE_VERSION}")
     logger.info(f"Prompts directory: {PROMPTS_DIR}")
 
@@ -203,7 +205,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Marketing Project API",
     description="Comprehensive API for marketing content processing and analysis",
-    version="1.0.0",
+    version=__version__,
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json",

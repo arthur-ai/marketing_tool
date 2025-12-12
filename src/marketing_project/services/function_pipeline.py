@@ -23,15 +23,14 @@ from typing import Any, Dict, List, Optional
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 
-# OpenTelemetry imports for tracing
+# OpenTelemetry imports for tracing (kept for backward compatibility)
 try:
     from opentelemetry import trace
     from opentelemetry.trace import Status, StatusCode
-
-    _tracing_available = True
 except ImportError:
-    _tracing_available = False
-    logger.debug("OpenTelemetry not available, tracing disabled")
+    trace = None
+    Status = None
+    StatusCode = None
 
 
 def _json_serializer(obj: Any) -> Any:
@@ -69,6 +68,28 @@ from marketing_project.models.pipeline_steps import (
 from marketing_project.plugins.context_utils import ContextTransformer
 from marketing_project.plugins.registry import get_plugin_registry
 from marketing_project.prompts.prompts import TEMPLATES, get_template, has_template
+from marketing_project.services.function_pipeline.approval import check_step_approval
+
+# Import refactored modules
+from marketing_project.services.function_pipeline.helpers import PipelineHelpers
+from marketing_project.services.function_pipeline.llm_client import LLMClient
+from marketing_project.services.function_pipeline.orchestration import (
+    build_initial_context,
+    compile_pipeline_result,
+    filter_active_plugins,
+    load_pipeline_configs,
+    register_step_output,
+    update_job_progress,
+)
+from marketing_project.services.function_pipeline.step_results import save_step_result
+from marketing_project.services.function_pipeline.tracing import (
+    close_span,
+    create_span,
+    is_tracing_available,
+    record_span_exception,
+    set_span_attribute,
+    set_span_status,
+)
 
 logger = logging.getLogger("marketing_project.services.function_pipeline")
 
@@ -100,6 +121,7 @@ class FunctionPipeline:
         self.client = AsyncOpenAI()
         self.lang = lang
         self.step_info: List[PipelineStepInfo] = []
+        self.llm_client = LLMClient(self.client)
 
         # Support both old-style (model, temperature) and new-style (pipeline_config)
         if pipeline_config:
@@ -121,168 +143,32 @@ class FunctionPipeline:
             "design_kit",  # Design kit is enhancement
         }
 
+        # Initialize helpers
+        self.helpers = PipelineHelpers(
+            lang=self.lang, pipeline_config=self.pipeline_config
+        )
+
     def _get_system_instruction(
         self, agent_name: str, context: Optional[Dict] = None
     ) -> str:
-        """
-        Load comprehensive system instruction from .j2 template and enhance for function calling.
-
-        This method loads the detailed agent prompts (100-170 lines) from the existing
-        prompt templates and appends quality scoring requirements for structured output.
-
-        Args:
-            agent_name: Name of the agent (e.g., "seo_keywords", "marketing_brief")
-            context: Optional context variables for Jinja2 template rendering
-
-        Returns:
-            Complete system instruction with quality metrics requirements
-        """
-        template_name = f"{agent_name}_agent_instructions"
-
-        # Check if template exists using helper function
-        if has_template(self.lang, template_name):
-            try:
-                # Load template using helper function (handles caching and fallback)
-                template = get_template(self.lang, template_name)
-                base_instruction = template.render(**(context or {}))
-
-                # Append quality scoring requirements for function calling
-                quality_addendum = """
-
-## Quality Metrics for Structured Output
-
-**IMPORTANT**: In addition to all requirements above, you MUST provide quality metrics in your response.
-
-The output schema includes confidence and quality score fields. Provide realistic assessments:
-- **confidence_score** (0-1): Your confidence in the output quality and accuracy
-- **Additional quality scores**: As defined in the output schema (e.g., relevance_score, readability_score, seo_score)
-
-These scores are critical for:
-- Approval workflows and human review prioritization
-- Quality monitoring and performance tracking
-- Automated quality assurance and validation
-
-Be honest in your assessments - scores should reflect actual quality, not aspirational targets."""
-
-                return base_instruction + quality_addendum
-            except Exception as e:
-                logger.warning(
-                    f"Failed to load template {template_name} for language {self.lang}: {e}. "
-                    "Using fallback instruction."
-                )
-        else:
-            # Fallback to basic instruction if template not found
-            logger.warning(
-                f"Template not found for {template_name} in language {self.lang}, "
-                "using fallback instruction"
-            )
-
-        # Fallback instruction
-        return f"""You are a {agent_name.replace('_', ' ')} specialist.
-
-Analyze the provided content and generate structured output according to the schema.
-Include confidence_score (0-1) and any other quality metrics defined in the output model."""
+        """Load comprehensive system instruction from .j2 template."""
+        return self.helpers.get_system_instruction(agent_name, context)
 
     def _get_user_prompt(self, step_name: str, context: Dict[str, Any]) -> str:
-        """
-        Load user prompt from .j2 template and render with context variables.
-
-        This method loads the user prompt template for a given step and renders it
-        with the provided context variables. Pydantic models are automatically
-        converted to dicts for safe template rendering.
-
-        Args:
-            step_name: Name of the step (e.g., "seo_keywords", "marketing_brief")
-            context: Context variables for Jinja2 template rendering
-
-        Returns:
-            Rendered user prompt string
-        """
-        template_name = f"{step_name}_user_prompt"
-
-        # Check if template exists using helper function
-        if has_template(self.lang, template_name):
-            try:
-                # Load template using helper function (handles caching and fallback)
-                template = get_template(self.lang, template_name)
-
-                # Prepare context for template rendering using ContextTransformer
-                template_context = ContextTransformer.prepare_template_context(context)
-
-                # Add 'content' as alias for 'input_content' if it exists (for template compatibility)
-                # Templates like seo_keywords_user_prompt.j2 and design_kit_user_prompt.j2 expect 'content'
-                if (
-                    "input_content" in template_context
-                    and "content" not in template_context
-                ):
-                    template_context["content"] = template_context["input_content"]
-
-                # Handle content truncation for seo_keywords step
-                if step_name == "seo_keywords" and "content" in template_context:
-                    content = template_context.get("content", {})
-                    if isinstance(content, dict):
-                        content_str = content.get("content", "")
-                        template_context["content_content_preview"] = (
-                            content_str[:8000] if content_str else ""
-                        )
-                    else:
-                        template_context["content_content_preview"] = ""
-
-                # Render template with context
-                return template.render(**template_context)
-            except Exception as e:
-                logger.warning(
-                    f"Failed to load or render template {template_name} for language {self.lang}: {e}. "
-                    "Using fallback prompt."
-                )
-                logger.debug(f"Template rendering error details: {e}", exc_info=True)
-        else:
-            # Fallback to basic prompt if template not found
-            logger.warning(
-                f"Template not found for {template_name} in language {self.lang}, "
-                "using fallback prompt"
-            )
-
-        # Fallback prompt
-        return f"Process the content for {step_name.replace('_', ' ')} step."
+        """Load user prompt from .j2 template and render with context variables."""
+        return self.helpers.get_user_prompt(step_name, context)
 
     def _get_step_model(self, step_name: str) -> str:
-        """
-        Get the model to use for a specific step.
-
-        Checks step-specific config first, then falls back to pipeline default.
-
-        Args:
-            step_name: Name of the step
-
-        Returns:
-            Model name to use for this step
-        """
-        return self.pipeline_config.get_step_model(step_name)
+        """Get the model to use for a specific step."""
+        return self.helpers.get_step_model(step_name)
 
     def _get_step_temperature(self, step_name: str) -> float:
-        """
-        Get the temperature to use for a specific step.
-
-        Args:
-            step_name: Name of the step
-
-        Returns:
-            Temperature value to use for this step
-        """
-        return self.pipeline_config.get_step_temperature(step_name)
+        """Get the temperature to use for a specific step."""
+        return self.helpers.get_step_temperature(step_name)
 
     def _get_step_max_retries(self, step_name: str) -> int:
-        """
-        Get the max retries for a specific step.
-
-        Args:
-            step_name: Name of the step
-
-        Returns:
-            Max retries value to use for this step
-        """
-        return self.pipeline_config.get_step_max_retries(step_name)
+        """Get the max retries for a specific step."""
+        return self.helpers.get_step_max_retries(step_name)
 
     async def _execute_step_with_plugin(
         self,
@@ -303,67 +189,102 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
         Returns:
             Pydantic model instance with step results
         """
-        registry = get_plugin_registry()
-        plugin = registry.get_plugin(step_name)
+        # Create step execution span
+        context_keys_available = (
+            list(pipeline_context.keys()) if pipeline_context else []
+        )
+        step_span = create_span(
+            f"pipeline.step_execution.{step_name}",
+            attributes={
+                "step_name": step_name,
+                "plugin_name": step_name,
+                "context_keys_available": json.dumps(context_keys_available),
+                "context_keys_count": len(context_keys_available),
+            },
+        )
+        if step_span:
+            if execution_step_number:
+                set_span_attribute(step_span, "step_number", execution_step_number)
+            if job_id:
+                set_span_attribute(step_span, "job_id", job_id)
 
-        if not plugin:
-            raise ValueError(f"Plugin not found for step: {step_name}")
+        try:
+            registry = get_plugin_registry()
+            plugin = registry.get_plugin(step_name)
 
-        # Try to resolve missing context keys from context registry if available
-        if job_id:
-            try:
-                from marketing_project.services.context_registry import (
-                    get_context_registry,
-                )
+            if not plugin:
+                raise ValueError(f"Plugin not found for step: {step_name}")
 
-                context_registry = get_context_registry()
-                required_keys = plugin.get_required_context_keys()
-                missing_keys = [
-                    key for key in required_keys if key not in pipeline_context
-                ]
-
-                # Resolve missing keys from context registry
-                if missing_keys:
-                    resolved_context = await context_registry.query_context(
-                        job_id=job_id, keys=missing_keys
+            # Try to resolve missing context keys from context registry if available
+            if job_id:
+                try:
+                    from marketing_project.services.context_registry import (
+                        get_context_registry,
                     )
-                    # Merge resolved context into pipeline_context
-                    for key, value in resolved_context.items():
-                        if key not in pipeline_context:
-                            pipeline_context[key] = value
-                            logger.debug(
-                                f"Resolved context key '{key}' from context registry for step {step_name}"
-                            )
-            except Exception as e:
-                logger.warning(
-                    f"Failed to resolve context from registry for step {step_name}: {e}"
+
+                    context_registry = get_context_registry()
+                    required_keys = plugin.get_required_context_keys()
+                    missing_keys = [
+                        key for key in required_keys if key not in pipeline_context
+                    ]
+
+                    # Resolve missing keys from context registry
+                    if missing_keys:
+                        resolved_context = await context_registry.query_context(
+                            job_id=job_id, keys=missing_keys
+                        )
+                        # Merge resolved context into pipeline_context
+                        for key, value in resolved_context.items():
+                            if key not in pipeline_context:
+                                pipeline_context[key] = value
+                                logger.debug(
+                                    f"Resolved context key '{key}' from context registry for step {step_name}"
+                                )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to resolve context from registry for step {step_name}: {e}"
+                    )
+
+            # Validate context
+            if not plugin.validate_context(pipeline_context):
+                missing = [
+                    key
+                    for key in plugin.get_required_context_keys()
+                    if key not in pipeline_context
+                ]
+                raise ValueError(
+                    f"Missing required context keys for {step_name}: {missing}"
                 )
 
-        # Validate context
-        if not plugin.validate_context(pipeline_context):
-            missing = [
-                key
-                for key in plugin.get_required_context_keys()
-                if key not in pipeline_context
-            ]
-            raise ValueError(
-                f"Missing required context keys for {step_name}: {missing}"
+            # Store execution step number in pipeline context for plugins to use
+            if execution_step_number is not None:
+                pipeline_context["_execution_step_number"] = execution_step_number
+
+            # Set model configuration on plugin if available
+            step_config = self.pipeline_config.get_step_config(step_name)
+            plugin.model_config = step_config
+
+            # Execute plugin
+            result = await plugin.execute(
+                context=pipeline_context, pipeline=self, job_id=job_id
             )
 
-        # Store execution step number in pipeline context for plugins to use
-        if execution_step_number is not None:
-            pipeline_context["_execution_step_number"] = execution_step_number
+            # Close step execution span
+            if Status and StatusCode:
+                set_span_status(step_span, StatusCode.OK)
+            close_span(step_span)
 
-        # Set model configuration on plugin if available
-        step_config = self.pipeline_config.get_step_config(step_name)
-        plugin.model_config = step_config
-
-        # Execute plugin
-        result = await plugin.execute(
-            context=pipeline_context, pipeline=self, job_id=job_id
-        )
-
-        return result
+            return result
+        except Exception as e:
+            # Update step span on error
+            if step_span:
+                record_span_exception(step_span, e)
+                if Status and StatusCode:
+                    set_span_status(step_span, StatusCode.ERROR, str(e))
+                set_span_attribute(step_span, "error.type", type(e).__name__)
+                set_span_attribute(step_span, "error.message", str(e))
+                close_span(step_span, type(e), e, None)
+            raise
 
     async def _call_function(
         self,
@@ -408,436 +329,111 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
             else self._get_step_max_retries(step_name)
         )
 
-        messages = [
-            {"role": "system", "content": system_instruction},
-            {"role": "user", "content": prompt},
-        ]
+        # Build messages with context using LLM client
+        messages = await self.llm_client.build_context_messages(
+            prompt=prompt,
+            system_instruction=system_instruction,
+            context=context,
+            step_name=step_name,
+            job_id=job_id,
+        )
 
-        # Add context from previous steps if available
-        if context:
-            # Try to use context references if context registry is available
+        try:
+            # Call LLM with retries using LLM client
+            parsed_result, response = await self.llm_client.call_with_retries(
+                messages=messages,
+                response_model=response_model,
+                step_name=step_name,
+                step_number=step_number,
+                step_model=step_model,
+                step_temperature=step_temperature,
+                step_max_retries=step_max_retries,
+                job_id=job_id,
+                context=context,
+            )
+
+            execution_time = time.time() - start_time
+
+            # ========================================
+            # Human-in-the-Loop Approval Integration
+            # ========================================
             if job_id:
-                try:
-                    from marketing_project.services.context_registry import (
-                        get_context_registry,
-                    )
-
-                    context_registry = get_context_registry()
-                    # Build context message with references
-                    context_refs = []
-                    for key in context.keys():
-                        if key not in (
-                            "input_content",
-                            "content_type",
-                            "output_content_type",
-                            "_execution_step_number",
-                        ):
-                            ref = await context_registry.get_context_reference(
-                                job_id, key
-                            )
-                            if ref:
-                                context_refs.append(
-                                    f"- {key}: [context reference: {ref.step_name}]"
-                                )
-
-                    if context_refs:
-                        context_msg = (
-                            f"\n\n### Context from Previous Steps (References):\n"
-                            + "\n".join(context_refs)
-                        )
-                        # Still include essential context directly
-                        essential_context = {
-                            k: v
-                            for k, v in context.items()
-                            if k
-                            in ("input_content", "content_type", "output_content_type")
-                        }
-                        if essential_context:
-                            context_msg += f"\n\n### Essential Context:\n```json\n{json.dumps(essential_context, indent=2, default=_json_serializer)}\n```"
-                        messages[-1]["content"] += context_msg
-                    else:
-                        # Fallback to full context dump
-                        context_msg = f"\n\n### Context from Previous Steps:\n```json\n{json.dumps(context, indent=2, default=_json_serializer)}\n```"
-                        messages[-1]["content"] += context_msg
-                except Exception as e:
-                    logger.debug(
-                        f"Failed to use context references, using direct context: {e}"
-                    )
-                    # Fallback to full context dump
-                    context_msg = f"\n\n### Context from Previous Steps:\n```json\n{json.dumps(context, indent=2, default=_json_serializer)}\n```"
-                    messages[-1]["content"] += context_msg
-            else:
-                # No job_id, use direct context
-                context_msg = f"\n\n### Context from Previous Steps:\n```json\n{json.dumps(context, indent=2, default=_json_serializer)}\n```"
-                messages[-1]["content"] += context_msg
-
-        for attempt in range(step_max_retries):
-            try:
-                logger.info(
-                    f"Step {step_number}: {step_name} (attempt {attempt + 1}/{step_max_retries}, model: {step_model})"
-                )
-
-                # Create OpenTelemetry span for this LLM call
-                if _tracing_available:
-                    try:
-                        tracer = trace.get_tracer(__name__)
-                        with tracer.start_as_current_span(
-                            f"function_pipeline.{step_name}",
-                            kind=trace.SpanKind.CLIENT,
-                        ) as span:
-                            # Set span attributes
-                            span.set_attribute("step_name", step_name)
-                            span.set_attribute("step_number", step_number)
-                            span.set_attribute("model", step_model)
-                            span.set_attribute("temperature", step_temperature)
-                            span.set_attribute("attempt", attempt + 1)
-                            span.set_attribute("max_retries", step_max_retries)
-                            if job_id:
-                                span.set_attribute("job_id", job_id)
-                            if context:
-                                content_type = context.get("content_type")
-                                if content_type:
-                                    span.set_attribute("content_type", content_type)
-
-                            response = await self.client.beta.chat.completions.parse(
-                                model=step_model,
-                                messages=messages,
-                                response_format=response_model,
-                                temperature=step_temperature,
-                            )
-
-                            execution_time = time.time() - start_time
-                            parsed_result = response.choices[0].message.parsed
-
-                            # Update span with response metadata
-                            try:
-                                if response.usage:
-                                    span.set_attribute(
-                                        "input_tokens",
-                                        response.usage.prompt_tokens or 0,
-                                    )
-                                    span.set_attribute(
-                                        "output_tokens",
-                                        response.usage.completion_tokens or 0,
-                                    )
-                                    span.set_attribute(
-                                        "total_tokens", response.usage.total_tokens or 0
-                                    )
-                                span.set_status(Status(StatusCode.OK))
-                            except Exception as e:
-                                logger.debug(
-                                    f"Failed to update span with response: {e}"
-                                )
-                    except Exception as span_error:
-                        logger.debug(f"Failed to create span: {span_error}")
-                        # Fallback to non-instrumented call
-                        response = await self.client.beta.chat.completions.parse(
-                            model=step_model,
-                            messages=messages,
-                            response_format=response_model,
-                            temperature=step_temperature,
-                        )
-                        execution_time = time.time() - start_time
-                        parsed_result = response.choices[0].message.parsed
-                else:
-                    # No tracing available, make direct call
-                    response = await self.client.beta.chat.completions.parse(
-                        model=step_model,
-                        messages=messages,
-                        response_format=response_model,
-                        temperature=step_temperature,
-                    )
-                    execution_time = time.time() - start_time
-                    parsed_result = response.choices[0].message.parsed
-
-                # ========================================
-                # Human-in-the-Loop Approval Integration
-                # ========================================
-                if job_id:
-                    try:
-                        from marketing_project.processors.approval_helper import (
-                            ApprovalRequiredException,
-                            check_and_create_approval_request,
-                        )
-                        from marketing_project.services.job_manager import (
-                            JobStatus,
-                            get_job_manager,
-                        )
-
-                        logger.info(
-                            f"[APPROVAL] Checking approval for step {step_number} ({step_name}) in job {job_id}. "
-                            f"Content type: {context.get('content_type', 'unknown') if context else 'unknown'}"
-                        )
-
-                        # Convert result to dict for approval system
-                        try:
-                            result_dict = parsed_result.model_dump(mode="json")
-                        except (TypeError, ValueError):
-                            result_dict = parsed_result.model_dump()
-
-                        # Extract confidence score if available
-                        confidence = result_dict.get("confidence_score")
-
-                        # Prepare input data for approval context
-                        # Include original content from pipeline context if available
-                        pipeline_content = (
-                            context.get("input_content") if context else None
-                        )
-                        # Get content from context or use a placeholder if not available
-                        content_for_approval = (
-                            pipeline_content
-                            if pipeline_content
-                            else {"title": "N/A", "content": "N/A"}
-                        )
-                        input_data = {
-                            "prompt": prompt[:500],  # Truncate for readability
-                            "system_instruction": system_instruction[:200],
-                            "context_keys": list(context.keys()) if context else [],
-                            "original_content": pipeline_content
-                            or content_for_approval,
-                        }
-
-                        # Check if approval is needed (raises ApprovalRequiredException if required)
-                        await check_and_create_approval_request(
-                            job_id=job_id,
-                            agent_name=step_name,
-                            step_name=f"Step {step_number}: {step_name}",
-                            step_number=step_number,
-                            input_data=input_data,
-                            output_data=result_dict,
-                            context=context or {},
-                            confidence_score=confidence,
-                            suggestions=[
-                                f"Review {step_name} output quality",
-                                "Check alignment with content goals",
-                                "Verify accuracy and appropriateness",
-                            ],
-                        )
-                        # If no exception raised, approval not needed or auto-approved, continue
-                        logger.info(
-                            f"[APPROVAL] No approval required for step {step_number} ({step_name}), continuing pipeline"
-                        )
-
-                    except ApprovalRequiredException as e:
-                        # Approval required - pipeline should stop
-                        logger.info(
-                            f"[APPROVAL] Step {step_number} ({step_name}) requires approval. "
-                            f"Pipeline stopping. Approval ID: {e.approval_id}"
-                        )
-
-                        # Update job status to WAITING_FOR_APPROVAL
-                        job_manager = get_job_manager()
-                        await job_manager.update_job_status(
-                            job_id, JobStatus.WAITING_FOR_APPROVAL
-                        )
-                        await job_manager.update_job_progress(
-                            job_id,
-                            90,
-                            f"Waiting for approval at step {step_number}: {step_name}",
-                        )
-
-                        # Track step info
-                        execution_time = time.time() - start_time
-                        step_info = PipelineStepInfo(
-                            step_name=step_name,
-                            step_number=step_number,
-                            status="waiting_for_approval",
-                            execution_time=execution_time,
-                        )
-                        self.step_info.append(step_info)
-
-                        # Save step result to disk if job_id is provided (even if waiting for approval)
-                        if job_id:
-                            try:
-                                from marketing_project.services.step_result_manager import (
-                                    get_step_result_manager,
-                                )
-
-                                step_manager = get_step_result_manager()
-                                # Use model_dump(mode='json') to ensure datetime objects are serialized to strings
-                                if hasattr(parsed_result, "model_dump"):
-                                    try:
-                                        result_data = parsed_result.model_dump(
-                                            mode="json"
-                                        )
-                                    except (TypeError, ValueError):
-                                        # Fallback to regular model_dump if mode='json' fails
-                                        result_data = parsed_result.model_dump()
-                                else:
-                                    result_data = parsed_result
-
-                                # Capture input snapshot and context keys used
-                                input_snapshot = None
-                                context_keys_used = []
-                                if context:
-                                    # Create a snapshot of the context state before execution
-                                    input_snapshot = copy.deepcopy(context)
-                                    # Get context keys that were available
-                                    context_keys_used = list(context.keys())
-
-                                await step_manager.save_step_result(
-                                    job_id=job_id,
-                                    step_number=step_number,
-                                    step_name=step_name,
-                                    result_data=result_data,
-                                    metadata={
-                                        "execution_time": execution_time,
-                                        "status": "waiting_for_approval",
-                                    },
-                                    execution_context_id=None,  # Will be auto-determined
-                                    root_job_id=None,  # Will be auto-determined
-                                    input_snapshot=input_snapshot,
-                                    context_keys_used=context_keys_used,
-                                )
-                            except Exception as e:
-                                logger.warning(
-                                    f"Failed to save step result to disk for step {step_number}: {e}"
-                                )
-
-                        # Re-raise to signal pipeline should stop
-                        raise
-
-                    except Exception as e:
-                        # Approval system error - log but continue
-                        logger.warning(
-                            f"Step {step_number}: Approval check failed (continuing): {e}"
-                        )
-
-                # Track step info
-                step_info = PipelineStepInfo(
+                await check_step_approval(
+                    parsed_result=parsed_result,
                     step_name=step_name,
                     step_number=step_number,
-                    status="success",
+                    job_id=job_id,
+                    prompt=prompt,
+                    system_instruction=system_instruction,
+                    context=context,
+                    start_time=start_time,
+                    step_info_list=self.step_info,
+                )
+
+            # Track step info
+            step_info = PipelineStepInfo(
+                step_name=step_name,
+                step_number=step_number,
+                status="success",
+                execution_time=execution_time,
+                tokens_used=response.usage.total_tokens if response.usage else None,
+            )
+            self.step_info.append(step_info)
+
+            # Save step result to disk if job_id is provided
+            if job_id:
+                await save_step_result(
+                    parsed_result=parsed_result,
+                    step_name=step_name,
+                    step_number=step_number,
+                    job_id=job_id,
+                    context=context,
                     execution_time=execution_time,
-                    tokens_used=response.usage.total_tokens if response.usage else None,
-                )
-                # Store model used in metadata if available
-                if hasattr(step_info, "metadata") or True:  # For future extension
-                    pass  # Could add model to metadata
-                self.step_info.append(step_info)
-
-                # Save step result to disk if job_id is provided
-                if job_id:
-                    try:
-                        from marketing_project.services.step_result_manager import (
-                            get_step_result_manager,
-                        )
-
-                        step_manager = get_step_result_manager()
-                        # Use model_dump(mode='json') to ensure datetime objects are serialized to strings
-                        if hasattr(parsed_result, "model_dump"):
-                            try:
-                                result_data = parsed_result.model_dump(mode="json")
-                            except (TypeError, ValueError):
-                                # Fallback to regular model_dump if mode='json' fails
-                                result_data = parsed_result.model_dump()
-                        else:
-                            result_data = parsed_result
-
-                        # Capture input snapshot and context keys used
-                        input_snapshot = None
-                        context_keys_used = []
-                        if context:
-                            # Create a snapshot of the context state before execution
-                            input_snapshot = copy.deepcopy(context)
-                            # Get context keys that were available
-                            context_keys_used = list(context.keys())
-
-                        await step_manager.save_step_result(
-                            job_id=job_id,
-                            step_number=step_number,
-                            step_name=step_name,
-                            result_data=result_data,
-                            metadata={
-                                "execution_time": execution_time,
-                                "tokens_used": (
-                                    response.usage.total_tokens
-                                    if response.usage
-                                    else None
-                                ),
-                                "status": "success",
-                            },
-                            execution_context_id=None,  # Will be auto-determined
-                            root_job_id=None,  # Will be auto-determined
-                            input_snapshot=input_snapshot,
-                            context_keys_used=context_keys_used,
-                        )
-                    except Exception as e:
-                        logger.warning(
-                            f"Failed to save step result to disk for step {step_number}: {e}"
-                        )
-
-                logger.info(f"Step {step_number} completed in {execution_time:.2f}s")
-                return parsed_result
-
-            except Exception as e:
-                # Check if this is an ApprovalRequiredException - don't retry, just re-raise
-                from marketing_project.processors.approval_helper import (
-                    ApprovalRequiredException,
+                    response_usage=response.usage if response.usage else None,
+                    status="success",
                 )
 
-                if isinstance(e, ApprovalRequiredException):
-                    raise  # Re-raise immediately without retrying
+            logger.info(f"Step {step_number} completed in {execution_time:.2f}s")
+            return parsed_result
 
-                logger.warning(
-                    f"Step {step_number} failed (attempt {attempt + 1}): {e}"
+        except Exception as e:
+            execution_time = time.time() - start_time
+
+            # Check if this is an ApprovalRequiredException - already handled in LLM client
+            from marketing_project.processors.approval_helper import (
+                ApprovalRequiredException,
+            )
+
+            if isinstance(e, ApprovalRequiredException):
+                raise  # Re-raise immediately
+
+            # Handle final failure
+            step_info = PipelineStepInfo(
+                step_name=step_name,
+                step_number=step_number,
+                status="failed",
+                execution_time=execution_time,
+                error_message=str(e),
+            )
+            self.step_info.append(step_info)
+
+            # Save failed step result to disk if job_id is provided
+            if job_id:
+                await save_step_result(
+                    parsed_result=None,  # No result for failed steps
+                    step_name=step_name,
+                    step_number=step_number,
+                    job_id=job_id,
+                    context=context,
+                    execution_time=execution_time,
+                    status="failed",
+                    error_message=str(e),
                 )
 
-                if attempt == step_max_retries - 1:
-                    # Final attempt failed
-                    execution_time = time.time() - start_time
-                    step_info = PipelineStepInfo(
-                        step_name=step_name,
-                        step_number=step_number,
-                        status="failed",
-                        execution_time=execution_time,
-                        error_message=str(e),
-                    )
-                    self.step_info.append(step_info)
-
-                    # Save failed step result to disk if job_id is provided
-                    if job_id:
-                        try:
-                            from marketing_project.services.step_result_manager import (
-                                get_step_result_manager,
-                            )
-
-                            step_manager = get_step_result_manager()
-
-                            # Capture input snapshot and context keys used (even for failed steps)
-                            input_snapshot = None
-                            context_keys_used = []
-                            if context:
-                                input_snapshot = copy.deepcopy(context)
-                                context_keys_used = list(context.keys())
-
-                            await step_manager.save_step_result(
-                                job_id=job_id,
-                                step_number=step_number,
-                                step_name=step_name,
-                                result_data={},
-                                metadata={
-                                    "execution_time": execution_time,
-                                    "status": "failed",
-                                    "error_message": str(e),
-                                },
-                                execution_context_id=None,  # Will be auto-determined
-                                root_job_id=None,  # Will be auto-determined
-                                input_snapshot=input_snapshot,
-                                context_keys_used=context_keys_used,
-                            )
-                        except Exception as e2:
-                            logger.warning(
-                                f"Failed to save failed step result to disk for step {step_number}: {e2}"
-                            )
-
-                    logger.error(
-                        f"Step {step_number}: {step_name} failed after {step_max_retries} attempts: {e}"
-                    )
-                    raise
-
-                # Wait before retry (exponential backoff)
-                await asyncio.sleep(2**attempt)
+            logger.error(
+                f"Step {step_number}: {step_name} failed after {step_max_retries} attempts: {e}"
+            )
+            raise
 
     async def execute_pipeline(
         self,
@@ -878,6 +474,28 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
         # Reset step info
         self.step_info = []
 
+        # Create pipeline execution span
+        pipeline_span = None
+        if is_tracing_available():
+            try:
+                tracer = trace.get_tracer(__name__)
+                pipeline_span = tracer.start_as_current_span(
+                    "pipeline.execute", kind=trace.SpanKind.INTERNAL
+                )
+                pipeline_span.__enter__()
+                pipeline_span.set_attribute("agentic.workflow_type", "pipeline")
+                pipeline_span.set_attribute("pipeline_type", "function_pipeline")
+                pipeline_span.set_attribute("content_type", content_type)
+                if output_content_type:
+                    pipeline_span.set_attribute(
+                        "output_content_type", output_content_type
+                    )
+                if job_id:
+                    pipeline_span.set_attribute("job_id", job_id)
+            except Exception as e:
+                logger.debug(f"Failed to create pipeline execution span: {e}")
+                pipeline_span = None
+
         # Parse input content
         try:
             content = json.loads(content_json)
@@ -903,45 +521,10 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                     f"Failed to store input content in job metadata for {job_id}: {e}"
                 )
 
-        # Load internal docs configuration (if available)
-        internal_docs_config = None
-        try:
-            from marketing_project.services.internal_docs_manager import (
-                get_internal_docs_manager,
-            )
-
-            internal_docs_manager = await get_internal_docs_manager()
-            internal_docs_config = await internal_docs_manager.get_active_config()
-            if internal_docs_config:
-                logger.info("Loaded internal docs configuration")
-            else:
-                logger.warning(
-                    "No internal docs configuration found - pipeline will run without it"
-                )
-        except Exception as e:
-            logger.warning(
-                f"Failed to load internal docs configuration: {e} - pipeline will run without it"
-            )
-
-        # Load design kit configuration (if available)
-        design_kit_config = None
-        try:
-            from marketing_project.services.design_kit_manager import (
-                get_design_kit_manager,
-            )
-
-            design_kit_manager = await get_design_kit_manager()
-            design_kit_config = await design_kit_manager.get_active_config()
-            if design_kit_config:
-                logger.info("Loaded design kit configuration")
-            else:
-                logger.warning(
-                    "No design kit configuration found - pipeline will run without it (allowing pipeline to continue)"
-                )
-        except Exception as e:
-            logger.warning(
-                f"Failed to load design kit configuration: {e} - pipeline will run without it (allowing pipeline to continue)"
-            )
+        # Load configurations
+        configs = await load_pipeline_configs()
+        internal_docs_config = configs["internal_docs_config"]
+        design_kit_config = configs["design_kit_config"]
 
         # Use output_content_type if provided, otherwise default to content_type
         final_output_content_type = output_content_type or content_type
@@ -954,20 +537,14 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                 f"Function Pipeline: Processing {content_type} (output_content_type={final_output_content_type})"
             )
 
-        # Store original content in context for first step (needed for resume)
-        pipeline_context = {
-            "input_content": content,
-            "content_type": content_type,
-            "output_content_type": final_output_content_type,
-            "internal_docs_config": (
-                internal_docs_config.model_dump(mode="json")
-                if internal_docs_config
-                else None
-            ),
-            "design_kit_config": (
-                design_kit_config.model_dump(mode="json") if design_kit_config else None
-            ),
-        }
+        # Build initial pipeline context
+        pipeline_context = build_initial_context(
+            content=content,
+            content_type=content_type,
+            output_content_type=final_output_content_type,
+            internal_docs_config=internal_docs_config,
+            design_kit_config=design_kit_config,
+        )
 
         results = {}
         quality_warnings = []
@@ -1004,33 +581,19 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
             plugins = registry.get_plugins_in_order()
 
             # Filter out steps that should be skipped based on content type
-            # This allows us to calculate dynamic step numbers based on actual execution
-            active_plugins = []
-            for plugin in plugins:
-                # Skip transcript_preprocessing_approval for non-transcript content
-                if (
-                    plugin.step_name == "transcript_preprocessing_approval"
-                    and content_type != "transcript"
-                ):
-                    logger.info(
-                        f"Skipping step {plugin.step_name} (not transcript content)"
-                    )
-                    continue
-                # Skip blog_post_preprocessing_approval for non-blog_post content
-                if (
-                    plugin.step_name == "blog_post_preprocessing_approval"
-                    and content_type != "blog_post"
-                ):
-                    logger.info(
-                        f"Skipping step {plugin.step_name} (not blog_post content)"
-                    )
-                    continue
-                active_plugins.append(plugin)
+            active_plugins = filter_active_plugins(plugins, content_type)
 
             # Execute each step using its plugin with dynamic step numbers
             failed_steps = []
             total_steps = len(active_plugins)
             pipeline_start_time = time.time()
+
+            # Update pipeline span with total steps
+            if pipeline_span:
+                try:
+                    pipeline_span.set_attribute("total_steps", total_steps)
+                except Exception:
+                    pass
 
             for execution_index, plugin in enumerate(active_plugins, start=1):
                 step_start_time = time.time()
@@ -1040,34 +603,13 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
 
                 # Update progress with detailed information
                 if job_id:
-                    try:
-                        from marketing_project.services.job_manager import (
-                            get_job_manager,
-                        )
-
-                        job_manager = get_job_manager()
-                        progress_percent = int(
-                            (execution_index - 1) / total_steps * 100
-                        )
-
-                        # Calculate ETA based on average step time so far
-                        if execution_index > 1:
-                            elapsed_time = time.time() - pipeline_start_time
-                            avg_step_time = elapsed_time / (execution_index - 1)
-                            remaining_steps = total_steps - (execution_index - 1)
-                            estimated_remaining = avg_step_time * remaining_steps
-                            eta_seconds = int(estimated_remaining)
-                            eta_message = f" (ETA: ~{eta_seconds}s)"
-                        else:
-                            eta_message = ""
-
-                        step_description = plugin.step_name.replace("_", " ").title()
-                        progress_message = f"Step {execution_index}/{total_steps}: {step_description}{eta_message}"
-                        await job_manager.update_job_progress(
-                            job_id, progress_percent, progress_message
-                        )
-                    except Exception as e:
-                        logger.warning(f"Failed to update progress: {e}")
+                    await update_job_progress(
+                        job_id=job_id,
+                        execution_index=execution_index,
+                        total_steps=total_steps,
+                        plugin=plugin,
+                        pipeline_start_time=pipeline_start_time,
+                    )
 
                 is_optional = plugin.step_name in self.optional_steps
 
@@ -1089,28 +631,14 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
 
                     # Register step output in context registry for zero data loss
                     if job_id:
-                        try:
-                            from marketing_project.services.context_registry import (
-                                get_context_registry,
-                            )
-
-                            context_registry = get_context_registry()
-                            # Capture input snapshot before adding result
-                            input_snapshot = copy.deepcopy(pipeline_context)
-                            context_keys_used = plugin.get_required_context_keys()
-
-                            await context_registry.register_step_output(
-                                job_id=job_id,
-                                step_name=plugin.step_name,
-                                step_number=execution_index,
-                                output_data=results[plugin.step_name],
-                                input_snapshot=input_snapshot,
-                                context_keys_used=context_keys_used,
-                            )
-                        except Exception as e:
-                            logger.warning(
-                                f"Failed to register step output in context registry: {e}"
-                            )
+                        await register_step_output(
+                            job_id=job_id,
+                            step_name=plugin.step_name,
+                            step_number=execution_index,
+                            output_data=results[plugin.step_name],
+                            pipeline_context=pipeline_context,
+                            required_context_keys=plugin.get_required_context_keys(),
+                        )
 
                     # Add result to pipeline context for next steps
                     pipeline_context[plugin.step_name] = results[plugin.step_name]
@@ -1157,6 +685,19 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
             pipeline_end = time.time()
             execution_time = pipeline_end - pipeline_start
 
+            # Update and close pipeline span
+            if pipeline_span:
+                try:
+                    pipeline_span.set_attribute("steps_completed", len(results))
+                    pipeline_span.set_attribute(
+                        "execution_time_seconds", execution_time
+                    )
+                    if Status and StatusCode:
+                        pipeline_span.set_status(Status(StatusCode.OK))
+                    pipeline_span.__exit__(None, None, None)
+                except Exception as e:
+                    logger.debug(f"Failed to close pipeline span: {e}")
+
             logger.info("=" * 80)
             logger.info(f"Pipeline completed successfully in {execution_time:.2f}s")
             logger.info("=" * 80)
@@ -1166,67 +707,20 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                 step.tokens_used for step in self.step_info if step.tokens_used
             )
 
-            # Get final content from formatting result if available
-            final_content = None
-            if "content_formatting" in results:
-                try:
-                    from marketing_project.models.pipeline_steps import (
-                        ContentFormattingResult,
-                    )
-
-                    formatting = ContentFormattingResult(
-                        **results["content_formatting"]
-                    )
-                    final_content = formatting.formatted_html
-                except Exception as e:
-                    logger.warning(
-                        f"Failed to parse content_formatting result: {e}. "
-                        "Skipping final_content extraction."
-                    )
-                    # Try to extract formatted_html directly if it's a dict
-                    if isinstance(results["content_formatting"], dict):
-                        final_content = results["content_formatting"].get(
-                            "formatted_html"
-                        )
-
-            # Build metadata with failed steps info
-            metadata = {
-                "job_id": job_id,
-                "content_id": content.get("id"),
-                "content_type": content_type,
-                "title": content.get("title"),
-                "steps_completed": len(results),
-                "execution_time_seconds": execution_time,
-                "total_tokens_used": total_tokens,
-                "model": self.model,
-                "completed_at": datetime.utcnow().isoformat(),
-                "step_info": [
-                    (
-                        step.model_dump(mode="json")
-                        if hasattr(step, "model_dump")
-                        else (
-                            step.model_dump() if hasattr(step, "model_dump") else step
-                        )
-                    )
-                    for step in self.step_info
-                ],
-            }
-
-            # Add failed steps info if any
-            if failed_steps:
-                metadata["failed_steps"] = failed_steps
-                metadata["partial_success"] = True
-
-            return {
-                "pipeline_status": (
-                    "completed_with_warnings" if quality_warnings else "completed"
-                ),
-                "step_results": results,
-                "quality_warnings": quality_warnings,
-                "final_content": final_content,
-                "input_content": content,  # Include input content in result
-                "metadata": metadata,
-            }
+            # Compile final result using orchestration utility
+            result = compile_pipeline_result(
+                results=results,
+                content=content,
+                content_type=content_type,
+                execution_time=execution_time,
+                total_tokens=total_tokens,
+                model=self.model,
+                step_info=self.step_info,
+                failed_steps=failed_steps if failed_steps else None,
+                quality_warnings=quality_warnings if quality_warnings else None,
+            )
+            result["metadata"]["job_id"] = job_id  # Add job_id to metadata
+            return result
 
         except Exception as e:
             # Check if this is an approval required exception
@@ -1242,6 +736,22 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                 # Approval required - pipeline stops, job completes with WAITING_FOR_APPROVAL status
                 pipeline_end = time.time()
                 execution_time = pipeline_end - pipeline_start
+
+                # Update pipeline span for approval (not an error)
+                if pipeline_span:
+                    try:
+                        pipeline_span.set_attribute("approval_required", True)
+                        pipeline_span.set_attribute("approval_id", e.approval_id)
+                        pipeline_span.set_attribute("stopped_at_step", e.step_number)
+                        pipeline_span.set_attribute("stopped_at_step_name", e.step_name)
+                        pipeline_span.set_status(
+                            Status(StatusCode.OK)
+                        )  # Still OK, just needs approval
+                        pipeline_span.__exit__(None, None, None)
+                    except Exception as span_err:
+                        logger.debug(
+                            f"Failed to update pipeline span for approval: {span_err}"
+                        )
 
                 logger.info(
                     f"[APPROVAL] Pipeline stopped for approval at step {e.step_number} ({e.step_name}) "
@@ -1299,6 +809,13 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
             execution_time = pipeline_end - pipeline_start
 
             logger.error(f"Pipeline failed after {execution_time:.2f}s: {e}")
+
+            # Ensure pipeline span is closed if not already
+            if pipeline_span:
+                try:
+                    pipeline_span.__exit__(type(e), e, None)
+                except Exception:
+                    pass
 
             # Return partial results if available
             return {
@@ -1376,45 +893,10 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                 "Cannot resume pipeline: original content not found in saved context"
             )
 
-        # Load internal docs configuration (if available)
-        internal_docs_config = None
-        try:
-            from marketing_project.services.internal_docs_manager import (
-                get_internal_docs_manager,
-            )
-
-            internal_docs_manager = await get_internal_docs_manager()
-            internal_docs_config = await internal_docs_manager.get_active_config()
-            if internal_docs_config:
-                logger.info("Loaded internal docs configuration for resume")
-            else:
-                logger.warning(
-                    "No internal docs configuration found - pipeline will run without it"
-                )
-        except Exception as e:
-            logger.warning(
-                f"Failed to load internal docs configuration: {e} - pipeline will run without it"
-            )
-
-        # Load design kit configuration (if available)
-        design_kit_config = None
-        try:
-            from marketing_project.services.design_kit_manager import (
-                get_design_kit_manager,
-            )
-
-            design_kit_manager = await get_design_kit_manager()
-            design_kit_config = await design_kit_manager.get_active_config()
-            if design_kit_config:
-                logger.info("Loaded design kit configuration for resume")
-            else:
-                logger.warning(
-                    "No design kit configuration found - pipeline will run without it (allowing pipeline to continue)"
-                )
-        except Exception as e:
-            logger.warning(
-                f"Failed to load design kit configuration: {e} - pipeline will run without it (allowing pipeline to continue)"
-            )
+        # Load configurations
+        configs = await load_pipeline_configs()
+        internal_docs_config = configs["internal_docs_config"]
+        design_kit_config = configs["design_kit_config"]
 
         # Reset step info
         self.step_info = []
@@ -1536,7 +1018,10 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
             # Filter out steps that should be skipped
             active_plugins = []
             content_type_resume = context_data.get("content_type", "blog_post")
-            for plugin in plugins:
+            # First filter by content type
+            filtered_plugins = filter_active_plugins(plugins, content_type_resume)
+
+            for plugin in filtered_plugins:
                 # Skip steps that have already been completed
                 if plugin.step_number < resume_from:
                     continue
@@ -1544,22 +1029,6 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                 # Skip if result already exists
                 if plugin.step_name in results:
                     logger.info(f"Skipping {plugin.step_name} (already completed)")
-                    continue
-
-                # Skip transcript_preprocessing_approval for non-transcript content
-                if (
-                    plugin.step_name == "transcript_preprocessing_approval"
-                    and content_type_resume != "transcript"
-                ):
-                    logger.info(f"Skipping {plugin.step_name} (not transcript content)")
-                    continue
-
-                # Skip blog_post_preprocessing_approval for non-blog_post content
-                if (
-                    plugin.step_name == "blog_post_preprocessing_approval"
-                    and content_type_resume != "blog_post"
-                ):
-                    logger.info(f"Skipping {plugin.step_name} (not blog_post content)")
                     continue
 
                 active_plugins.append(plugin)
@@ -1639,36 +1108,24 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                 "original_content"
             )
 
-            return {
-                "pipeline_status": "completed",
-                "step_results": results,
-                "quality_warnings": quality_warnings,
-                "final_content": final_content,
-                "input_content": input_content,  # Include input content in result
-                "metadata": {
-                    "job_id": job_id,
-                    "resumed_from_step": last_step_number,
-                    "steps_completed": len(results),
-                    "execution_time_seconds": execution_time,
-                    "total_tokens_used": sum(
-                        step.tokens_used for step in self.step_info if step.tokens_used
-                    ),
-                    "model": self.model,
-                    "completed_at": datetime.utcnow().isoformat(),
-                    "step_info": [
-                        (
-                            step.model_dump(mode="json")
-                            if hasattr(step, "model_dump")
-                            else (
-                                step.model_dump()
-                                if hasattr(step, "model_dump")
-                                else step
-                            )
-                        )
-                        for step in self.step_info
-                    ],
-                },
-            }
+            # Compile final result using orchestration utility
+            result = compile_pipeline_result(
+                results=results,
+                content=input_content or {},
+                content_type=context_data.get("content_type", "blog_post"),
+                execution_time=execution_time,
+                total_tokens=sum(
+                    step.tokens_used for step in self.step_info if step.tokens_used
+                ),
+                model=self.model,
+                step_info=self.step_info,
+                failed_steps=None,
+                quality_warnings=quality_warnings if quality_warnings else None,
+            )
+            result["metadata"]["job_id"] = job_id
+            result["metadata"]["resumed_from_step"] = last_step_number
+            result["input_content"] = input_content  # Include input content in result
+            return result
 
         except Exception as e:
             # Check if this is an approval required exception

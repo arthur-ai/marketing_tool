@@ -98,6 +98,9 @@ OPTIONAL ENVIRONMENT VARIABLES:
     ARTHUR_BASE_URL            Base URL for Arthur API (optional - default: http://localhost:3030)
     ARTHUR_API_KEY             API key for Arthur authentication (optional - leave empty to disable telemetry)
     ARTHUR_TASK_ID             Task ID for Arthur (optional - leave empty to disable telemetry, must have is_agentic=True if provided)
+    OTEL_SERVICE_NAME          OpenTelemetry service name (optional - default: marketing-tool)
+    OTEL_DEPLOYMENT_ENVIRONMENT OpenTelemetry deployment environment (optional - default: production)
+    OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT Capture message content in telemetry (optional - default: true)
 
 EXAMPLES:
     # Deploy to production
@@ -423,6 +426,10 @@ fi
 ARTHUR_BASE_URL="${ARTHUR_BASE_URL:-http://localhost:3030}"
 ARTHUR_API_KEY="${ARTHUR_API_KEY:-}"
 ARTHUR_TASK_ID="${ARTHUR_TASK_ID:-}"
+OTEL_SERVICE_NAME="${OTEL_SERVICE_NAME:-marketing-tool}"
+OTEL_DEPLOYMENT_ENVIRONMENT="${OTEL_DEPLOYMENT_ENVIRONMENT:-production}"
+OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT="${OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT:-true}"
+
 PARAMETERS="$PARAMETERS ParameterKey=ArthurBaseUrl,ParameterValue=$ARTHUR_BASE_URL"
 if [[ -n "$ARTHUR_API_KEY" ]]; then
     PARAMETERS="$PARAMETERS ParameterKey=ArthurApiKey,ParameterValue=$ARTHUR_API_KEY"
@@ -434,6 +441,9 @@ if [[ -n "$ARTHUR_TASK_ID" ]]; then
 else
     PARAMETERS="$PARAMETERS ParameterKey=ArthurTaskId,ParameterValue="
 fi
+PARAMETERS="$PARAMETERS ParameterKey=OtelServiceName,ParameterValue=$OTEL_SERVICE_NAME"
+PARAMETERS="$PARAMETERS ParameterKey=OtelDeploymentEnvironment,ParameterValue=$OTEL_DEPLOYMENT_ENVIRONMENT"
+PARAMETERS="$PARAMETERS ParameterKey=OtelInstrumentationGenaiCaptureMessageContent,ParameterValue=$OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"
 
 # Validate CloudFormation template
 print_info "Validating CloudFormation template..."

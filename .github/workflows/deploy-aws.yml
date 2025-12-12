@@ -206,6 +206,9 @@ jobs:
           ARTHUR_BASE_URL: ${{ secrets.ARTHUR_BASE_URL || 'http://localhost:3030' }}
           ARTHUR_API_KEY: ${{ secrets.ARTHUR_API_KEY || '' }}
           ARTHUR_TASK_ID: ${{ secrets.ARTHUR_TASK_ID || '' }}
+          OTEL_SERVICE_NAME: ${{ secrets.OTEL_SERVICE_NAME || 'marketing-tool' }}
+          OTEL_DEPLOYMENT_ENVIRONMENT: ${{ secrets.OTEL_DEPLOYMENT_ENVIRONMENT || 'production' }}
+          OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT: ${{ secrets.OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT || 'true' }}
         run: |
           cd deploy/aws
           chmod +x deploy.sh

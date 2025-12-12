@@ -8,6 +8,7 @@ import os
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
+from marketing_project import __version__
 from marketing_project.config.settings import PIPELINE_SPEC, PROMPTS_DIR
 from marketing_project.services.redis_manager import get_redis_manager
 
@@ -33,7 +34,7 @@ async def health_check():
         health_status = {
             "status": "healthy",
             "service": "marketing-project",
-            "version": "1.0.0",
+            "version": __version__,
             "checks": {
                 "config_loaded": PIPELINE_SPEC is not None,
                 "prompts_dir_exists": os.path.exists(PROMPTS_DIR),

@@ -42,6 +42,9 @@ Metadata:
           - ArthurBaseUrl
           - ArthurApiKey
           - ArthurTaskId
+          - OtelServiceName
+          - OtelDeploymentEnvironment
+          - OtelInstrumentationGenaiCaptureMessageContent
       - Label:
           default: "Database Configuration"
         Parameters:
@@ -188,6 +191,23 @@ Parameters:
     Type: String
     Default: ''
     Description: Task ID for Arthur (optional - leave empty to disable telemetry, must have is_agentic=True if provided)
+
+  OtelServiceName:
+    Type: String
+    Default: 'marketing-tool'
+    Description: 'OpenTelemetry service name for tracing (optional - default: marketing-tool)'
+
+  OtelDeploymentEnvironment:
+    Type: String
+    Default: 'production'
+    AllowedValues: [development, staging, production]
+    Description: 'OpenTelemetry deployment environment (optional - default: production)'
+
+  OtelInstrumentationGenaiCaptureMessageContent:
+    Type: String
+    Default: 'true'
+    AllowedValues: [true, false]
+    Description: 'Capture message content in telemetry (optional - default: true, set to false to mask sensitive content)'
 
   DatabasePassword:
     Type: String

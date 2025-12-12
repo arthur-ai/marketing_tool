@@ -4,6 +4,7 @@ Setup script for Marketing Project.
 """
 
 import os
+from pathlib import Path
 
 from setuptools import find_packages, setup
 
@@ -43,9 +44,32 @@ def read_dev_requirements():
         return []
 
 
+# Read version from _version.py
+def read_version():
+    """
+    Read version from _version.py module.
+    This allows the version to be dynamically determined from Git tags.
+    """
+    # Import the version module directly
+    # We need to add src to the path first
+    import sys
+
+    src_path = Path(__file__).parent / "src"
+    if str(src_path) not in sys.path:
+        sys.path.insert(0, str(src_path))
+
+    try:
+        from marketing_project._version import __version__
+
+        return __version__
+    except (ImportError, Exception):
+        # Fallback to default version if import fails
+        return "0.1.0"
+
+
 setup(
     name="marketing-project",
-    version="0.1.0",
+    version=read_version(),
     author="Ibrahim Abouhashish",
     author_email="your-email@example.com",
     description="A marketing agentic project with extensible agents, plugins, and multi-locale support",
