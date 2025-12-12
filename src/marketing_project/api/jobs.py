@@ -8,10 +8,12 @@ import logging
 import uuid
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from ..middleware.keycloak_auth import get_current_user
 from ..models.approval_models import ApprovalDecisionRequest
+from ..models.user_context import UserContext
 from ..services.approval_manager import get_approval_manager
 from ..services.job_manager import Job, JobManager, JobStatus, get_job_manager
 
@@ -60,6 +62,7 @@ async def list_jobs(
     include_subjob_status: bool = Query(
         False, description="Include subjob status for parent jobs"
     ),
+    user: UserContext = Depends(get_current_user),
 ):
     """
     List all jobs with optional filters.

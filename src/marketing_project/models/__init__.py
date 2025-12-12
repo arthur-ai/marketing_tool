@@ -51,6 +51,7 @@ from .step_models import (
     StepListResponse,
     StepRequirementsResponse,
 )
+from .user_context import UserContext
 from .validation import validate_api_key_format, validate_content_length
 
 # Rebuild models to resolve forward references after all imports
@@ -105,6 +106,8 @@ __all__ = [
     # Auth models
     "APIKeyAuth",
     "TokenResponse",
+    # User context models
+    "UserContext",
     # Step execution models
     "StepExecutionRequest",
     "StepExecutionResponse",

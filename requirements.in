@@ -66,5 +66,6 @@ openinference-instrumentation-langchain>=0.1.12
 opentelemetry-instrumentation-redis>=0.45b0
 opentelemetry-exporter-otlp>=1.25.0
 
-# Authentication dependencies
+# Keycloak authentication dependencies
 python-jose[cryptography]>=3.3.0
+python-keycloak>=2.15.0
