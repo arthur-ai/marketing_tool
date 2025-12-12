@@ -836,6 +836,15 @@ Resources:
             # This prevents Node.js from using all available memory
             - Name: NODE_OPTIONS
               Value: '--max-old-space-size=768'
+            # Prevent PowerShell execution on Linux containers
+            - Name: CI
+              Value: 'true'
+            - Name: FORCE_COLOR
+              Value: '0'
+            - Name: npm_config_script_shell
+              Value: '/bin/sh'
+            - Name: SHELL
+              Value: '/bin/sh'
           LogConfiguration:
             LogDriver: awslogs
             Options:
