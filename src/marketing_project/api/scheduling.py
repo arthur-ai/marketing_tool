@@ -6,9 +6,11 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from marketing_project.middleware.keycloak_auth import get_current_user
+from marketing_project.models.user_context import UserContext
 from marketing_project.services.scheduling_service import get_scheduling_service
 
 logger = logging.getLogger("marketing_project.api.scheduling")
@@ -55,7 +57,9 @@ class ScheduledPostResponse(BaseModel):
 
 
 @router.post("/post", response_model=SchedulePostResponse)
-async def schedule_post(request: SchedulePostRequest):
+async def schedule_post(
+    request: SchedulePostRequest, user: UserContext = Depends(get_current_user)
+):
     """
     Schedule a social media post for publishing.
 
@@ -95,10 +99,12 @@ async def schedule_post(request: SchedulePostRequest):
 
 @router.get("/posts", response_model=List[ScheduledPostResponse])
 async def list_scheduled_posts(
+    status: Optional[str] = Query(None, description="Filter by status"),
     platform: Optional[str] = Query(None, description="Platform filter"),
     limit: int = Query(
         50, ge=1, le=100, description="Maximum number of posts to return"
     ),
+    user: UserContext = Depends(get_current_user),
 ):
     """
     List all scheduled posts.
@@ -124,7 +130,9 @@ async def list_scheduled_posts(
 
 
 @router.delete("/posts/{schedule_id}")
-async def cancel_scheduled_post(schedule_id: str):
+async def cancel_scheduled_post(
+    schedule_id: str, user: UserContext = Depends(get_current_user)
+):
     """
     Cancel a scheduled post.
 
@@ -148,7 +156,9 @@ async def cancel_scheduled_post(schedule_id: str):
 
 
 @router.get("/posts/{schedule_id}", response_model=ScheduledPostResponse)
-async def get_scheduled_post(schedule_id: str):
+async def get_scheduled_post(
+    schedule_id: str, user: UserContext = Depends(get_current_user)
+):
     """
     Get details of a scheduled post.
 

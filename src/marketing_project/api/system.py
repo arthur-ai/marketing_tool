@@ -5,9 +5,11 @@ System and database management API endpoints.
 import logging
 import os
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from marketing_project.config.settings import PIPELINE_SPEC, PROMPTS_DIR
+from marketing_project.middleware.keycloak_auth import get_current_user
+from marketing_project.models.user_context import UserContext
 
 logger = logging.getLogger("marketing_project.api.system")
 
@@ -16,7 +18,7 @@ router = APIRouter()
 
 
 @router.get("/system/info")
-async def get_system_info():
+async def get_system_info(user: UserContext = Depends(get_current_user)):
     """
     Get system information and configuration.
 

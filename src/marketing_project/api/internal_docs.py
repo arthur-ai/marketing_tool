@@ -13,6 +13,7 @@ from fastapi import (
     APIRouter,
     BackgroundTasks,
     Body,
+    Depends,
     File,
     Form,
     HTTPException,
@@ -20,8 +21,10 @@ from fastapi import (
 )
 from pydantic import BaseModel, Field
 
+from ..middleware.keycloak_auth import get_current_user
 from ..models.internal_docs_config import InternalDocsConfig, ScannedDocument
 from ..models.scanned_document_db import ScannedDocumentDB
+from ..models.user_context import UserContext
 from ..services.internal_docs_manager import get_internal_docs_manager
 from ..services.internal_docs_scanner import get_internal_docs_scanner
 from ..services.scanned_document_db import get_scanned_document_db
@@ -79,7 +82,7 @@ class BulkCategoryUpdateRequest(BaseModel):
 
 
 @router.get("/config")
-async def get_internal_docs_config():
+async def get_internal_docs_config(user: UserContext = Depends(get_current_user)):
     """
     Get the currently active internal docs configuration.
 
@@ -104,7 +107,9 @@ async def get_internal_docs_config():
 
 
 @router.get("/config/{version}", response_model=InternalDocsConfig)
-async def get_internal_docs_config_by_version(version: str):
+async def get_internal_docs_config_by_version(
+    version: str, user: UserContext = Depends(get_current_user)
+):
     """
     Get internal docs configuration by version.
 
@@ -137,7 +142,8 @@ async def get_internal_docs_config_by_version(version: str):
 
 @router.post("/config", response_model=InternalDocsConfig)
 async def create_or_update_internal_docs_config(
-    request: dict = Body(..., description="Request body with config and set_active")
+    request: dict = Body(..., description="Request body with config and set_active"),
+    user: UserContext = Depends(get_current_user),
 ):
     """
     Create or update internal docs configuration.
@@ -183,7 +189,9 @@ async def create_or_update_internal_docs_config(
 
 
 @router.get("/versions", response_model=List[str])
-async def list_internal_docs_versions():
+async def list_internal_docs_versions(
+    user: UserContext = Depends(get_current_user),
+):
     """
     List all available internal docs configuration versions.
 
@@ -202,7 +210,9 @@ async def list_internal_docs_versions():
 
 
 @router.post("/activate/{version}")
-async def activate_internal_docs_version(version: str):
+async def activate_internal_docs_version(
+    version: str, user: UserContext = Depends(get_current_user)
+):
     """
     Activate a specific internal docs configuration version.
 
@@ -234,7 +244,9 @@ async def activate_internal_docs_version(version: str):
 
 
 @router.post("/scan/url")
-async def scan_from_url(request: ScanFromUrlRequest):
+async def scan_from_url(
+    request: ScanFromUrlRequest, user: UserContext = Depends(get_current_user)
+):
     """
     Scan internal documentation from a base URL with crawling (runs as background ARQ job).
 
@@ -290,7 +302,9 @@ async def scan_from_url(request: ScanFromUrlRequest):
 
 
 @router.post("/scan/list")
-async def scan_from_list(request: ScanFromListRequest):
+async def scan_from_list(
+    request: ScanFromListRequest, user: UserContext = Depends(get_current_user)
+):
     """
     Scan internal documentation from a list of URLs (runs as background ARQ job).
 
@@ -340,7 +354,9 @@ async def scan_from_list(request: ScanFromListRequest):
 
 
 @router.post("/scan/merge")
-async def merge_scan_results(request: MergeScanResultsRequest):
+async def merge_scan_results(
+    request: MergeScanResultsRequest, user: UserContext = Depends(get_current_user)
+):
     """
     Merge scan results with existing configuration.
 
@@ -381,7 +397,8 @@ async def merge_scan_results(request: MergeScanResultsRequest):
 async def add_document(
     request: dict = Body(
         ..., description="Request body with document and optionally version"
-    )
+    ),
+    user: UserContext = Depends(get_current_user),
 ):
     """
     Add a single document to the configuration.
@@ -423,7 +440,7 @@ async def add_document(
 
 
 @router.delete("/documents/{doc_url:path}", response_model=InternalDocsConfig)
-async def remove_document(doc_url: str):
+async def remove_document(doc_url: str, user: UserContext = Depends(get_current_user)):
     """
     Remove a document from the configuration by URL.
 
@@ -456,7 +473,9 @@ async def remove_document(doc_url: str):
 
 
 @router.get("/documents", response_model=List[ScannedDocumentDB])
-async def list_scanned_documents(active_only: bool = True):
+async def list_scanned_documents(
+    active_only: bool = True, user: UserContext = Depends(get_current_user)
+):
     """
     List all scanned documents from database.
 
@@ -508,7 +527,9 @@ async def get_scanned_document(url: str):
 
 
 @router.get("/documents/search/keywords", response_model=List[ScannedDocumentDB])
-async def search_documents_by_keywords(keywords: str, limit: int = 50):
+async def search_documents_by_keywords(
+    keywords: str, limit: int = 50, user: UserContext = Depends(get_current_user)
+):
     """
     Search documents by keywords.
 
@@ -564,7 +585,9 @@ async def search_documents_with_filters(
 
 
 @router.get("/documents/category/{category}", response_model=List[ScannedDocumentDB])
-async def get_documents_by_category(category: str):
+async def get_documents_by_category(
+    category: str, user: UserContext = Depends(get_current_user)
+):
     """
     Get documents by category.
 
@@ -586,7 +609,9 @@ async def get_documents_by_category(category: str):
 
 
 @router.get("/documents/patterns/anchor-text", response_model=List[str])
-async def get_anchor_text_patterns():
+async def get_anchor_text_patterns(
+    user: UserContext = Depends(get_current_user),
+):
     """
     Get all unique anchor text patterns from scanned documents.
 
@@ -627,7 +652,7 @@ async def get_commonly_referenced_pages(min_links: int = 2):
 
 
 @router.get("/documents/stats")
-async def get_database_stats():
+async def get_database_stats(user: UserContext = Depends(get_current_user)):
     """
     Get statistics about the scanned documents database.
 
@@ -672,7 +697,7 @@ async def get_database_stats():
 
 
 @router.post("/documents/{url:path}/rescan")
-async def rescan_document(url: str):
+async def rescan_document(url: str, user: UserContext = Depends(get_current_user)):
     """
     Re-scan a specific document to update its metadata.
 
@@ -713,7 +738,9 @@ async def rescan_document(url: str):
 
 
 @router.get("/documents/search/fulltext", response_model=List[ScannedDocumentDB])
-async def full_text_search_documents(q: str, limit: int = 50):
+async def full_text_search_documents(
+    q: str, limit: int = 50, user: UserContext = Depends(get_current_user)
+):
     """
     Full-text search documents.
 
@@ -736,7 +763,9 @@ async def full_text_search_documents(q: str, limit: int = 50):
 
 
 @router.get("/documents/{url:path}/related", response_model=List[ScannedDocumentDB])
-async def get_related_documents(url: str):
+async def get_related_documents(
+    url: str, user: UserContext = Depends(get_current_user)
+):
     """
     Get related documents for a specific document.
 
@@ -831,7 +860,9 @@ async def bulk_rescan_documents(request: BulkOperationRequest):
 
 
 @router.post("/documents/bulk/delete")
-async def bulk_delete_documents(request: BulkOperationRequest):
+async def bulk_delete_documents(
+    request: BulkOperationRequest, user: UserContext = Depends(get_current_user)
+):
     """
     Bulk delete documents (hard delete).
 
@@ -858,7 +889,9 @@ async def bulk_delete_documents(request: BulkOperationRequest):
 
 
 @router.post("/documents/bulk/update-categories")
-async def bulk_update_categories(request: BulkCategoryUpdateRequest):
+async def bulk_update_categories(
+    request: BulkCategoryUpdateRequest, user: UserContext = Depends(get_current_user)
+):
     """
     Bulk update categories for documents (adds to existing, doesn't replace).
 
@@ -886,7 +919,9 @@ async def bulk_update_categories(request: BulkCategoryUpdateRequest):
 
 @router.post("/documents/bulk/upload")
 async def bulk_upload_documents(
-    file: UploadFile = File(...), format: str = Form("json")
+    file: UploadFile = File(...),
+    format: str = Form("json"),
+    user: UserContext = Depends(get_current_user),
 ):
     """
     Bulk upload documents from JSON or CSV file.

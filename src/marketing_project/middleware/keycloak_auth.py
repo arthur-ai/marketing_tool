@@ -11,7 +11,7 @@ from typing import Optional
 
 import httpx
 from fastapi import Depends, HTTPException, Request, status
-from jose import JWTError, jwt
+from jose import JWTError, jwk, jwt
 from jose.constants import ALGORITHMS
 
 from marketing_project.models.user_context import (
@@ -27,57 +27,93 @@ KEYCLOAK_REALM = os.getenv("KEYCLOAK_REALM", "")
 KEYCLOAK_CLIENT_ID = os.getenv("KEYCLOAK_CLIENT_ID", "")
 KEYCLOAK_VERIFY_SSL = os.getenv("KEYCLOAK_VERIFY_SSL", "true").lower() == "true"
 
-# Cache for public key
-_cached_public_key: Optional[str] = None
-_cached_public_key_url: Optional[str] = None
+# Cache for JWKS
+_cached_jwks: Optional[dict] = None
+_cached_jwks_url: Optional[str] = None
 
 
-def get_keycloak_public_key() -> Optional[str]:
+def get_keycloak_jwks() -> Optional[dict]:
     """
-    Fetch Keycloak realm public key for JWT verification.
+    Fetch Keycloak realm JWKS (JSON Web Key Set) for JWT verification.
 
     Returns:
-        Public key as string, or None if unable to fetch
+        JWKS dictionary, or None if unable to fetch
     """
-    global _cached_public_key, _cached_public_key_url
+    global _cached_jwks, _cached_jwks_url
 
     if not KEYCLOAK_SERVER_URL or not KEYCLOAK_REALM:
         logger.warning("Keycloak server URL or realm not configured")
         return None
 
-    # Construct public key URL
-    public_key_url = (
+    # Construct JWKS URL
+    jwks_url = (
         f"{KEYCLOAK_SERVER_URL}/realms/{KEYCLOAK_REALM}/protocol/openid-connect/certs"
     )
 
-    # Return cached key if URL hasn't changed
-    if _cached_public_key and _cached_public_key_url == public_key_url:
-        return _cached_public_key
+    # Return cached JWKS if URL hasn't changed
+    if _cached_jwks and _cached_jwks_url == jwks_url:
+        return _cached_jwks
 
     try:
-        # Fetch public key from Keycloak
+        # Fetch JWKS from Keycloak
         with httpx.Client(verify=KEYCLOAK_VERIFY_SSL, timeout=5.0) as client:
-            response = client.get(public_key_url)
+            response = client.get(jwks_url)
             response.raise_for_status()
             jwks = response.json()
 
-            # Extract public key from JWKS
             if "keys" in jwks and len(jwks["keys"]) > 0:
-                # Use the first key (typically RS256)
-                key_data = jwks["keys"][0]
-                # For RS256, we need to construct the public key
-                # This is a simplified version - in production, use jose.jwt.get_unverified_header
-                # and proper key construction
-                _cached_public_key = key_data
-                _cached_public_key_url = public_key_url
-                logger.info("Successfully fetched Keycloak public key")
-                return _cached_public_key
+                _cached_jwks = jwks
+                _cached_jwks_url = jwks_url
+                logger.info("Successfully fetched Keycloak JWKS")
+                return _cached_jwks
             else:
                 logger.error("No keys found in Keycloak JWKS response")
                 return None
 
     except Exception as e:
-        logger.error(f"Failed to fetch Keycloak public key: {e}")
+        logger.error(f"Failed to fetch Keycloak JWKS: {e}")
+        return None
+
+
+def get_public_key_from_jwks(token: str, jwks: dict):
+    """
+    Get the public key from JWKS that matches the token's key ID (kid).
+
+    Args:
+        token: JWT token string
+        jwks: JWKS dictionary from Keycloak
+
+    Returns:
+        Public key object for JWT verification, or None if not found
+    """
+    try:
+        # Get the key ID from token header
+        unverified_header = jwt.get_unverified_header(token)
+        kid = unverified_header.get("kid")
+
+        if not kid:
+            logger.warning("Token missing 'kid' in header")
+            # Fallback to first key if no kid
+            if "keys" in jwks and len(jwks["keys"]) > 0:
+                key_data = jwks["keys"][0]
+                return jwk.construct(key_data)
+            return None
+
+        # Find matching key in JWKS
+        for key_data in jwks.get("keys", []):
+            if key_data.get("kid") == kid:
+                return jwk.construct(key_data)
+
+        logger.warning(f"Key with kid '{kid}' not found in JWKS")
+        # Fallback to first key if kid doesn't match
+        if "keys" in jwks and len(jwks["keys"]) > 0:
+            key_data = jwks["keys"][0]
+            return jwk.construct(key_data)
+
+        return None
+
+    except Exception as e:
+        logger.error(f"Error constructing public key from JWKS: {e}")
         return None
 
 
@@ -130,50 +166,48 @@ def validate_jwt_token(token: str) -> dict:
         unverified_header = jwt.get_unverified_header(token)
         algorithm = unverified_header.get("alg", "RS256")
 
-        # Get public key
-        public_key = get_keycloak_public_key_from_env()
-        if not public_key:
-            # Try to fetch from Keycloak
-            jwks_data = get_keycloak_public_key()
-            if not jwks_data:
+        # Get public key from environment or JWKS
+        public_key_pem = get_keycloak_public_key_from_env()
+        public_key = None
+
+        if public_key_pem:
+            # Use public key from environment variable (PEM format)
+            public_key = public_key_pem
+        else:
+            # Fetch JWKS and get the matching public key
+            jwks = get_keycloak_jwks()
+            if not jwks:
                 raise HTTPException(
                     status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                    detail="Unable to fetch Keycloak public key",
+                    detail="Unable to fetch Keycloak JWKS",
                 )
 
-            # For JWKS, we need to use the proper key
-            # This is a simplified approach - in production, use proper JWKS handling
-            # For now, we'll decode without verification if we can't get the key
-            # In a real implementation, you'd use a library like python-jose with JWKS
-            try:
-                # Try to decode with options to skip signature verification temporarily
-                # This is NOT secure for production - implement proper JWKS handling
-                claims = jwt.decode(
-                    token,
-                    options={"verify_signature": False, "verify_exp": True},
-                )
-            except JWTError as e:
+            # Get the public key that matches the token's kid
+            public_key_obj = get_public_key_from_jwks(token, jwks)
+            if not public_key_obj:
                 raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail=f"Token validation failed: {str(e)}",
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="Unable to construct public key from JWKS",
                 )
-        else:
-            # Use public key from environment
-            try:
-                claims = jwt.decode(
-                    token,
-                    public_key,
-                    algorithms=(
-                        [algorithm] if algorithm in ALGORITHMS else [ALGORITHMS.RS256]
-                    ),
-                    audience=KEYCLOAK_CLIENT_ID,
-                    issuer=f"{KEYCLOAK_SERVER_URL}/realms/{KEYCLOAK_REALM}",
-                )
-            except JWTError as e:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail=f"Token validation failed: {str(e)}",
-                )
+            # Convert jwk object to format expected by jwt.decode
+            public_key = public_key_obj
+
+        # Validate token with public key
+        try:
+            claims = jwt.decode(
+                token,
+                public_key,
+                algorithms=(
+                    [algorithm] if algorithm in ALGORITHMS else [ALGORITHMS.RS256]
+                ),
+                audience=KEYCLOAK_CLIENT_ID,
+                issuer=f"{KEYCLOAK_SERVER_URL}/realms/{KEYCLOAK_REALM}",
+            )
+        except JWTError as e:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"Token validation failed: {str(e)}",
+            )
 
         # Validate required claims
         if "sub" not in claims:

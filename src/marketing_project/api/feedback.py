@@ -5,9 +5,11 @@ API endpoints for feedback collection.
 import logging
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from marketing_project.middleware.keycloak_auth import get_current_user
+from marketing_project.models.user_context import UserContext
 from marketing_project.services.feedback_loop import get_feedback_service
 
 logger = logging.getLogger("marketing_project.api.feedback")
@@ -35,7 +37,9 @@ class FeedbackResponse(BaseModel):
 
 
 @router.post("", response_model=FeedbackResponse)
-async def submit_feedback(request: FeedbackRequest):
+async def submit_feedback(
+    request: FeedbackRequest, user: UserContext = Depends(get_current_user)
+):
     """
     Submit feedback on a generated post.
 
@@ -72,6 +76,7 @@ async def get_feedback_stats(
     platform: Optional[str] = Query(
         None, description="Platform filter: linkedin, hackernews, or email"
     ),
+    user: UserContext = Depends(get_current_user),
 ):
     """
     Get feedback statistics.
