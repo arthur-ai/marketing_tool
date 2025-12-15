@@ -11,6 +11,22 @@ import time
 from datetime import datetime
 from typing import Any, Dict, Optional
 
+from marketing_project.services.function_pipeline.tracing import (
+    close_span,
+    create_span,
+    is_tracing_available,
+    record_span_exception,
+    set_span_attribute,
+    set_span_status,
+)
+
+# Import Status for tracing
+try:
+    from opentelemetry.trace import Status, StatusCode
+except ImportError:
+    Status = None
+    StatusCode = None
+
 from marketing_project.models.pipeline_steps import (
     AngleHookResult,
     ArticleGenerationResult,
@@ -110,8 +126,31 @@ class StepRetryService:
         """
         start_time = time.time()
 
+        # Create telemetry span for step retry execution
+        retry_step_span = None
+        if is_tracing_available():
+            retry_step_span = create_span(
+                "step_retry.execute",
+                attributes={
+                    "step_name": step_name,
+                    "job_id": job_id or "unknown",
+                    "has_user_guidance": bool(user_guidance),
+                },
+            )
+            if retry_step_span and context:
+                content_type = context.get("content_type")
+                if content_type:
+                    set_span_attribute(retry_step_span, "content_type", content_type)
+                if user_guidance:
+                    set_span_attribute(
+                        retry_step_span, "user_guidance_length", len(user_guidance)
+                    )
+
         # Validate step name
         if step_name not in STEP_MODEL_MAP:
+            if retry_step_span:
+                set_span_status(retry_step_span, StatusCode.ERROR, "Invalid step name")
+                set_span_attribute(retry_step_span, "error.type", "ValueError")
             raise ValueError(
                 f"Invalid step name: {step_name}. "
                 f"Valid steps: {', '.join(STEP_MODEL_MAP.keys())}"
@@ -123,6 +162,9 @@ class StepRetryService:
             # Get the appropriate response model
             response_model = STEP_MODEL_MAP[step_name]
             step_number = STEP_NUMBER_MAP[step_name]
+
+            if retry_step_span:
+                set_span_attribute(retry_step_span, "step_number", step_number)
 
             # Build the prompt from input data
             prompt = self._build_prompt(step_name, input_data, context, user_guidance)
@@ -143,6 +185,13 @@ class StepRetryService:
 
             execution_time = time.time() - start_time
 
+            if retry_step_span:
+                set_span_status(
+                    retry_step_span, StatusCode.OK, "Step retry completed successfully"
+                )
+                set_span_attribute(retry_step_span, "execution_time", execution_time)
+                set_span_attribute(retry_step_span, "status", "success")
+
             logger.info(
                 f"Step '{step_name}' retry completed successfully "
                 f"in {execution_time:.2f}s for job {job_id}"
@@ -161,6 +210,13 @@ class StepRetryService:
             execution_time = time.time() - start_time
             error_msg = str(e)
 
+            if retry_step_span:
+                record_span_exception(retry_step_span, e)
+                set_span_status(retry_step_span, StatusCode.ERROR, error_msg)
+                set_span_attribute(retry_step_span, "error.type", type(e).__name__)
+                set_span_attribute(retry_step_span, "execution_time", execution_time)
+                set_span_attribute(retry_step_span, "status", "error")
+
             logger.error(
                 f"Step '{step_name}' retry failed after {execution_time:.2f}s "
                 f"for job {job_id}: {error_msg}"
@@ -174,6 +230,8 @@ class StepRetryService:
                 "retry_timestamp": datetime.utcnow().isoformat(),
                 "error_message": error_msg,
             }
+        finally:
+            close_span(retry_step_span)
 
     def _build_prompt(
         self,

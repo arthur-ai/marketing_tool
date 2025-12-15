@@ -26,9 +26,24 @@ from marketing_project.processors import (
     process_transcript,
 )
 from marketing_project.services.function_pipeline import FunctionPipeline
+from marketing_project.services.function_pipeline.tracing import (
+    close_span,
+    create_span,
+    is_tracing_available,
+    record_span_exception,
+    set_span_attribute,
+    set_span_status,
+)
 from marketing_project.services.internal_docs_scanner import get_internal_docs_scanner
 from marketing_project.services.job_manager import JobStatus, get_job_manager
 from marketing_project.services.social_media_pipeline import SocialMediaPipeline
+
+# Import Status for tracing
+try:
+    from opentelemetry.trace import Status, StatusCode
+except ImportError:
+    Status = None
+    StatusCode = None
 
 logger = logging.getLogger(__name__)
 
@@ -1144,6 +1159,27 @@ async def retry_step_job(
     Returns:
         Step execution result dictionary
     """
+    # Create telemetry span for rerun job
+    rerun_job_span = None
+    if is_tracing_available():
+        rerun_job_span = create_span(
+            "worker.retry_step_job",
+            attributes={
+                "step_name": step_name,
+                "job_id": job_id,
+                "approval_id": approval_id,
+                "has_user_guidance": bool(user_guidance),
+            },
+        )
+        if rerun_job_span and context:
+            content_type = context.get("content_type")
+            if content_type:
+                set_span_attribute(rerun_job_span, "content_type", content_type)
+            if user_guidance:
+                set_span_attribute(
+                    rerun_job_span, "user_guidance_length", len(user_guidance)
+                )
+
     try:
         logger.info(
             f"ARQ Worker: Retrying step '{step_name}' for job {job_id} (approval: {approval_id})"
@@ -1171,8 +1207,21 @@ async def retry_step_job(
             user_guidance=user_guidance,
         )
 
+        if rerun_job_span:
+            set_span_attribute(
+                rerun_job_span, "step_execution_status", result.get("status", "unknown")
+            )
+            if result.get("execution_time"):
+                set_span_attribute(
+                    rerun_job_span, "step_execution_time", result.get("execution_time")
+                )
+
         if result["status"] == "error":
-            raise Exception(result.get("error_message", "Step retry failed"))
+            error_msg = result.get("error_message", "Step retry failed")
+            if rerun_job_span:
+                set_span_status(rerun_job_span, StatusCode.ERROR, error_msg)
+                set_span_attribute(rerun_job_span, "error.type", "StepExecutionError")
+            raise Exception(error_msg)
 
         # Get the original approval to retrieve job_id and other metadata
         from marketing_project.services.approval_manager import get_approval_manager
@@ -1257,6 +1306,13 @@ async def retry_step_job(
             f"for job {job_id} (approval: {approval_id}, new approval: {new_approval.id})"
         )
 
+        if rerun_job_span:
+            set_span_status(
+                rerun_job_span, StatusCode.OK, "Rerun completed successfully"
+            )
+            set_span_attribute(rerun_job_span, "new_approval_id", new_approval.id)
+            set_span_attribute(rerun_job_span, "step_number", step_number)
+
         return {
             "status": "success",
             "approval_id": approval_id,
@@ -1267,6 +1323,10 @@ async def retry_step_job(
         }
 
     except Exception as e:
+        if rerun_job_span:
+            record_span_exception(rerun_job_span, e)
+            set_span_status(rerun_job_span, StatusCode.ERROR, str(e))
+            set_span_attribute(rerun_job_span, "error.type", type(e).__name__)
         logger.error(
             f"ARQ Worker: Step '{step_name}' retry failed for job {job_id}: {e}",
             exc_info=True,
@@ -1275,6 +1335,8 @@ async def retry_step_job(
         await job_manager.update_job_status(job_id, JobStatus.FAILED)
         await job_manager.update_job_progress(job_id, 0, f"Step retry failed: {str(e)}")
         raise
+    finally:
+        close_span(rerun_job_span)
 
 
 async def execute_single_step_job(

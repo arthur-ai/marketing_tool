@@ -10,6 +10,22 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Body, HTTPException, Query
 
+from ..services.function_pipeline.tracing import (
+    close_span,
+    create_span,
+    is_tracing_available,
+    record_span_exception,
+    set_span_attribute,
+    set_span_status,
+)
+
+# Import Status for tracing
+try:
+    from opentelemetry.trace import Status, StatusCode
+except ImportError:
+    Status = None
+    StatusCode = None
+
 from ..models.approval_models import (
     ApprovalDecisionRequest,
     ApprovalListItem,
@@ -815,56 +831,107 @@ async def decide_approval(approval_id: str, decision: ApprovalDecisionRequest):
 
         # Handle rerun - rerun step with user comment as guidance, create new approval
         if decision.decision == "rerun":
-            if not decision.comment:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Comment is required for rerun decision to provide guidance for regeneration",
+            # Create telemetry span for rerun decision
+            rerun_span = None
+            if is_tracing_available():
+                rerun_span = create_span(
+                    "approval.rerun_decision",
+                    attributes={
+                        "approval_id": approval_id,
+                        "step_name": approval.pipeline_step,
+                        "job_id": approval.job_id,
+                        "retry_attempt": approval.retry_count + 1,
+                        "has_user_guidance": bool(decision.comment),
+                    },
+                )
+                if rerun_span and approval.input_data:
+                    content_type = approval.input_data.get("content_type")
+                    if content_type:
+                        set_span_attribute(rerun_span, "content_type", content_type)
+
+            try:
+                if not decision.comment:
+                    if rerun_span:
+                        set_span_status(
+                            rerun_span, StatusCode.ERROR, "Comment required for rerun"
+                        )
+                        set_span_attribute(rerun_span, "error.type", "ValidationError")
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Comment is required for rerun decision to provide guidance for regeneration",
+                    )
+
+                # Trigger retry with user comment as guidance
+                pipeline_step = approval.pipeline_step
+                input_data = approval.input_data
+
+                # Get context from pipeline context
+                context_data = await manager.load_pipeline_context(approval.job_id)
+                context = context_data.get("context", {}) if context_data else {}
+
+                if rerun_span:
+                    set_span_attribute(rerun_span, "pipeline_step", pipeline_step)
+                    set_span_attribute(
+                        rerun_span,
+                        "user_guidance_length",
+                        len(decision.comment) if decision.comment else 0,
+                    )
+
+                # Create retry job
+                retry_job_id = str(uuid.uuid4())
+                retry_job = await job_manager.create_job(
+                    job_id=retry_job_id,
+                    job_type=f"retry_step_{pipeline_step}",
+                    content_id=approval.job_id,
+                    metadata={
+                        "original_job_id": approval.job_id,
+                        "approval_id": approval_id,
+                        "step_name": pipeline_step,
+                        "retry_attempt": approval.retry_count + 1,
+                        "rerun_from_approval": True,  # Flag to indicate this is a rerun, not a reject retry
+                    },
                 )
 
-            # Trigger retry with user comment as guidance
-            pipeline_step = approval.pipeline_step
-            input_data = approval.input_data
+                if rerun_span:
+                    set_span_attribute(rerun_span, "retry_job_id", retry_job_id)
 
-            # Get context from pipeline context
-            context_data = await manager.load_pipeline_context(approval.job_id)
-            context = context_data.get("context", {}) if context_data else {}
+                # Submit to ARQ worker with user guidance
+                await job_manager.submit_to_arq(
+                    retry_job_id,
+                    "retry_step_job",
+                    pipeline_step,
+                    input_data,
+                    context,
+                    retry_job_id,
+                    approval_id,
+                    user_guidance=decision.comment,  # Use comment as guidance
+                )
 
-            # Create retry job
-            retry_job_id = str(uuid.uuid4())
-            retry_job = await job_manager.create_job(
-                job_id=retry_job_id,
-                job_type=f"retry_step_{pipeline_step}",
-                content_id=approval.job_id,
-                metadata={
-                    "original_job_id": approval.job_id,
-                    "approval_id": approval_id,
-                    "step_name": pipeline_step,
-                    "retry_attempt": approval.retry_count + 1,
-                    "rerun_from_approval": True,  # Flag to indicate this is a rerun, not a reject retry
-                },
-            )
+                # Update approval with retry info
+                approval.retry_job_id = retry_job_id
+                approval.retry_count += 1
+                await manager._save_approval_to_redis(approval)
 
-            # Submit to ARQ worker with user guidance
-            await job_manager.submit_to_arq(
-                retry_job_id,
-                "retry_step_job",
-                pipeline_step,
-                input_data,
-                context,
-                retry_job_id,
-                approval_id,
-                user_guidance=decision.comment,  # Use comment as guidance
-            )
+                if rerun_span:
+                    set_span_status(
+                        rerun_span, StatusCode.OK, "Rerun initiated successfully"
+                    )
+                    set_span_attribute(
+                        rerun_span, "final_retry_count", approval.retry_count
+                    )
 
-            # Update approval with retry info
-            approval.retry_job_id = retry_job_id
-            approval.retry_count += 1
-            await manager._save_approval_to_redis(approval)
-
-            logger.info(
-                f"Rerun step '{pipeline_step}' for approval {approval_id} "
-                f"(retry job: {retry_job_id}, attempt: {approval.retry_count})"
-            )
+                logger.info(
+                    f"Rerun step '{pipeline_step}' for approval {approval_id} "
+                    f"(retry job: {retry_job_id}, attempt: {approval.retry_count})"
+                )
+            except Exception as e:
+                if rerun_span:
+                    record_span_exception(rerun_span, e)
+                    set_span_status(rerun_span, StatusCode.ERROR, str(e))
+                    set_span_attribute(rerun_span, "error.type", type(e).__name__)
+                raise
+            finally:
+                close_span(rerun_span)
 
         # Handle rejection - auto-regenerate if enabled, otherwise mark as failed
         if decision.decision == "reject":
