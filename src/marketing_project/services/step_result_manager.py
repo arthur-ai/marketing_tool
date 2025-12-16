@@ -148,6 +148,7 @@ class StepResultManager:
         root_job_id: Optional[str] = None,
         input_snapshot: Optional[Dict[str, Any]] = None,
         context_keys_used: Optional[List[str]] = None,
+        relative_step_number: Optional[int] = None,
     ) -> str:
         """
         Save a step result to disk.
@@ -162,6 +163,7 @@ class StepResultManager:
             root_job_id: Optional root job ID (if different from job_id, saves to root directory)
             input_snapshot: Optional snapshot of input context used for this step
             context_keys_used: Optional list of context keys consumed by this step
+            relative_step_number: Optional relative step number within execution context (1-indexed)
 
         Returns:
             Path to the saved file
@@ -172,9 +174,13 @@ class StepResultManager:
             # Determine where to save: root job directory if provided, otherwise current job
             target_job_id = root_job_id or job_id
 
+            # Get job to determine parentid and other metadata
+            job_manager = get_job_manager()
+            job = None
+            parent_job_id = None
+
             # If no root_job_id provided, try to find it from job metadata
             if not root_job_id:
-                job_manager = get_job_manager()
                 job = await job_manager.get_job(job_id)
                 if job:
                     # Check if this is a subjob and find root
@@ -192,6 +198,13 @@ class StepResultManager:
                                 break
                         else:
                             target_job_id = original_job_id
+            else:
+                # Get job if we already have root_job_id
+                job = await job_manager.get_job(job_id)
+
+            # Determine parentid for resume_pipeline jobs
+            if job and job.type == "resume_pipeline":
+                parent_job_id = job.metadata.get("original_job_id")
 
             # Get or create execution context ID
             if not execution_context_id:
@@ -211,8 +224,10 @@ class StepResultManager:
             data = {
                 "job_id": job_id,  # Job that executed this step
                 "root_job_id": target_job_id,  # Root job this belongs to
+                "parentid": parent_job_id,  # Parent job ID for resume steps
                 "execution_context_id": execution_context_id,
-                "step_number": step_number,
+                "step_number": step_number,  # Absolute step number (continues sequence)
+                "relative_step_number": relative_step_number,  # Relative to context (1-indexed)
                 "step_name": step_name,
                 "timestamp": datetime.utcnow().isoformat(),
                 "input_snapshot": input_snapshot,  # What was used as input

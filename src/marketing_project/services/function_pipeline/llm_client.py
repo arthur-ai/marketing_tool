@@ -18,7 +18,12 @@ from marketing_project.services.function_pipeline.tracing import (
     get_tracer,
     is_tracing_available,
     record_span_exception,
+    set_llm_messages,
+    set_llm_token_counts,
     set_span_attribute,
+    set_span_input,
+    set_span_kind,
+    set_span_output,
     set_span_status,
 )
 
@@ -376,18 +381,29 @@ class LLMClient:
                     f"function_pipeline.{step_name}",
                     kind=trace.SpanKind.CLIENT,
                 ) as span:
+                    # Set OpenInference span kind
+                    set_span_kind(span, "LLM")
+
+                    # Set input attributes (full context dict)
+                    if context:
+                        set_span_input(span, context)
+                        content_type = context.get("content_type")
+                        if content_type:
+                            set_span_attribute(span, "content_type", content_type)
+
+                    # Set LLM input messages
+                    set_llm_messages(span, messages)
+
                     # Set span attributes
                     set_span_attribute(span, "step_name", step_name)
                     set_span_attribute(span, "step_number", step_number)
                     set_span_attribute(span, "model", step_model)
+                    set_span_attribute(span, "llm.model_name", step_model)
+                    set_span_attribute(span, "llm.provider", "openai.responses")
                     set_span_attribute(span, "temperature", step_temperature)
                     set_span_attribute(span, "attempt", attempt + 1)
                     if job_id:
                         set_span_attribute(span, "job_id", job_id)
-                    if context:
-                        content_type = context.get("content_type")
-                        if content_type:
-                            set_span_attribute(span, "content_type", content_type)
 
                     # Schema generation span
                     schema_span = create_span(
@@ -478,7 +494,42 @@ class LLMClient:
 
                     # Update span with response metadata
                     try:
+                        # Set output attributes (parsed result)
+                        set_span_output(
+                            span,
+                            (
+                                parsed_result.model_dump()
+                                if hasattr(parsed_result, "model_dump")
+                                else parsed_result
+                            ),
+                        )
+
+                        # Set LLM output messages
+                        output_messages = []
+                        if response.choices and len(response.choices) > 0:
+                            choice = response.choices[0]
+                            if choice.message:
+                                output_messages.append(
+                                    {
+                                        "role": choice.message.role or "assistant",
+                                        "content": getattr(
+                                            choice.message, "content", None
+                                        ),
+                                    }
+                                )
+                        set_llm_messages(
+                            span, None, output_messages if output_messages else None
+                        )
+
+                        # Set token counts using OpenInference format
                         if response.usage:
+                            set_llm_token_counts(
+                                span,
+                                prompt_tokens=response.usage.prompt_tokens,
+                                completion_tokens=response.usage.completion_tokens,
+                                total_tokens=response.usage.total_tokens,
+                            )
+                            # Keep legacy attributes for backward compatibility
                             set_span_attribute(
                                 span, "input_tokens", response.usage.prompt_tokens or 0
                             )

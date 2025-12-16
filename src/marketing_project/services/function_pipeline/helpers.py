@@ -8,6 +8,12 @@ from typing import Any, Dict, Optional
 
 from marketing_project.plugins.context_utils import ContextTransformer
 from marketing_project.prompts.prompts import get_template, has_template
+from marketing_project.services.function_pipeline.tracing import (
+    set_prompt_template_variables,
+    set_span_input,
+    set_span_kind,
+    set_span_output,
+)
 
 logger = logging.getLogger("marketing_project.services.function_pipeline.helpers")
 
@@ -117,10 +123,26 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                     kind=trace.SpanKind.INTERNAL,
                 )
                 prompt_span.__enter__()
+
+                # Set OpenInference span kind
+                set_span_kind(prompt_span, "TOOL")
+
+                # Set input attributes (template name + context dict)
+                input_data = {
+                    "template_name": template_name,
+                    "template_language": self.lang,
+                    "context": context or {},
+                }
+                set_span_input(prompt_span, input_data)
+
+                # Set prompt template variables
+                context_keys_used = list(context.keys()) if context else []
+                set_prompt_template_variables(prompt_span, context_keys_used)
+
+                # Set other attributes
                 prompt_span.set_attribute("step_name", step_name)
                 prompt_span.set_attribute("template_name", template_name)
                 prompt_span.set_attribute("template_language", self.lang)
-                context_keys_used = list(context.keys()) if context else []
                 prompt_span.set_attribute(
                     "context_keys_used", json.dumps(context_keys_used)
                 )
@@ -165,6 +187,13 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                     # Update span with prompt info
                     if prompt_span:
                         try:
+                            # Set output attributes (rendered prompt string)
+                            set_span_output(
+                                prompt_span,
+                                rendered_prompt,
+                                output_mime_type="text/plain",
+                            )
+
                             prompt_span.set_attribute(
                                 "prompt_length", len(rendered_prompt)
                             )
@@ -200,6 +229,11 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
             )
             if prompt_span:
                 try:
+                    # Set output attributes (fallback prompt string)
+                    set_span_output(
+                        prompt_span, fallback_prompt, output_mime_type="text/plain"
+                    )
+
                     prompt_span.set_attribute("used_fallback", True)
                     prompt_span.set_attribute("prompt_length", len(fallback_prompt))
                     prompt_span.set_status(Status(StatusCode.OK))

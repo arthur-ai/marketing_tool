@@ -65,3 +65,6 @@ openinference-instrumentation-openai>=0.1.0
 openinference-instrumentation-langchain>=0.1.12
 opentelemetry-instrumentation-redis>=0.45b0
 opentelemetry-exporter-otlp>=1.25.0
+
+# Authentication dependencies
+python-jose[cryptography]>=3.3.0

@@ -27,10 +27,13 @@ from marketing_project.processors import (
 )
 from marketing_project.services.function_pipeline import FunctionPipeline
 from marketing_project.services.function_pipeline.tracing import (
+    add_job_metadata_to_span,
     close_span,
+    create_job_root_span,
     create_span,
     is_tracing_available,
     record_span_exception,
+    set_job_output,
     set_span_attribute,
     set_span_status,
 )
@@ -62,6 +65,17 @@ async def process_blog_job(ctx, content_json: str, job_id: str, **kwargs) -> Dic
     Returns:
         Processing result dictionary
     """
+    # Create root job span for this job execution
+    job_span = None
+    if is_tracing_available():
+        # Get job to extract metadata
+        job_manager = get_job_manager()
+        job = await job_manager.get_job(job_id)
+
+        job_span = create_job_root_span(
+            job_id=job_id, job_type="blog", input_value=content_json, job=job
+        )
+
     try:
         logger.info(f"ARQ Worker: Processing blog job {job_id}")
 
@@ -92,11 +106,25 @@ async def process_blog_job(ctx, content_json: str, job_id: str, **kwargs) -> Dic
         await job_manager.update_job_progress(job_id, 100, "Completed")
         logger.info(f"ARQ Worker: Blog job {job_id} completed successfully")
 
+        if job_span:
+            # Refresh job to get updated metadata
+            updated_job = await job_manager.get_job(job_id)
+            if updated_job:
+                add_job_metadata_to_span(job_span, updated_job, job_id, "blog")
+            set_job_output(job_span, result_dict)
+            set_span_status(job_span, StatusCode.OK if StatusCode else None)
+
         return result_dict
 
     except Exception as e:
         logger.error(f"ARQ Worker: Blog job {job_id} failed: {e}")
+        if job_span:
+            set_span_attribute(job_span, "job.status", "failed")
+            record_span_exception(job_span, e)
+            set_span_status(job_span, StatusCode.ERROR if StatusCode else None, str(e))
         raise
+    finally:
+        close_span(job_span)
 
 
 async def process_release_notes_job(
@@ -114,6 +142,17 @@ async def process_release_notes_job(
     Returns:
         Processing result dictionary
     """
+    # Create root job span for this job execution
+    job_span = None
+    if is_tracing_available():
+        # Get job to extract metadata
+        job_manager = get_job_manager()
+        job = await job_manager.get_job(job_id)
+
+        job_span = create_job_root_span(
+            job_id=job_id, job_type="release_notes", input_value=content_json, job=job
+        )
+
     try:
         logger.info(f"ARQ Worker: Processing release notes job {job_id}")
 
@@ -146,11 +185,25 @@ async def process_release_notes_job(
         await job_manager.update_job_progress(job_id, 100, "Completed")
         logger.info(f"ARQ Worker: Release notes job {job_id} completed successfully")
 
+        if job_span:
+            # Refresh job to get updated metadata
+            updated_job = await job_manager.get_job(job_id)
+            if updated_job:
+                add_job_metadata_to_span(job_span, updated_job, job_id, "release_notes")
+            set_job_output(job_span, result_dict)
+            set_span_status(job_span, StatusCode.OK if StatusCode else None)
+
         return result_dict
 
     except Exception as e:
         logger.error(f"ARQ Worker: Release notes job {job_id} failed: {e}")
+        if job_span:
+            set_span_attribute(job_span, "job.status", "failed")
+            record_span_exception(job_span, e)
+            set_span_status(job_span, StatusCode.ERROR if StatusCode else None, str(e))
         raise
+    finally:
+        close_span(job_span)
 
 
 async def process_transcript_job(ctx, content_json: str, job_id: str, **kwargs) -> Dict:
@@ -166,6 +219,17 @@ async def process_transcript_job(ctx, content_json: str, job_id: str, **kwargs) 
     Returns:
         Processing result dictionary
     """
+    # Create root job span for this job execution
+    job_span = None
+    if is_tracing_available():
+        # Get job to extract metadata
+        job_manager = get_job_manager()
+        job = await job_manager.get_job(job_id)
+
+        job_span = create_job_root_span(
+            job_id=job_id, job_type="transcript", input_value=content_json, job=job
+        )
+
     try:
         logger.info(f"ARQ Worker: Processing transcript job {job_id}")
 
@@ -224,11 +288,25 @@ async def process_transcript_job(ctx, content_json: str, job_id: str, **kwargs) 
         await job_manager.update_job_progress(job_id, 100, "Completed")
         logger.info(f"ARQ Worker: Transcript job {job_id} completed successfully")
 
+        if job_span:
+            # Refresh job to get updated metadata
+            updated_job = await job_manager.get_job(job_id)
+            if updated_job:
+                add_job_metadata_to_span(job_span, updated_job, job_id, "transcript")
+            set_job_output(job_span, result_dict)
+            set_span_status(job_span, StatusCode.OK if StatusCode else None)
+
         return result_dict
 
     except Exception as e:
         logger.error(f"ARQ Worker: Transcript job {job_id} failed: {e}")
+        if job_span:
+            set_span_attribute(job_span, "job.status", "failed")
+            record_span_exception(job_span, e)
+            set_span_status(job_span, StatusCode.ERROR if StatusCode else None, str(e))
         raise
+    finally:
+        close_span(job_span)
 
 
 async def process_social_media_job(
@@ -246,6 +324,17 @@ async def process_social_media_job(
     Returns:
         Processing result dictionary
     """
+    # Create root job span for this job execution
+    job_span = None
+    if is_tracing_available():
+        # Get job to extract metadata
+        job_manager = get_job_manager()
+        job = await job_manager.get_job(job_id)
+
+        job_span = create_job_root_span(
+            job_id=job_id, job_type="social_media", input_value=content_json, job=job
+        )
+
     try:
         logger.info(f"ARQ Worker: Processing social media job {job_id}")
 
@@ -351,11 +440,25 @@ async def process_social_media_job(
             f"ARQ Worker: Social media job {job_id} completed successfully for platform {social_media_platform}"
         )
 
+        if job_span:
+            # Refresh job to get updated metadata
+            updated_job = await job_manager.get_job(job_id)
+            if updated_job:
+                add_job_metadata_to_span(job_span, updated_job, job_id, "social_media")
+            set_job_output(job_span, pipeline_result)
+            set_span_status(job_span, StatusCode.OK if StatusCode else None)
+
         return pipeline_result
 
     except Exception as e:
         logger.error(f"ARQ Worker: Social media job {job_id} failed: {e}")
+        if job_span:
+            set_span_attribute(job_span, "job.status", "failed")
+            record_span_exception(job_span, e)
+            set_span_status(job_span, StatusCode.ERROR if StatusCode else None, str(e))
         raise
+    finally:
+        close_span(job_span)
 
 
 async def process_multi_platform_social_media_job(
@@ -373,6 +476,20 @@ async def process_multi_platform_social_media_job(
     Returns:
         Processing result dictionary with results for each platform
     """
+    # Create root job span for this job execution
+    job_span = None
+    if is_tracing_available():
+        # Get job to extract metadata
+        job_manager = get_job_manager()
+        job = await job_manager.get_job(job_id)
+
+        job_span = create_job_root_span(
+            job_id=job_id,
+            job_type="multi_platform_social_media",
+            input_value=content_json,
+            job=job,
+        )
+
     try:
         logger.info(f"ARQ Worker: Processing multi-platform social media job {job_id}")
 
@@ -476,13 +593,29 @@ async def process_multi_platform_social_media_job(
             f"ARQ Worker: Multi-platform social media job {job_id} completed successfully for platforms {', '.join(platforms)}"
         )
 
+        if job_span:
+            # Refresh job to get updated metadata
+            updated_job = await job_manager.get_job(job_id)
+            if updated_job:
+                add_job_metadata_to_span(
+                    job_span, updated_job, job_id, "multi_platform_social_media"
+                )
+            set_job_output(job_span, pipeline_result)
+            set_span_status(job_span, StatusCode.OK if StatusCode else None)
+
         return pipeline_result
 
     except Exception as e:
         logger.error(
             f"ARQ Worker: Multi-platform social media job {job_id} failed: {e}"
         )
+        if job_span:
+            set_span_attribute(job_span, "job.status", "failed")
+            record_span_exception(job_span, e)
+            set_span_status(job_span, StatusCode.ERROR if StatusCode else None, str(e))
         raise
+    finally:
+        close_span(job_span)
 
 
 async def analyze_design_kit_batch_job(
@@ -1060,6 +1193,21 @@ async def resume_pipeline_job(
     Returns:
         Processing result dictionary
     """
+    # Create root job span for this job execution
+    job_span = None
+    if is_tracing_available():
+        # Get job to extract metadata
+        job_manager = get_job_manager()
+        job = await job_manager.get_job(job_id)
+
+        # Add original_job_id to metadata if not already present
+        if job and job.metadata and "original_job_id" not in job.metadata:
+            job.metadata["original_job_id"] = original_job_id
+
+        job_span = create_job_root_span(
+            job_id=job_id, job_type="resume_pipeline", input_value=context_data, job=job
+        )
+
     try:
         logger.info(
             f"ARQ Worker: Resuming pipeline for original job {original_job_id}, new job {job_id}"
@@ -1122,6 +1270,24 @@ async def resume_pipeline_job(
         await job_manager.update_job_progress(job_id, 100, "Completed")
         logger.info(f"ARQ Worker: Resume job {job_id} completed successfully")
 
+        if job_span:
+            # Refresh job to get updated metadata
+            updated_job = await job_manager.get_job(job_id)
+            if updated_job:
+                add_job_metadata_to_span(
+                    job_span, updated_job, job_id, "resume_pipeline"
+                )
+            set_job_output(
+                job_span,
+                {
+                    "status": "success",
+                    "original_job_id": original_job_id,
+                    "resume_job_id": job_id,
+                    "result": result,
+                },
+            )
+            set_span_status(job_span, StatusCode.OK if StatusCode else None)
+
         return {
             "status": "success",
             "original_job_id": original_job_id,
@@ -1132,7 +1298,13 @@ async def resume_pipeline_job(
 
     except Exception as e:
         logger.error(f"ARQ Worker: Resume job {job_id} failed: {e}")
+        if job_span:
+            set_span_attribute(job_span, "job.status", "failed")
+            record_span_exception(job_span, e)
+            set_span_status(job_span, StatusCode.ERROR if StatusCode else None, str(e))
         raise
+    finally:
+        close_span(job_span)
 
 
 async def retry_step_job(
@@ -1159,26 +1331,41 @@ async def retry_step_job(
     Returns:
         Step execution result dictionary
     """
-    # Create telemetry span for rerun job
-    rerun_job_span = None
+    # Create root job span for this job execution
+    job_span = None
     if is_tracing_available():
-        rerun_job_span = create_span(
-            "worker.retry_step_job",
-            attributes={
-                "step_name": step_name,
-                "job_id": job_id,
-                "approval_id": approval_id,
-                "has_user_guidance": bool(user_guidance),
-            },
+        # Get job to extract metadata
+        job_manager = get_job_manager()
+        job = await job_manager.get_job(job_id)
+
+        # Add retry-specific metadata if not already present
+        if job and job.metadata:
+            if "approval_id" not in job.metadata:
+                job.metadata["approval_id"] = approval_id
+            if "step_name" not in job.metadata:
+                job.metadata["step_name"] = step_name
+            if "has_user_guidance" not in job.metadata:
+                job.metadata["has_user_guidance"] = bool(user_guidance)
+            if user_guidance and "user_guidance_length" not in job.metadata:
+                job.metadata["user_guidance_length"] = len(user_guidance)
+            if context:
+                content_type = context.get("content_type")
+                if content_type and "content_type" not in job.metadata:
+                    job.metadata["content_type"] = content_type
+
+        # Prepare input value
+        input_value = {
+            "input_data": input_data,
+            "context": context,
+            "user_guidance": user_guidance,
+        }
+
+        job_span = create_job_root_span(
+            job_id=job_id,
+            job_type=f"retry_step_{step_name}",
+            input_value=input_value,
+            job=job,
         )
-        if rerun_job_span and context:
-            content_type = context.get("content_type")
-            if content_type:
-                set_span_attribute(rerun_job_span, "content_type", content_type)
-            if user_guidance:
-                set_span_attribute(
-                    rerun_job_span, "user_guidance_length", len(user_guidance)
-                )
 
     try:
         logger.info(
@@ -1207,20 +1394,22 @@ async def retry_step_job(
             user_guidance=user_guidance,
         )
 
-        if rerun_job_span:
+        if job_span:
             set_span_attribute(
-                rerun_job_span, "step_execution_status", result.get("status", "unknown")
+                job_span, "step_execution_status", result.get("status", "unknown")
             )
             if result.get("execution_time"):
                 set_span_attribute(
-                    rerun_job_span, "step_execution_time", result.get("execution_time")
+                    job_span, "step_execution_time", result.get("execution_time")
                 )
 
         if result["status"] == "error":
             error_msg = result.get("error_message", "Step retry failed")
-            if rerun_job_span:
-                set_span_status(rerun_job_span, StatusCode.ERROR, error_msg)
-                set_span_attribute(rerun_job_span, "error.type", "StepExecutionError")
+            if job_span:
+                set_span_status(
+                    job_span, StatusCode.ERROR if StatusCode else None, error_msg
+                )
+                set_span_attribute(job_span, "error.type", "StepExecutionError")
             raise Exception(error_msg)
 
         # Get the original approval to retrieve job_id and other metadata
@@ -1306,12 +1495,31 @@ async def retry_step_job(
             f"for job {job_id} (approval: {approval_id}, new approval: {new_approval.id})"
         )
 
-        if rerun_job_span:
+        if job_span:
+            # Refresh job to get updated metadata
+            updated_job = await job_manager.get_job(job_id)
+            if updated_job:
+                # Add new approval ID to metadata
+                if updated_job.metadata:
+                    updated_job.metadata["new_approval_id"] = new_approval.id
+                add_job_metadata_to_span(
+                    job_span, updated_job, job_id, f"retry_step_{step_name}"
+                )
             set_span_status(
-                rerun_job_span, StatusCode.OK, "Rerun completed successfully"
+                job_span,
+                StatusCode.OK if StatusCode else None,
+                "Rerun completed successfully",
             )
-            set_span_attribute(rerun_job_span, "new_approval_id", new_approval.id)
-            set_span_attribute(rerun_job_span, "step_number", step_number)
+            set_job_output(
+                job_span,
+                {
+                    "status": "success",
+                    "approval_id": approval_id,
+                    "new_approval_id": new_approval.id,
+                    "step_name": step_name,
+                    "result": result,
+                },
+            )
 
         return {
             "status": "success",
@@ -1323,10 +1531,11 @@ async def retry_step_job(
         }
 
     except Exception as e:
-        if rerun_job_span:
-            record_span_exception(rerun_job_span, e)
-            set_span_status(rerun_job_span, StatusCode.ERROR, str(e))
-            set_span_attribute(rerun_job_span, "error.type", type(e).__name__)
+        if job_span:
+            record_span_exception(job_span, e)
+            set_span_status(job_span, StatusCode.ERROR if StatusCode else None, str(e))
+            set_span_attribute(job_span, "job.status", "failed")
+            set_span_attribute(job_span, "error.type", type(e).__name__)
         logger.error(
             f"ARQ Worker: Step '{step_name}' retry failed for job {job_id}: {e}",
             exc_info=True,
@@ -1336,7 +1545,7 @@ async def retry_step_job(
         await job_manager.update_job_progress(job_id, 0, f"Step retry failed: {str(e)}")
         raise
     finally:
-        close_span(rerun_job_span)
+        close_span(job_span)
 
 
 async def execute_single_step_job(
@@ -1361,6 +1570,20 @@ async def execute_single_step_job(
     Returns:
         Step execution result dictionary
     """
+    # Create root job span for this job execution
+    job_span = None
+    if is_tracing_available():
+        # Get job to extract metadata
+        job_manager = get_job_manager()
+        job = await job_manager.get_job(job_id)
+
+        # Prepare input value (content_json + context)
+        input_data = {"content": content_json, "context": context}
+
+        job_span = create_job_root_span(
+            job_id=job_id, job_type=f"step_{step_name}", input_value=input_data, job=job
+        )
+
     try:
         logger.info(f"ARQ Worker: Executing single step '{step_name}' for job {job_id}")
 
@@ -1400,6 +1623,23 @@ async def execute_single_step_job(
             f"ARQ Worker: Single step '{step_name}' execution completed successfully for job {job_id}"
         )
 
+        if job_span:
+            # Refresh job to get updated metadata
+            updated_job = await job_manager.get_job(job_id)
+            if updated_job:
+                add_job_metadata_to_span(
+                    job_span, updated_job, job_id, f"step_{step_name}"
+                )
+            set_job_output(
+                job_span,
+                {
+                    "status": "success",
+                    "step_name": step_name,
+                    "result": result,
+                },
+            )
+            set_span_status(job_span, StatusCode.OK if StatusCode else None)
+
         return {
             "status": "success",
             "step_name": step_name,
@@ -1411,6 +1651,10 @@ async def execute_single_step_job(
         logger.error(
             f"ARQ Worker: Single step '{step_name}' execution failed for job {job_id}: {e}"
         )
+        if job_span:
+            set_span_attribute(job_span, "job.status", "failed")
+            record_span_exception(job_span, e)
+            set_span_status(job_span, StatusCode.ERROR if StatusCode else None, str(e))
         job_manager = get_job_manager()
         await job_manager.update_job_status(job_id, JobStatus.FAILED)
         await job_manager.update_job_progress(
@@ -1421,6 +1665,8 @@ async def execute_single_step_job(
             job.error = str(e)
             await job_manager._save_job(job)
         raise
+    finally:
+        close_span(job_span)
 
 
 async def bulk_rescan_documents_job(ctx, urls: List[str], job_id: str) -> Dict:

@@ -14,6 +14,9 @@ from marketing_project.services.function_pipeline.tracing import (
     is_tracing_available,
     record_span_exception,
     set_span_attribute,
+    set_span_input,
+    set_span_kind,
+    set_span_output,
     set_span_status,
 )
 
@@ -69,13 +72,18 @@ async def check_step_approval(
                 "job_id": job_id,
             },
         )
-        if approval_span and context:
-            content_type = context.get("content_type")
-            if content_type:
-                set_span_attribute(approval_span, "content_type", content_type)
+        if approval_span:
+            # Set OpenInference span kind
+            set_span_kind(approval_span, "GUARDRAIL")
+
+            if context:
+                content_type = context.get("content_type")
+                if content_type:
+                    set_span_attribute(approval_span, "content_type", content_type)
 
     try:
         from marketing_project.processors.approval_helper import (
+            ApprovalCheckFailedException,
             ApprovalRequiredException,
             check_and_create_approval_request,
         )
@@ -107,6 +115,10 @@ async def check_step_approval(
             "original_content": pipeline_content or content_for_approval,
         }
 
+        # Set input attributes on span
+        if approval_span:
+            set_span_input(approval_span, input_data)
+
         # Check if approval is needed (raises ApprovalRequiredException if required)
         await check_and_create_approval_request(
             job_id=job_id,
@@ -128,12 +140,40 @@ async def check_step_approval(
             f"[APPROVAL] No approval required for step {step_number} ({step_name}), continuing pipeline"
         )
 
+        # Set output attributes (no approval needed)
+        if approval_span:
+            output_data = {
+                "approval_required": False,
+                "status": "auto_approved_or_not_needed",
+                "step_name": step_name,
+                "step_number": step_number,
+            }
+            set_span_output(approval_span, output_data)
+            if Status and StatusCode:
+                set_span_status(approval_span, StatusCode.OK)
+
     except ApprovalRequiredException as e:
         # Approval required - pipeline should stop
         logger.info(
             f"[APPROVAL] Step {step_number} ({step_name}) requires approval. "
             f"Pipeline stopping. Approval ID: {e.approval_id}"
         )
+
+        # Set output attributes (approval required)
+        if approval_span:
+            output_data = {
+                "approval_required": True,
+                "status": "waiting_for_approval",
+                "approval_id": e.approval_id,
+                "step_name": step_name,
+                "step_number": step_number,
+            }
+            set_span_output(approval_span, output_data)
+            set_span_attribute(approval_span, "approval_id", e.approval_id)
+            if Status and StatusCode:
+                set_span_status(
+                    approval_span, StatusCode.OK
+                )  # Not an error, just needs approval
 
         # Update job status to WAITING_FOR_APPROVAL
         job_manager = get_job_manager()
@@ -179,11 +219,17 @@ async def check_step_approval(
                 # Capture input snapshot and context keys used
                 input_snapshot = None
                 context_keys_used = []
+                relative_step_number = None
                 if context:
                     # Create a snapshot of the context state before execution
                     input_snapshot = copy.deepcopy(context)
                     # Get context keys that were available
                     context_keys_used = list(context.keys())
+                    # Extract relative_step_number from context if present
+                    relative_step_number = context.get("_relative_step_number")
+                    if relative_step_number is None and step_number:
+                        # For initial execution, relative equals absolute
+                        relative_step_number = step_number
 
                 await step_manager.save_step_result(
                     job_id=job_id,
@@ -198,6 +244,7 @@ async def check_step_approval(
                     root_job_id=None,  # Will be auto-determined
                     input_snapshot=input_snapshot,
                     context_keys_used=context_keys_used,
+                    relative_step_number=relative_step_number,
                 )
             except Exception as e2:
                 logger.warning(
@@ -208,12 +255,28 @@ async def check_step_approval(
         raise
 
     except Exception as e:
-        # Approval system error - log but continue
+        # Approval system error - CRITICAL: Do not silently skip approvals
+        # If approval check fails, we must fail the pipeline to ensure approvals are never skipped
         if approval_span:
             record_span_exception(approval_span, e)
             if Status and StatusCode:
                 set_span_status(approval_span, StatusCode.ERROR, str(e))
             set_span_attribute(approval_span, "error.type", type(e).__name__)
-        logger.warning(f"Step {step_number}: Approval check failed (continuing): {e}")
+
+        logger.error(
+            f"[APPROVAL ERROR] Step {step_number} ({step_name}): Approval check failed. "
+            f"This is a critical error - pipeline will fail to prevent skipping required approvals. "
+            f"Error: {e}",
+            exc_info=True,
+        )
+
+        # Re-raise the exception to fail the pipeline
+        # This ensures that if approval is required but the check fails,
+        # we don't silently skip the approval
+        raise ApprovalCheckFailedException(
+            step_name=step_name,
+            step_number=step_number,
+            original_error=e,
+        )
     finally:
         close_span(approval_span)

@@ -142,6 +142,7 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_DATABASE=${REDIS_DATABASE:-0}
+      - OTEL_EXPORT_CONSOLE=true
       # Optional: SSL not needed for local Redis
       # - REDIS_SSL=false
       # Database connection (uses DATABASE_URL from .env if provided, otherwise uses postgres service)

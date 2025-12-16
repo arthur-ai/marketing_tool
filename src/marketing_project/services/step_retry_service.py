@@ -17,6 +17,9 @@ from marketing_project.services.function_pipeline.tracing import (
     is_tracing_available,
     record_span_exception,
     set_span_attribute,
+    set_span_input,
+    set_span_kind,
+    set_span_output,
     set_span_status,
 )
 
@@ -137,10 +140,24 @@ class StepRetryService:
                     "has_user_guidance": bool(user_guidance),
                 },
             )
-            if retry_step_span and context:
-                content_type = context.get("content_type")
-                if content_type:
-                    set_span_attribute(retry_step_span, "content_type", content_type)
+            if retry_step_span:
+                # Set OpenInference span kind
+                set_span_kind(retry_step_span, "AGENT")
+
+                # Set input attributes (input_data + context)
+                input_data_for_span = {
+                    "input_data": input_data,
+                    "context": context or {},
+                    "user_guidance": user_guidance,
+                }
+                set_span_input(retry_step_span, input_data_for_span)
+
+                if context:
+                    content_type = context.get("content_type")
+                    if content_type:
+                        set_span_attribute(
+                            retry_step_span, "content_type", content_type
+                        )
                 if user_guidance:
                     set_span_attribute(
                         retry_step_span, "user_guidance_length", len(user_guidance)
@@ -185,7 +202,19 @@ class StepRetryService:
 
             execution_time = time.time() - start_time
 
+            retry_result = {
+                "step_name": step_name,
+                "status": "success",
+                "result": result.model_dump(),
+                "execution_time": execution_time,
+                "retry_timestamp": datetime.utcnow().isoformat(),
+                "error_message": None,
+            }
+
             if retry_step_span:
+                # Set output attributes
+                set_span_output(retry_step_span, retry_result)
+
                 set_span_status(
                     retry_step_span, StatusCode.OK, "Step retry completed successfully"
                 )
@@ -197,20 +226,25 @@ class StepRetryService:
                 f"in {execution_time:.2f}s for job {job_id}"
             )
 
-            return {
-                "step_name": step_name,
-                "status": "success",
-                "result": result.model_dump(),
-                "execution_time": execution_time,
-                "retry_timestamp": datetime.utcnow().isoformat(),
-                "error_message": None,
-            }
+            return retry_result
 
         except Exception as e:
             execution_time = time.time() - start_time
             error_msg = str(e)
 
+            error_result = {
+                "step_name": step_name,
+                "status": "error",
+                "result": None,
+                "execution_time": execution_time,
+                "retry_timestamp": datetime.utcnow().isoformat(),
+                "error_message": error_msg,
+            }
+
             if retry_step_span:
+                # Set output attributes (error result)
+                set_span_output(retry_step_span, error_result)
+
                 record_span_exception(retry_step_span, e)
                 set_span_status(retry_step_span, StatusCode.ERROR, error_msg)
                 set_span_attribute(retry_step_span, "error.type", type(e).__name__)
@@ -222,14 +256,7 @@ class StepRetryService:
                 f"for job {job_id}: {error_msg}"
             )
 
-            return {
-                "step_name": step_name,
-                "status": "error",
-                "result": None,
-                "execution_time": execution_time,
-                "retry_timestamp": datetime.utcnow().isoformat(),
-                "error_message": error_msg,
-            }
+            return error_result
         finally:
             close_span(retry_step_span)
 

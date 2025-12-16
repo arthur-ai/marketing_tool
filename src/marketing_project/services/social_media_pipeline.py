@@ -59,6 +59,13 @@ from marketing_project.plugins.social_media_post_generation.tasks import (
     SocialMediaPostGenerationPlugin,
 )
 from marketing_project.prompts.prompts import get_template, has_template
+from marketing_project.services.function_pipeline.tracing import (
+    set_llm_messages,
+    set_llm_token_counts,
+    set_span_input,
+    set_span_kind,
+    set_span_output,
+)
 
 logger = logging.getLogger("marketing_project.services.social_media_pipeline")
 
@@ -608,6 +615,10 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                 f"Calling {step_model} for step {step_name} with temperature {step_temperature}"
             )
 
+            # Initialize parsed_result for all code paths
+            parsed_result = None
+            response = None
+
             # Create OpenTelemetry span for this LLM call
             if _tracing_available:
                 try:
@@ -616,14 +627,12 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                         f"social_media_pipeline.{step_name}",
                         kind=trace.SpanKind.CLIENT,
                     ) as span:
-                        # Set span attributes
-                        span.set_attribute("step_name", step_name)
-                        span.set_attribute("step_number", step_number)
-                        span.set_attribute("model", step_model)
-                        span.set_attribute("temperature", step_temperature)
-                        if job_id:
-                            span.set_attribute("job_id", job_id)
+                        # Set OpenInference span kind
+                        set_span_kind(span, "LLM")
+
+                        # Set input attributes (full context dict)
                         if context:
+                            set_span_input(span, context)
                             content_type = context.get("content_type")
                             if content_type:
                                 span.set_attribute("content_type", content_type)
@@ -631,6 +640,19 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                             if platform:
                                 span.set_attribute("platform", platform)
                                 span.set_attribute("social_media_platform", platform)
+
+                        # Set LLM input messages
+                        set_llm_messages(span, messages)
+
+                        # Set span attributes
+                        span.set_attribute("step_name", step_name)
+                        span.set_attribute("step_number", step_number)
+                        span.set_attribute("model", step_model)
+                        span.set_attribute("llm.model_name", step_model)
+                        span.set_attribute("llm.provider", "openai.responses")
+                        span.set_attribute("temperature", step_temperature)
+                        if job_id:
+                            span.set_attribute("job_id", job_id)
 
                         response = await self.client.chat.completions.create(
                             model=step_model,
@@ -646,9 +668,60 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                             temperature=step_temperature,
                         )
 
+                        # Parse response to get result for output
+                        content = response.choices[0].message.content
+                        result_data = None
+                        result = None
+                        if content:
+                            try:
+                                result_data = json.loads(content)
+                                result = response_model(**result_data)
+                            except Exception as parse_error:
+                                logger.debug(
+                                    f"Failed to parse response in span: {parse_error}"
+                                )
+
                         # Update span with response metadata
                         try:
+                            # Set output attributes (parsed result or raw content)
+                            if result:
+                                set_span_output(
+                                    span,
+                                    (
+                                        result.model_dump()
+                                        if hasattr(result, "model_dump")
+                                        else result_data
+                                    ),
+                                )
+                            elif content:
+                                set_span_output(
+                                    span, content, output_mime_type="application/json"
+                                )
+
+                            # Set LLM output messages
+                            output_messages = []
+                            if response.choices and len(response.choices) > 0:
+                                choice = response.choices[0]
+                                if choice.message:
+                                    output_messages.append(
+                                        {
+                                            "role": choice.message.role or "assistant",
+                                            "content": choice.message.content,
+                                        }
+                                    )
+                            set_llm_messages(
+                                span, None, output_messages if output_messages else None
+                            )
+
+                            # Set token counts using OpenInference format
                             if response.usage:
+                                set_llm_token_counts(
+                                    span,
+                                    prompt_tokens=response.usage.prompt_tokens,
+                                    completion_tokens=response.usage.completion_tokens,
+                                    total_tokens=response.usage.total_tokens,
+                                )
+                                # Keep legacy attributes for backward compatibility
                                 span.set_attribute(
                                     "input_tokens", response.usage.prompt_tokens or 0
                                 )
@@ -662,9 +735,12 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                             span.set_status(Status(StatusCode.OK))
                         except Exception as e:
                             logger.debug(f"Failed to update span with response: {e}")
+
+                        # Store parsed result for return after span closes
+                        parsed_result = result
                 except Exception as span_error:
                     logger.debug(f"Failed to create span: {span_error}")
-                    # Fallback to non-instrumented call
+                    # Fallback to non-instrumented call - response will be set here
                     response = await self.client.chat.completions.create(
                         model=step_model,
                         messages=messages,
@@ -679,7 +755,7 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                         temperature=step_temperature,
                     )
             else:
-                # No tracing available, make direct call
+                # No tracing available, make direct call - response will be set here
                 response = await self.client.chat.completions.create(
                     model=step_model,
                     messages=messages,
@@ -694,14 +770,21 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                     temperature=step_temperature,
                 )
 
-            # Parse response
-            content = response.choices[0].message.content
-            if not content:
-                raise ValueError("Empty response from OpenAI API")
+            # Parse response (only if not already parsed in span)
+            if parsed_result is None and response:
+                content = response.choices[0].message.content
+                if not content:
+                    raise ValueError("Empty response from OpenAI API")
 
-            # Parse JSON and validate against model
-            result_data = json.loads(content)
-            result = response_model(**result_data)
+                # Parse JSON and validate against model
+                result_data = json.loads(content)
+                parsed_result = response_model(**result_data)
+
+            # Return parsed result
+            if parsed_result:
+                return parsed_result
+            else:
+                raise ValueError("Failed to parse response from OpenAI API")
 
             execution_time = time.time() - start_time
             tokens_used = response.usage.total_tokens if response.usage else None

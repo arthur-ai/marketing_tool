@@ -83,11 +83,17 @@ from marketing_project.services.function_pipeline.orchestration import (
 )
 from marketing_project.services.function_pipeline.step_results import save_step_result
 from marketing_project.services.function_pipeline.tracing import (
+    add_job_metadata_to_span,
     close_span,
+    create_job_root_span,
     create_span,
     is_tracing_available,
     record_span_exception,
+    set_job_output,
     set_span_attribute,
+    set_span_input,
+    set_span_kind,
+    set_span_output,
     set_span_status,
 )
 
@@ -320,6 +326,13 @@ class FunctionPipeline:
         """
         start_time = time.time()
 
+        # Extract relative_step_number from context if present
+        relative_step_number = None
+        if context and "_relative_step_number" in context:
+            relative_step_number = context.get("_relative_step_number")
+        elif step_number:  # For initial execution, relative equals absolute
+            relative_step_number = step_number
+
         # Get step-specific model and temperature
         step_model = self._get_step_model(step_name)
         step_temperature = self._get_step_temperature(step_name)
@@ -391,6 +404,7 @@ class FunctionPipeline:
                     execution_time=execution_time,
                     response_usage=response.usage if response.usage else None,
                     status="success",
+                    relative_step_number=relative_step_number,
                 )
 
             logger.info(f"Step {step_number} completed in {execution_time:.2f}s")
@@ -428,6 +442,7 @@ class FunctionPipeline:
                     execution_time=execution_time,
                     status="failed",
                     error_message=str(e),
+                    relative_step_number=relative_step_number,
                 )
 
             logger.error(
@@ -474,7 +489,50 @@ class FunctionPipeline:
         # Reset step info
         self.step_info = []
 
-        # Create pipeline execution span
+        # Create job root span if one doesn't exist (e.g., if called directly, not from ARQ job)
+        # If called from ARQ job, the job root span already exists and pipeline span will be a child
+        # OpenTelemetry context propagation will automatically nest spans correctly
+        job_root_span = None
+        if is_tracing_available() and job_id:
+            try:
+                # Check if there's already a current span (from ARQ job)
+                # If there's no active span, create a job root span
+                current_span = trace.get_current_span()
+                # Check if span context is valid (has a valid span_id)
+                span_context = current_span.get_span_context() if current_span else None
+                if span_context is None or span_context.span_id == 0:
+                    # Get job to extract metadata
+                    job = None
+                    try:
+                        from marketing_project.services.job_manager import (
+                            get_job_manager,
+                        )
+
+                        job_manager = get_job_manager()
+                        job = await job_manager.get_job(job_id)
+                        # Ensure content_type is in metadata
+                        if job and job.metadata and "content_type" not in job.metadata:
+                            job.metadata["content_type"] = content_type
+                    except Exception:
+                        pass
+
+                    job_root_span = create_job_root_span(
+                        job_id=job_id,
+                        job_type="pipeline",
+                        input_value=content_json,
+                        job=job,
+                    )
+            except Exception as e:
+                logger.debug(f"Failed to check/create job root span: {e}")
+
+        # Parse input content
+        try:
+            content = json.loads(content_json)
+        except json.JSONDecodeError as e:
+            logger.error(f"Invalid JSON input: {e}")
+            raise ValueError(f"Invalid JSON input: {e}")
+
+        # Create pipeline execution span (will be child of job root span if it exists)
         pipeline_span = None
         if is_tracing_available():
             try:
@@ -483,6 +541,14 @@ class FunctionPipeline:
                     "pipeline.execute", kind=trace.SpanKind.INTERNAL
                 )
                 pipeline_span.__enter__()
+
+                # Set OpenInference span kind
+                set_span_kind(pipeline_span, "CHAIN")
+
+                # Set input attributes
+                set_span_input(pipeline_span, content)
+
+                # Set other attributes
                 pipeline_span.set_attribute("agentic.workflow_type", "pipeline")
                 pipeline_span.set_attribute("pipeline_type", "function_pipeline")
                 pipeline_span.set_attribute("content_type", content_type)
@@ -495,13 +561,6 @@ class FunctionPipeline:
             except Exception as e:
                 logger.debug(f"Failed to create pipeline execution span: {e}")
                 pipeline_span = None
-
-        # Parse input content
-        try:
-            content = json.loads(content_json)
-        except json.JSONDecodeError as e:
-            logger.error(f"Invalid JSON input: {e}")
-            raise ValueError(f"Invalid JSON input: {e}")
 
         # Store input content in job metadata if job_id is provided
         if job_id:
@@ -596,6 +655,9 @@ class FunctionPipeline:
                     pass
 
             for execution_index, plugin in enumerate(active_plugins, start=1):
+                # For initial execution, relative_step_number equals execution_index
+                pipeline_context["_relative_step_number"] = execution_index
+
                 step_start_time = time.time()
                 logger.info(
                     f"Executing step {execution_index}/{total_steps}: {plugin.step_name}"
@@ -688,6 +750,9 @@ class FunctionPipeline:
             # Update and close pipeline span
             if pipeline_span:
                 try:
+                    # Set output attributes
+                    set_span_output(pipeline_span, result)
+
                     pipeline_span.set_attribute("steps_completed", len(results))
                     pipeline_span.set_attribute(
                         "execution_time_seconds", execution_time
@@ -697,6 +762,26 @@ class FunctionPipeline:
                     pipeline_span.__exit__(None, None, None)
                 except Exception as e:
                     logger.debug(f"Failed to close pipeline span: {e}")
+
+            # Close job root span if we created it
+            if job_root_span and job_id:
+                try:
+                    # Refresh job to get updated metadata
+                    from marketing_project.services.job_manager import get_job_manager
+
+                    job_manager = get_job_manager()
+                    updated_job = await job_manager.get_job(job_id)
+                    if updated_job:
+                        add_job_metadata_to_span(
+                            job_root_span, updated_job, job_id, "pipeline"
+                        )
+                    set_job_output(job_root_span, result)
+                    set_span_status(
+                        job_root_span, StatusCode.OK if StatusCode else None
+                    )
+                    close_span(job_root_span)
+                except Exception as e:
+                    logger.debug(f"Failed to close job root span: {e}")
 
             logger.info("=" * 80)
             logger.info(f"Pipeline completed successfully in {execution_time:.2f}s")
@@ -740,6 +825,16 @@ class FunctionPipeline:
                 # Update pipeline span for approval (not an error)
                 if pipeline_span:
                     try:
+                        # Set output attributes with approval information
+                        approval_output = {
+                            "status": "waiting_for_approval",
+                            "approval_id": e.approval_id,
+                            "stopped_at_step": e.step_number,
+                            "stopped_at_step_name": e.step_name,
+                            "results_so_far": results,
+                        }
+                        set_span_output(pipeline_span, approval_output)
+
                         pipeline_span.set_attribute("approval_required", True)
                         pipeline_span.set_attribute("approval_id", e.approval_id)
                         pipeline_span.set_attribute("stopped_at_step", e.step_number)
@@ -752,6 +847,29 @@ class FunctionPipeline:
                         logger.debug(
                             f"Failed to update pipeline span for approval: {span_err}"
                         )
+
+                # Close job root span if we created it (approval is not a failure)
+                if job_root_span:
+                    try:
+                        set_span_attribute(
+                            job_root_span, "job.status", "waiting_for_approval"
+                        )
+                        set_span_attribute(job_root_span, "approval_id", e.approval_id)
+                        # Set output with approval information
+                        approval_output = {
+                            "pipeline_status": "waiting_for_approval",
+                            "approval_id": e.approval_id,
+                            "stopped_at_step": e.step_number,
+                            "stopped_at_step_name": e.step_name,
+                            "step_results": results if "results" in locals() else [],
+                        }
+                        set_job_output(job_root_span, approval_output)
+                        set_span_status(
+                            job_root_span, StatusCode.OK if StatusCode else None
+                        )
+                        close_span(job_root_span)
+                    except Exception as span_err:
+                        logger.debug(f"Failed to close job root span: {span_err}")
 
                 logger.info(
                     f"[APPROVAL] Pipeline stopped for approval at step {e.step_number} ({e.step_name}) "
@@ -813,9 +931,36 @@ class FunctionPipeline:
             # Ensure pipeline span is closed if not already
             if pipeline_span:
                 try:
+                    # Set output with error information
+                    error_output = {
+                        "pipeline_status": "failed",
+                        "error": str(e),
+                        "error_type": type(e).__name__,
+                        "step_results": results if "results" in locals() else {},
+                    }
+                    set_span_output(pipeline_span, error_output)
                     pipeline_span.__exit__(type(e), e, None)
                 except Exception:
                     pass
+
+            # Close job root span if we created it
+            if job_root_span:
+                try:
+                    set_span_attribute(job_root_span, "job.status", "failed")
+                    # Set output with error information
+                    error_output = {
+                        "pipeline_status": "failed",
+                        "error": str(e),
+                        "step_results": results if "results" in locals() else [],
+                    }
+                    set_job_output(job_root_span, error_output)
+                    record_span_exception(job_root_span, e)
+                    set_span_status(
+                        job_root_span, StatusCode.ERROR if StatusCode else None, str(e)
+                    )
+                    close_span(job_root_span)
+                except Exception as span_err:
+                    logger.debug(f"Failed to close job root span: {span_err}")
 
             # Return partial results if available
             return {
@@ -1035,7 +1180,13 @@ class FunctionPipeline:
 
             # Execute remaining steps with dynamic step numbers
             for execution_index, plugin in enumerate(active_plugins, start=resume_from):
+                # Calculate relative step number (1-indexed)
+                relative_step_number = execution_index - last_step_number
+
                 logger.info(f"Executing step {execution_index}: {plugin.step_name}")
+
+                # Store relative_step_number in context (similar to _execution_step_number)
+                pipeline_context["_relative_step_number"] = relative_step_number
 
                 # Validate context before executing
                 if not plugin.validate_context(pipeline_context):

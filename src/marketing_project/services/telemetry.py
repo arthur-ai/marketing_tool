@@ -20,12 +20,12 @@ _tracer_provider: Optional[object] = None
 
 def setup_tracing() -> bool:
     """
-    Set up OpenInference tracing with Arthur endpoint.
+    Set up OpenInference tracing with Arthur endpoint and/or console export.
 
     This function:
-    1. Loads Arthur configuration from environment variables
+    1. Loads configuration from environment variables
     2. Creates OpenTelemetry TracerProvider with OpenInference-compliant resource attributes
-    3. Configures OTLP exporter pointing to Arthur endpoint
+    3. Configures exporter(s): OTLP exporter for Arthur and/or Console exporter for local development
     4. Instruments OpenAI SDK (if used)
     5. Instruments LangChain (if used)
 
@@ -34,8 +34,10 @@ def setup_tracing() -> bool:
 
     Environment Variables:
         ARTHUR_BASE_URL: Base URL for Arthur API (default: http://localhost:3030)
-        ARTHUR_API_KEY: API key for Arthur authentication (required)
-        ARTHUR_TASK_ID: Task ID for Arthur (required, must have is_agentic=True)
+        ARTHUR_API_KEY: API key for Arthur authentication (optional if OTEL_EXPORT_CONSOLE is enabled)
+        ARTHUR_TASK_ID: Task ID for Arthur (optional if OTEL_EXPORT_CONSOLE is enabled)
+        OTEL_EXPORT_CONSOLE: Enable console export for local development (default: "false")
+                              Set to "true" to export spans to stdout/stderr (visible in Docker logs)
         OTEL_SERVICE_NAME: Service name for tracing (default: "marketing-tool")
         OTEL_DEPLOYMENT_ENVIRONMENT: Deployment environment (default: "production")
         OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT: Capture message content (default: "true")
@@ -48,29 +50,39 @@ def setup_tracing() -> bool:
         arthur_api_key = os.getenv("ARTHUR_API_KEY")
         arthur_task_id = os.getenv("ARTHUR_TASK_ID")
 
-        # Check if required configuration is present
-        if not arthur_api_key:
-            logger.warning(
-                "ARTHUR_API_KEY not set. Telemetry will not be initialized. "
-                "Set ARTHUR_API_KEY to enable tracing."
-            )
-            return False
+        # Check if console export is enabled (for local development)
+        export_console = os.getenv("OTEL_EXPORT_CONSOLE", "false").lower() in (
+            "true",
+            "1",
+            "yes",
+        )
 
-        if not arthur_task_id:
+        # Determine if we should use Arthur export
+        use_arthur = bool(arthur_api_key and arthur_task_id)
+
+        # If neither console nor Arthur is configured, warn and return False
+        if not export_console and not use_arthur:
             logger.warning(
-                "ARTHUR_TASK_ID not set. Telemetry will not be initialized. "
-                "Set ARTHUR_TASK_ID to enable tracing."
+                "No telemetry export configured. "
+                "Set OTEL_EXPORT_CONSOLE=true for local development, "
+                "or set ARTHUR_API_KEY and ARTHUR_TASK_ID for Arthur export."
             )
             return False
 
         # Import OpenTelemetry components
         from opentelemetry import trace as trace_api
-        from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
-            OTLPSpanExporter,
-        )
         from opentelemetry.sdk import trace as trace_sdk
         from opentelemetry.sdk.resources import Resource
         from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+
+        # Import exporters conditionally
+        if use_arthur:
+            from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
+                OTLPSpanExporter,
+            )
+
+        if export_console:
+            from opentelemetry.sdk.trace.export import ConsoleSpanExporter
 
         # Import OpenInference instrumentations
         # OpenAI instrumentation
@@ -113,27 +125,43 @@ def setup_tracing() -> bool:
         )
         deployment_env = os.getenv("OTEL_DEPLOYMENT_ENVIRONMENT", "production")
 
+        # Build resource attributes
+        resource_attrs = {
+            # OpenInference standard attributes
+            "service.name": service_name,
+            "deployment.environment": deployment_env,
+        }
+        # Add Arthur-specific metadata only if using Arthur
+        if use_arthur and arthur_task_id:
+            resource_attrs["arthur.task"] = arthur_task_id
+
         _tracer_provider = trace_sdk.TracerProvider(
-            resource=Resource.create(
-                {
-                    # OpenInference standard attributes
-                    "service.name": service_name,
-                    "deployment.environment": deployment_env,
-                    # Arthur-specific metadata
-                    "arthur.task": arthur_task_id,
-                }
-            )
+            resource=Resource.create(resource_attrs)
         )
         trace_api.set_tracer_provider(_tracer_provider)
 
-        # Configure OTLP exporter and add span processor
-        endpoint = f"{arthur_base_url}/v1/traces"
-        exporter = OTLPSpanExporter(
-            endpoint=endpoint,
-            headers={"Authorization": f"Bearer {arthur_api_key}"},
-        )
+        # Configure exporters and add span processors
+        exporters_configured = []
 
-        _tracer_provider.add_span_processor(SimpleSpanProcessor(exporter))
+        # Add Arthur OTLP exporter if configured
+        if use_arthur:
+            endpoint = f"{arthur_base_url}/v1/traces"
+            arthur_exporter = OTLPSpanExporter(
+                endpoint=endpoint,
+                headers={"Authorization": f"Bearer {arthur_api_key}"},
+            )
+            _tracer_provider.add_span_processor(SimpleSpanProcessor(arthur_exporter))
+            exporters_configured.append(f"Arthur ({endpoint})")
+            logger.info(f"Arthur OTLP exporter configured: {endpoint}")
+
+        # Add console exporter if configured (for local development/Docker logs)
+        if export_console:
+            console_exporter = ConsoleSpanExporter()
+            _tracer_provider.add_span_processor(SimpleSpanProcessor(console_exporter))
+            exporters_configured.append("Console (stdout/stderr)")
+            logger.info(
+                "Console span exporter enabled - spans will appear in Docker logs"
+            )
 
         # Instrument OpenAI SDK if available
         # This must be done before any OpenAI client is instantiated
@@ -178,8 +206,8 @@ def setup_tracing() -> bool:
 
         logger.info(
             f"Telemetry initialized successfully: "
-            f"endpoint={endpoint}, task_id={arthur_task_id}, service={service_name}, "
-            f"environment={deployment_env}"
+            f"exporters={', '.join(exporters_configured)}, "
+            f"service={service_name}, environment={deployment_env}"
         )
         return True
 

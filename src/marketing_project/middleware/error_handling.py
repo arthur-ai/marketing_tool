@@ -44,6 +44,19 @@ class ErrorHandlingMiddleware(BaseHTTPMiddleware):
         elif isinstance(exc, StarletteHTTPException):
             return await self._handle_starlette_http_exception(request, exc, request_id)
         else:
+            # Check for approval check failed exception
+            try:
+                from marketing_project.processors.approval_helper import (
+                    ApprovalCheckFailedException,
+                )
+
+                if isinstance(exc, ApprovalCheckFailedException):
+                    return await self._handle_approval_check_failed(
+                        request, exc, request_id
+                    )
+            except ImportError:
+                pass  # Module not available, continue with generic handling
+
             return await self._handle_generic_exception(request, exc, request_id)
 
     async def _handle_http_exception(
@@ -136,6 +149,63 @@ class ErrorHandlingMiddleware(BaseHTTPMiddleware):
 
         return JSONResponse(
             status_code=exc.status_code, content=error_response.model_dump(mode="json")
+        )
+
+    async def _handle_approval_check_failed(
+        self, request: Request, exc: Exception, request_id: str
+    ) -> JSONResponse:
+        """Handle ApprovalCheckFailedException with specific error code."""
+        from marketing_project.processors.approval_helper import (
+            ApprovalCheckFailedException,
+        )
+
+        if not isinstance(exc, ApprovalCheckFailedException):
+            return await self._handle_generic_exception(request, exc, request_id)
+
+        error_message = (
+            f"Approval check failed for step {exc.step_number} ({exc.step_name}). "
+            f"The pipeline cannot continue to ensure required approvals are not skipped. "
+            f"Please check the approval system configuration and try again."
+        )
+
+        error_details = {
+            "request_id": request_id,
+            "step_name": exc.step_name,
+            "step_number": exc.step_number,
+            "original_error_type": exc.original_error_type,
+        }
+
+        if self.debug:
+            error_details.update(
+                {
+                    "original_error": str(exc.original_error),
+                    "traceback": traceback.format_exc().split("\n"),
+                }
+            )
+
+        logger.error(
+            f"Approval check failed in request {request_id}: {error_message}",
+            extra={
+                "request_id": request_id,
+                "step_name": exc.step_name,
+                "step_number": exc.step_number,
+                "original_error": str(exc.original_error),
+                "url": str(request.url),
+                "method": request.method,
+            },
+            exc_info=True,
+        )
+
+        error_response = ErrorResponse(
+            success=False,
+            message=error_message,
+            error_code=exc.error_code,
+            error_details=error_details,
+        )
+
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content=error_response.model_dump(mode="json"),
         )
 
     async def _handle_generic_exception(

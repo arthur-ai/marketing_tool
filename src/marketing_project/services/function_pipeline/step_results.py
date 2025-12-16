@@ -21,6 +21,7 @@ async def save_step_result(
     response_usage: Optional[Any] = None,
     status: str = "success",
     error_message: Optional[str] = None,
+    relative_step_number: Optional[int] = None,
 ) -> None:
     """
     Save step result to disk using step_result_manager.
@@ -35,6 +36,7 @@ async def save_step_result(
         response_usage: Optional response usage object for token tracking
         status: Status of the step ("success" or "failed")
         error_message: Optional error message for failed steps
+        relative_step_number: Optional relative step number within execution context (1-indexed)
     """
     try:
         from marketing_project.services.step_result_manager import (
@@ -86,6 +88,7 @@ async def save_step_result(
             root_job_id=None,  # Will be auto-determined
             input_snapshot=input_snapshot,
             context_keys_used=context_keys_used,
+            relative_step_number=relative_step_number,
         )
     except Exception as e:
         logger.warning(

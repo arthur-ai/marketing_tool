@@ -32,6 +32,28 @@ class ApprovalRequiredException(Exception):
         )
 
 
+class ApprovalCheckFailedException(Exception):
+    """
+    Exception raised when approval check fails due to a system error.
+
+    This is a critical error that prevents the pipeline from continuing
+    to ensure required approvals are not silently skipped.
+    """
+
+    error_code = "APPROVAL_CHECK_FAILED"
+
+    def __init__(self, step_name: str, step_number: int, original_error: Exception):
+        self.step_name = step_name
+        self.step_number = step_number
+        self.original_error = original_error
+        self.original_error_type = type(original_error).__name__
+        super().__init__(
+            f"Approval check failed for step {step_number} ({step_name}). "
+            f"This prevents the pipeline from continuing to ensure required approvals are not skipped. "
+            f"Original error: {original_error}"
+        )
+
+
 async def check_and_create_approval_request(
     job_id: str,
     agent_name: str,

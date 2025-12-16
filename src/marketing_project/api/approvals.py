@@ -16,6 +16,9 @@ from ..services.function_pipeline.tracing import (
     is_tracing_available,
     record_span_exception,
     set_span_attribute,
+    set_span_input,
+    set_span_kind,
+    set_span_output,
     set_span_status,
 )
 
@@ -844,10 +847,23 @@ async def decide_approval(approval_id: str, decision: ApprovalDecisionRequest):
                         "has_user_guidance": bool(decision.comment),
                     },
                 )
-                if rerun_span and approval.input_data:
-                    content_type = approval.input_data.get("content_type")
-                    if content_type:
-                        set_span_attribute(rerun_span, "content_type", content_type)
+                if rerun_span:
+                    # Set OpenInference span kind
+                    set_span_kind(rerun_span, "AGENT")
+
+                    # Set input attributes
+                    input_data_for_span = {
+                        "approval_id": approval_id,
+                        "step_name": approval.pipeline_step,
+                        "input_data": approval.input_data,
+                        "user_guidance": decision.comment,
+                    }
+                    set_span_input(rerun_span, input_data_for_span)
+
+                    if approval.input_data:
+                        content_type = approval.input_data.get("content_type")
+                        if content_type:
+                            set_span_attribute(rerun_span, "content_type", content_type)
 
             try:
                 if not decision.comment:
@@ -913,6 +929,15 @@ async def decide_approval(approval_id: str, decision: ApprovalDecisionRequest):
                 await manager._save_approval_to_redis(approval)
 
                 if rerun_span:
+                    # Set output attributes
+                    output_data = {
+                        "status": "rerun_initiated",
+                        "retry_job_id": retry_job_id,
+                        "retry_attempt": approval.retry_count,
+                        "step_name": pipeline_step,
+                    }
+                    set_span_output(rerun_span, output_data)
+
                     set_span_status(
                         rerun_span, StatusCode.OK, "Rerun initiated successfully"
                     )
@@ -926,6 +951,14 @@ async def decide_approval(approval_id: str, decision: ApprovalDecisionRequest):
                 )
             except Exception as e:
                 if rerun_span:
+                    # Set output attributes (error result)
+                    error_output = {
+                        "status": "error",
+                        "error": str(e),
+                        "error_type": type(e).__name__,
+                    }
+                    set_span_output(rerun_span, error_output)
+
                     record_span_exception(rerun_span, e)
                     set_span_status(rerun_span, StatusCode.ERROR, str(e))
                     set_span_attribute(rerun_span, "error.type", type(e).__name__)
