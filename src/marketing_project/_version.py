@@ -5,6 +5,7 @@ This module attempts to read the version from Git tags, falling back to
 a default version if Git is not available or tags cannot be read.
 """
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -67,19 +68,27 @@ def get_version():
     """
     Get the current version of the project.
 
-    First attempts to read from Git tags, then falls back to a default version.
+    Priority order:
+    1. PROJECT_VERSION environment variable (for Docker/build-time setting)
+    2. Git tags (if available)
+    3. Fallback to default version
 
     Returns:
-        str: Version string (e.g., "0.1.0")
+        str: Version string (e.g., "1.0.85")
     """
+    # First, check for environment variable (useful for Docker builds)
+    env_version = os.getenv("PROJECT_VERSION")
+    if env_version:
+        return env_version.strip()
+
     # Try to get version from Git
     git_version = get_version_from_git()
     if git_version:
         return git_version
 
     # Fallback to default version
-    # This should match the initial version in your GitHub workflow
-    return "0.1.0"
+    # Update this to match the latest release version
+    return "1.0.85"
 
 
 # Get the version when the module is imported

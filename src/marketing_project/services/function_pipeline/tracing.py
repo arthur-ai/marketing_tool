@@ -180,8 +180,8 @@ def set_llm_messages(span, input_messages: Any, output_messages: Any = None):
 
     Args:
         span: The span to set messages on
-        input_messages: Messages sent to LLM (list of message dicts)
-        output_messages: Optional messages received from LLM (list of message dicts)
+        input_messages: Messages sent to LLM (list of message dicts, not a JSON string)
+        output_messages: Optional messages received from LLM (list of message dicts, not a JSON string)
     """
     if not span or not _tracing_available:
         return
@@ -191,17 +191,41 @@ def set_llm_messages(span, input_messages: Any, output_messages: Any = None):
 
         # Serialize input messages
         if input_messages is not None:
+            # If input_messages is a string, parse it as JSON first to convert to dict/list
             if isinstance(input_messages, str):
-                input_messages_json = input_messages
+                try:
+                    input_messages = json.loads(input_messages)
+                except (json.JSONDecodeError, TypeError):
+                    # If parsing fails, log and use the string as-is (fallback)
+                    logger.warning(
+                        f"input_messages is a string but not valid JSON, using as-is: {input_messages[:100]}"
+                    )
+                    input_messages_json = input_messages
+                else:
+                    # Successfully parsed, now serialize the dict/list
+                    input_messages_json = json.dumps(input_messages, default=str)
             else:
+                # Already a dict/list, serialize it
                 input_messages_json = json.dumps(input_messages, default=str)
             span.set_attribute("llm.input_messages", input_messages_json)
 
         # Serialize output messages if provided
         if output_messages is not None:
+            # If output_messages is a string, parse it as JSON first to convert to dict/list
             if isinstance(output_messages, str):
-                output_messages_json = output_messages
+                try:
+                    output_messages = json.loads(output_messages)
+                except (json.JSONDecodeError, TypeError):
+                    # If parsing fails, log and use the string as-is (fallback)
+                    logger.warning(
+                        f"output_messages is a string but not valid JSON, using as-is: {output_messages[:100]}"
+                    )
+                    output_messages_json = output_messages
+                else:
+                    # Successfully parsed, now serialize the dict/list
+                    output_messages_json = json.dumps(output_messages, default=str)
             else:
+                # Already a dict/list, serialize it
                 output_messages_json = json.dumps(output_messages, default=str)
             span.set_attribute("llm.output_messages", output_messages_json)
     except Exception as e:

@@ -2,6 +2,7 @@
 Pipeline orchestration utilities for shared logic between execute_pipeline and resume_pipeline.
 """
 
+import copy
 import json
 import logging
 import time
@@ -125,22 +126,35 @@ def filter_active_plugins(plugins: List[Any], content_type: str) -> List[Any]:
         Filtered list of active plugins
     """
     active_plugins = []
+    skipped_plugins = []
     for plugin in plugins:
         # Skip transcript_preprocessing_approval for non-transcript content
         if (
             plugin.step_name == "transcript_preprocessing_approval"
             and content_type != "transcript"
         ):
-            logger.info(f"Skipping step {plugin.step_name} (not transcript content)")
+            logger.info(
+                f"Skipping step {plugin.step_number} ({plugin.step_name}) - not transcript content"
+            )
+            skipped_plugins.append(f"step {plugin.step_number} ({plugin.step_name})")
             continue
         # Skip blog_post_preprocessing_approval for non-blog_post content
         if (
             plugin.step_name == "blog_post_preprocessing_approval"
             and content_type != "blog_post"
         ):
-            logger.info(f"Skipping step {plugin.step_name} (not blog_post content)")
+            logger.info(
+                f"Skipping step {plugin.step_number} ({plugin.step_name}) - not blog_post content"
+            )
+            skipped_plugins.append(f"step {plugin.step_number} ({plugin.step_name})")
             continue
         active_plugins.append(plugin)
+
+    if skipped_plugins:
+        logger.info(f"Filtered plugins: Skipped {', '.join(skipped_plugins)}")
+    logger.info(
+        f"Active plugins after filtering: {[f'step {p.step_number} ({p.step_name})' for p in active_plugins]}"
+    )
     return active_plugins
 
 

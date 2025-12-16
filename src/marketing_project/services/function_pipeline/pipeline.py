@@ -660,7 +660,7 @@ class FunctionPipeline:
 
                 step_start_time = time.time()
                 logger.info(
-                    f"Executing step {execution_index}/{total_steps}: {plugin.step_name}"
+                    f"Executing step {execution_index}/{total_steps} (plugin step_number={plugin.step_number}): {plugin.step_name}"
                 )
 
                 # Update progress with detailed information
@@ -687,9 +687,36 @@ class FunctionPipeline:
                     # Store result - use model_dump(mode='json') to ensure datetime objects are serialized
                     try:
                         results[plugin.step_name] = step_result.model_dump(mode="json")
-                    except (TypeError, ValueError):
+                    except (TypeError, ValueError) as e:
                         # Fallback to regular model_dump if mode='json' fails
+                        logger.warning(
+                            f"Failed to dump {plugin.step_name} result with mode='json': {e}. "
+                            f"Falling back to regular model_dump."
+                        )
                         results[plugin.step_name] = step_result.model_dump()
+
+                    # Validate result structure for blog_post_preprocessing_approval
+                    if plugin.step_name == "blog_post_preprocessing_approval":
+                        result_dict = results[plugin.step_name]
+                        if not isinstance(result_dict, dict):
+                            logger.error(
+                                f"blog_post_preprocessing_approval result is not a dict: {type(result_dict)}"
+                            )
+                        else:
+                            required_fields = ["is_valid", "requires_approval"]
+                            missing_fields = [
+                                f for f in required_fields if f not in result_dict
+                            ]
+                            if missing_fields:
+                                logger.warning(
+                                    f"blog_post_preprocessing_approval result missing fields: {missing_fields}"
+                                )
+                            else:
+                                logger.info(
+                                    f"blog_post_preprocessing_approval result validated: "
+                                    f"is_valid={result_dict.get('is_valid')}, "
+                                    f"requires_approval={result_dict.get('requires_approval')}"
+                                )
 
                     # Register step output in context registry for zero data loss
                     if job_id:
@@ -705,10 +732,25 @@ class FunctionPipeline:
                     # Add result to pipeline context for next steps
                     pipeline_context[plugin.step_name] = results[plugin.step_name]
 
+                    # Log context update for debugging
+                    logger.debug(
+                        f"Added {plugin.step_name} result to pipeline context. "
+                        f"Context now contains: {list(pipeline_context.keys())}"
+                    )
+
+                    # Special logging for blog_post_preprocessing_approval to verify input_content is updated
+                    if plugin.step_name == "blog_post_preprocessing_approval":
+                        input_content = pipeline_context.get("input_content", {})
+                        logger.info(
+                            f"After {plugin.step_name}, input_content keys: {list(input_content.keys()) if isinstance(input_content, dict) else 'not a dict'}, "
+                            f"author={input_content.get('author') if isinstance(input_content, dict) else 'N/A'}, "
+                            f"category={input_content.get('category') if isinstance(input_content, dict) else 'N/A'}"
+                        )
+
                 except Exception as e:
                     error_msg = str(e)
                     logger.error(
-                        f"Step {execution_index} ({plugin.step_name}) failed: {error_msg}"
+                        f"Step {execution_index}/{total_steps} (plugin step_number={plugin.step_number}, {plugin.step_name}) failed: {error_msg}"
                     )
 
                     if is_optional:

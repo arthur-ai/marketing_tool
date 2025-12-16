@@ -221,6 +221,13 @@ class BlogPostPreprocessingApprovalPlugin(PipelineStepPlugin):
 
             # Update context with modified input_content
             context["input_content"] = input_content
+            logger.info(
+                f"Updated input_content in context with extracted data. "
+                f"Author: {input_content.get('author')}, "
+                f"Category: {input_content.get('category')}, "
+                f"Tags: {input_content.get('tags')}, "
+                f"Word count: {input_content.get('word_count')}"
+            )
 
             # Log if AI successfully auto-fixed issues
             if (
@@ -234,4 +241,9 @@ class BlogPostPreprocessingApprovalPlugin(PipelineStepPlugin):
                     "AI successfully extracted missing data - approval not required"
                 )
 
+        logger.info(
+            f"Blog post preprocessing approval step completed. "
+            f"is_valid={result.is_valid}, requires_approval={result.requires_approval}, "
+            f"validation_issues={len(result.validation_issues)}"
+        )
         return result

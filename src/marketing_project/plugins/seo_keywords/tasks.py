@@ -698,6 +698,26 @@ class SEOKeywordsPlugin(PipelineStepPlugin):
         # Step 5: Get content
         content = context.get("input_content", {})
 
+        # Log input_content state for debugging
+        if isinstance(content, dict):
+            logger.info(
+                f"SEO keywords step received input_content with keys: {list(content.keys())}, "
+                f"author={content.get('author')}, category={content.get('category')}, "
+                f"tags={content.get('tags')}, word_count={content.get('word_count')}, "
+                f"has_content={'content' in content and bool(content.get('content'))}"
+            )
+        else:
+            logger.warning(
+                f"SEO keywords step received input_content that is not a dict: {type(content)}"
+            )
+
+        # Check if blog_post_preprocessing_approval result is in context
+        if "blog_post_preprocessing_approval" in context:
+            logger.info(
+                f"blog_post_preprocessing_approval result found in context: "
+                f"is_valid={context['blog_post_preprocessing_approval'].get('is_valid') if isinstance(context['blog_post_preprocessing_approval'], dict) else 'N/A'}"
+            )
+
         # Step 6: Compose result from engines
         result = await seo_composer.compose_result(content, context, pipeline)
 
