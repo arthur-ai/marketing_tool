@@ -349,4 +349,12 @@ class PipelineStepPlugin(ABC):
             job_id=job_id,
         )
 
+        # If result is ApprovalRequiredSentinel, propagate it up
+        from marketing_project.processors.approval_helper import (
+            ApprovalRequiredSentinel,
+        )
+
+        if isinstance(result, ApprovalRequiredSentinel):
+            return result
+
         return result

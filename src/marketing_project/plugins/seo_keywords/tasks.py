@@ -737,6 +737,58 @@ class SEOKeywordsPlugin(PipelineStepPlugin):
             # Try to fix errors automatically
             result = self._validate_and_fix(result, context)
 
+        # Step 11: Check for approval requirement (since we bypassed _execute_step)
+        # This ensures SEO keywords step respects approval settings
+        if job_id and pipeline:
+            try:
+                import time
+
+                from marketing_project.services.function_pipeline.approval import (
+                    check_step_approval,
+                )
+
+                step_start_time = time.time()
+                execution_step_number = context.get(
+                    "_execution_step_number", self.step_number
+                )
+
+                # Get prompt and system instruction for approval context
+                prompt_context = self._build_prompt_context(context)
+                prompt = pipeline._get_user_prompt(self.step_name, prompt_context)
+                system_instruction = pipeline._get_system_instruction(
+                    self.step_name, context=prompt_context
+                )
+
+                # Check approval
+                approval_result = await check_step_approval(
+                    parsed_result=result,
+                    step_name=self.step_name,
+                    step_number=execution_step_number,
+                    job_id=job_id,
+                    prompt=prompt,
+                    system_instruction=system_instruction,
+                    context=context,
+                    start_time=step_start_time,
+                    step_info_list=[],  # Will be handled by pipeline
+                )
+
+                # If approval is required, return sentinel to stop pipeline
+                if approval_result.requires_approval:
+                    from marketing_project.processors.approval_helper import (
+                        ApprovalRequiredSentinel,
+                    )
+
+                    logger.info(
+                        f"SEO keywords step requires approval (approval_id: {approval_result.approval_id}). "
+                        f"Returning sentinel to stop pipeline."
+                    )
+                    return ApprovalRequiredSentinel(approval_result)
+            except Exception as e:
+                logger.warning(
+                    f"Failed to check approval for SEO keywords step: {e}. "
+                    f"Continuing without approval check."
+                )
+
         return result
 
     def _get_engine_config(

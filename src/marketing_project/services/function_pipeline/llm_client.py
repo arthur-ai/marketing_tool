@@ -304,20 +304,8 @@ class LLMClient:
                         set_span_attribute(llm_call_span, "error.message", str(e))
                         set_span_attribute(llm_call_span, "retry_attempt", attempt + 1)
 
-                    # Check if this is an ApprovalRequiredException - don't retry, just re-raise
-                    from marketing_project.processors.approval_helper import (
-                        ApprovalRequiredException,
-                    )
-
-                    if isinstance(e, ApprovalRequiredException):
-                        # Approval required is not an error for the LLM call span
-                        if llm_call_span:
-                            set_span_attribute(llm_call_span, "approval_required", True)
-                            if Status and StatusCode:
-                                set_span_status(
-                                    llm_call_span, StatusCode.OK
-                                )  # Still OK
-                        raise  # Re-raise immediately without retrying
+                    # Approval is now handled via sentinel values, not exceptions
+                    # This exception handler is for other errors only
 
                     logger.warning(
                         f"Step {step_number} failed (attempt {attempt + 1}): {e}"

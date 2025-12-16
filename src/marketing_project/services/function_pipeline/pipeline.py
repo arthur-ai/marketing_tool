@@ -275,6 +275,22 @@ class FunctionPipeline:
                 context=pipeline_context, pipeline=self, job_id=job_id
             )
 
+            # Check if result is ApprovalRequiredSentinel (approval required, stop execution)
+            from marketing_project.processors.approval_helper import (
+                ApprovalRequiredSentinel,
+            )
+
+            if isinstance(result, ApprovalRequiredSentinel):
+                logger.info(
+                    f"Pipeline execution stopped at step {step_name} due to approval requirement. "
+                    f"Approval ID: {result.approval_result.approval_id}"
+                )
+                # Close span and return the sentinel to propagate up
+                if Status and StatusCode:
+                    set_span_status(step_span, StatusCode.OK)  # Not an error
+                close_span(step_span)
+                return result
+
             # Close step execution span
             if Status and StatusCode:
                 set_span_status(step_span, StatusCode.OK)
@@ -371,7 +387,12 @@ class FunctionPipeline:
             # Human-in-the-Loop Approval Integration
             # ========================================
             if job_id:
-                await check_step_approval(
+                from marketing_project.processors.approval_helper import (
+                    ApprovalRequiredSentinel,
+                    ApprovalResult,
+                )
+
+                approval_result = await check_step_approval(
                     parsed_result=parsed_result,
                     step_name=step_name,
                     step_number=step_number,
@@ -382,6 +403,14 @@ class FunctionPipeline:
                     start_time=start_time,
                     step_info_list=self.step_info,
                 )
+
+                # If approval is required, return sentinel to signal pipeline should stop
+                if approval_result.requires_approval:
+                    logger.info(
+                        f"Pipeline stopping at step {step_number} ({step_name}) "
+                        f"due to approval requirement (approval_id: {approval_result.approval_id})"
+                    )
+                    return ApprovalRequiredSentinel(approval_result)
 
             # Track step info
             step_info = PipelineStepInfo(
@@ -412,14 +441,6 @@ class FunctionPipeline:
 
         except Exception as e:
             execution_time = time.time() - start_time
-
-            # Check if this is an ApprovalRequiredException - already handled in LLM client
-            from marketing_project.processors.approval_helper import (
-                ApprovalRequiredException,
-            )
-
-            if isinstance(e, ApprovalRequiredException):
-                raise  # Re-raise immediately
 
             # Handle final failure
             step_info = PipelineStepInfo(
@@ -684,6 +705,60 @@ class FunctionPipeline:
                         execution_step_number=execution_index,
                     )
 
+                    # Check if approval is required (sentinel value)
+                    from marketing_project.processors.approval_helper import (
+                        ApprovalRequiredSentinel,
+                    )
+
+                    if isinstance(step_result, ApprovalRequiredSentinel):
+                        # Approval required - stop pipeline execution
+                        pipeline_end = time.time()
+                        execution_time = pipeline_end - pipeline_start
+
+                        # Update pipeline span for approval (not an error)
+                        if pipeline_span:
+                            try:
+                                approval_output = {
+                                    "status": "waiting_for_approval",
+                                    "approval_id": step_result.approval_result.approval_id,
+                                    "stopped_at_step": step_result.approval_result.step_number,
+                                    "stopped_at_step_name": step_result.approval_result.step_name,
+                                    "results_so_far": results,
+                                }
+                                from marketing_project.services.function_pipeline.tracing import (
+                                    set_span_output,
+                                )
+
+                                set_span_output(pipeline_span, approval_output)
+                            except Exception as span_error:
+                                logger.warning(
+                                    f"Failed to update pipeline span: {span_error}"
+                                )
+
+                        # Return early with approval status
+                        from marketing_project.services.job_manager import (
+                            JobStatus,
+                            get_job_manager,
+                        )
+
+                        job_manager = get_job_manager()
+                        await job_manager.update_job_status(
+                            job_id, JobStatus.WAITING_FOR_APPROVAL
+                        )
+
+                        return {
+                            "status": "waiting_for_approval",
+                            "approval_id": step_result.approval_result.approval_id,
+                            "step_name": step_result.approval_result.step_name,
+                            "step_number": step_result.approval_result.step_number,
+                            "results": results,
+                            "execution_time": execution_time,
+                            "metadata": {
+                                "job_id": job_id,
+                                "stopped_at_step": step_result.approval_result.step_number,
+                            },
+                        }
+
                     # Store result - use model_dump(mode='json') to ensure datetime objects are serialized
                     try:
                         results[plugin.step_name] = step_result.model_dump(mode="json")
@@ -859,7 +934,9 @@ class FunctionPipeline:
                 get_job_manager,
             )
 
-            if isinstance(e, ApprovalRequiredException):
+            if (
+                False
+            ):  # Removed ApprovalRequiredException check - approvals use sentinels now
                 # Approval required - pipeline stops, job completes with WAITING_FOR_APPROVAL status
                 pipeline_end = time.time()
                 execution_time = pipeline_end - pipeline_start
@@ -1255,6 +1332,39 @@ class FunctionPipeline:
                     execution_step_number=execution_index,
                 )
 
+                # Check if approval is required (sentinel value)
+                from marketing_project.processors.approval_helper import (
+                    ApprovalRequiredSentinel,
+                )
+
+                if isinstance(step_result, ApprovalRequiredSentinel):
+                    # Approval required - stop pipeline execution
+                    pipeline_end = time.time()
+                    execution_time = pipeline_end - pipeline_start
+
+                    from marketing_project.services.job_manager import (
+                        JobStatus,
+                        get_job_manager,
+                    )
+
+                    job_manager = get_job_manager()
+                    await job_manager.update_job_status(
+                        job_id, JobStatus.WAITING_FOR_APPROVAL
+                    )
+
+                    return {
+                        "status": "waiting_for_approval",
+                        "approval_id": step_result.approval_result.approval_id,
+                        "step_name": step_result.approval_result.step_name,
+                        "step_number": step_result.approval_result.step_number,
+                        "results": results,
+                        "execution_time": execution_time,
+                        "metadata": {
+                            "job_id": job_id,
+                            "stopped_at_step": step_result.approval_result.step_number,
+                        },
+                    }
+
                 # Store result - use model_dump(mode='json') to ensure datetime objects are serialized
                 try:
                     results[plugin.step_name] = step_result.model_dump(mode="json")
@@ -1330,7 +1440,9 @@ class FunctionPipeline:
                 get_job_manager,
             )
 
-            if isinstance(e, ApprovalRequiredException):
+            if (
+                False
+            ):  # Removed ApprovalRequiredException check - approvals use sentinels now
                 # Approval required - pipeline stops, job completes with WAITING_FOR_APPROVAL status
                 pipeline_end = time.time()
                 execution_time = pipeline_end - pipeline_start

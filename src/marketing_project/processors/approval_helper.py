@@ -7,11 +7,61 @@ of non-deterministic agent outputs.
 
 import json
 import logging
+from dataclasses import dataclass
+from enum import Enum
 from typing import Any, Dict, Optional
 
 from marketing_project.services.approval_manager import get_approval_manager
 
 logger = logging.getLogger(__name__)
+
+
+class ApprovalStatus(str, Enum):
+    """Status of an approval check."""
+
+    NOT_REQUIRED = "not_required"
+    AUTO_APPROVED = "auto_approved"
+    REQUIRED = "required"
+
+
+@dataclass
+class ApprovalResult:
+    """Result of an approval check."""
+
+    status: ApprovalStatus
+    approval_id: Optional[str] = None
+    job_id: Optional[str] = None
+    step_name: Optional[str] = None
+    step_number: Optional[int] = None
+
+    @property
+    def requires_approval(self) -> bool:
+        """Check if approval is required."""
+        return self.status == ApprovalStatus.REQUIRED
+
+    @property
+    def can_continue(self) -> bool:
+        """Check if pipeline can continue."""
+        return self.status in (
+            ApprovalStatus.NOT_REQUIRED,
+            ApprovalStatus.AUTO_APPROVED,
+        )
+
+
+class ApprovalRequiredSentinel:
+    """
+    Sentinel value to signal that approval is required and pipeline should stop.
+
+    This is used instead of exceptions to signal control flow.
+    """
+
+    def __init__(self, approval_result: ApprovalResult):
+        self.approval_result = approval_result
+
+    def __repr__(self):
+        return (
+            f"ApprovalRequiredSentinel(approval_id={self.approval_result.approval_id})"
+        )
 
 
 class ApprovalRequiredException(Exception):
@@ -64,7 +114,7 @@ async def check_and_create_approval_request(
     context: Dict[str, Any],
     confidence_score: Optional[float] = None,
     suggestions: Optional[list] = None,
-) -> bool:
+) -> ApprovalResult:
     """
     Check if approval is needed and create approval request if required.
 
@@ -73,7 +123,7 @@ async def check_and_create_approval_request(
     2. Checks if this agent requires approval
     3. Creates an approval request if needed
     4. Saves pipeline context to Redis
-    5. Raises ApprovalRequiredException to signal pipeline should stop
+    5. Returns ApprovalResult indicating whether approval is required
 
     Args:
         job_id: ID of the processing job
@@ -87,10 +137,8 @@ async def check_and_create_approval_request(
         suggestions: Optional suggestions for reviewer
 
     Returns:
-        False if no approval needed (pipeline should continue)
-
-    Raises:
-        ApprovalRequiredException: If approval is required (pipeline should stop)
+        ApprovalResult indicating the approval status. If status is REQUIRED,
+        the pipeline should stop and wait for approval.
     """
     manager = await get_approval_manager(reload_from_db=True)
     settings = manager.settings
@@ -100,18 +148,19 @@ async def check_and_create_approval_request(
         logger.info(
             f"[APPROVAL] Approvals disabled globally, skipping approval check for {agent_name} in job {job_id}"
         )
-        return False
+        return ApprovalResult(status=ApprovalStatus.NOT_REQUIRED)
 
     # Check if this agent requires approval
     logger.info(
         f"[APPROVAL] Checking if {agent_name} requires approval. Enabled agents: {settings.approval_agents}, require_approval={settings.require_approval}"
     )
     if agent_name not in settings.approval_agents:
-        logger.warning(
+        logger.info(
             f"[APPROVAL] Agent '{agent_name}' not in approval_agents list ({settings.approval_agents}), skipping approval. "
-            f"To enable approvals for this step, add '{agent_name}' to the approval_agents list in settings."
+            f"To enable approvals for this step, add '{agent_name}' to the approval_agents list in settings. "
+            f"Pipeline will continue without approval."
         )
-        return False
+        return ApprovalResult(status=ApprovalStatus.NOT_REQUIRED)
 
     logger.info(
         f"[APPROVAL] Agent '{agent_name}' requires approval, creating approval request for job {job_id}..."
@@ -133,10 +182,16 @@ async def check_and_create_approval_request(
         f"[APPROVAL] Created approval request {approval.id} for agent '{agent_name}' (step: {step_name}) in job {job_id}"
     )
 
-    # If auto-approved, return False to continue
+    # If auto-approved, return auto-approved status
     if approval.status == "approved":
         logger.info(f"Approval {approval.id} auto-approved, continuing pipeline")
-        return False
+        return ApprovalResult(
+            status=ApprovalStatus.AUTO_APPROVED,
+            approval_id=approval.id,
+            job_id=job_id,
+            step_name=step_name,
+            step_number=step_number,
+        )
 
     logger.info(
         f"[APPROVAL] Created approval request {approval.id} for {agent_name} in job {job_id}. "
@@ -157,8 +212,9 @@ async def check_and_create_approval_request(
         original_content=original_content,
     )
 
-    # Raise exception to signal pipeline should stop
-    raise ApprovalRequiredException(
+    # Return result indicating approval is required
+    return ApprovalResult(
+        status=ApprovalStatus.REQUIRED,
         approval_id=approval.id,
         job_id=job_id,
         step_name=step_name,
