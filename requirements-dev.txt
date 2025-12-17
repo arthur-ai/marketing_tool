@@ -609,12 +609,12 @@ zstandard==0.25.0
 # Missing packages from requirements.in (SEO Keywords Engine dependencies)
 bertopic>=0.15.0
     # via -r requirements.in
-pybind11>=2.10.1
-    # Build dependency for fasttext (required for Python 3.13)
 fasttext>=0.9.2
     # via -r requirements.in
 gensim>=4.3.0
     # via -r requirements.in
+pybind11>=2.10.1
+    # Build dependency for fasttext (required for Python 3.13)
 keyphrase-vectorizers>=0.0.13
     # via -r requirements.in
 opentelemetry-instrumentation-redis>=0.45b0
