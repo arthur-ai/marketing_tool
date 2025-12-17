@@ -48,7 +48,7 @@ python-docx>=1.2.0
 PyPDF2>=3.0.1
 
 # SEO Keywords Engine dependencies
-spacy>=3.7.0
+spacy==3.8.11  # Pinned for Python 3.13 compatibility (has pre-built wheels)
 yake>=0.4.8
 rake-nltk>=1.0.6
 keyphrase-vectorizers>=0.0.13

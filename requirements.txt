@@ -587,8 +587,9 @@ openinference-instrumentation-openai>=0.1.0
     # via -r requirements.in
 rake-nltk>=1.0.6
     # via -r requirements.in
-spacy>=3.7.0
+spacy==3.8.11
     # via -r requirements.in
+    # Pinned to 3.8.11 for Python 3.13 compatibility (has pre-built wheels)
 yake>=0.4.8
     # via -r requirements.in
 
