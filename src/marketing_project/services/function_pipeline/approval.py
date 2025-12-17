@@ -4,16 +4,22 @@ Approval integration for human-in-the-loop review.
 
 import copy
 import logging
+import time
 from typing import Any, Dict, Optional
 
 from pydantic import BaseModel
 
 from marketing_project.services.function_pipeline.tracing import (
+    add_span_event,
     close_span,
     create_span,
+    ensure_span_has_minimum_metadata,
     is_tracing_available,
+    link_spans,
     record_span_exception,
     set_span_attribute,
+    set_span_duration,
+    set_span_error,
     set_span_input,
     set_span_kind,
     set_span_output,
@@ -69,6 +75,7 @@ async def check_step_approval(
 
     # Create approval check span
     approval_span = None
+    approval_start_time = time.time()
     if is_tracing_available():
         approval_span = create_span(
             f"pipeline.approval_check.{step_name}",
@@ -77,10 +84,26 @@ async def check_step_approval(
                 "step_number": step_number,
                 "job_id": job_id,
             },
+            span_type="approval_check",
         )
         if approval_span:
             # Set OpenInference span kind
             set_span_kind(approval_span, "GUARDRAIL")
+
+            # Add started event
+            add_span_event(
+                approval_span,
+                "approval_check.started",
+                {
+                    "step_name": step_name,
+                    "step_number": step_number,
+                },
+            )
+
+            # Ensure minimum metadata
+            ensure_span_has_minimum_metadata(
+                approval_span, f"pipeline.approval_check.{step_name}", "approval_check"
+            )
 
             if context:
                 content_type = context.get("content_type")
@@ -121,9 +144,9 @@ async def check_step_approval(
             "original_content": pipeline_content or content_for_approval,
         }
 
-        # Set input attributes on span
+        # Set input attributes on span - always set, never blank
         if approval_span:
-            set_span_input(approval_span, input_data)
+            set_span_input(approval_span, input_data if input_data else {})
 
         # Check if approval is needed (returns ApprovalResult)
         approval_result = await check_and_create_approval_request(
@@ -150,7 +173,7 @@ async def check_step_approval(
                 f"Pipeline stopping. Approval ID: {approval_result.approval_id}"
             )
 
-            # Set output attributes (approval required)
+            # Set output attributes (approval required) - always set, never blank
             if approval_span:
                 output_data = {
                     "approval_required": True,
@@ -160,6 +183,39 @@ async def check_step_approval(
                     "step_number": step_number,
                 }
                 set_span_output(approval_span, output_data)
+
+                # Add approval workflow metrics
+                try:
+                    decision_time = time.time() - approval_start_time
+                    set_span_attribute(
+                        approval_span, "approval.decision_time_seconds", decision_time
+                    )
+                    set_span_attribute(
+                        approval_span, "approval.requires_manual_review", True
+                    )
+                    set_span_attribute(
+                        approval_span, "approval.auto_approval_reason", None
+                    )
+                    if confidence is not None:
+                        set_span_attribute(
+                            approval_span, "approval.confidence_score", confidence
+                        )
+                except Exception:
+                    pass
+
+                # Set duration
+                set_span_duration(approval_span, approval_start_time)
+
+                # Add approval required event
+                add_span_event(
+                    approval_span,
+                    "approval.required",
+                    {
+                        "approval_id": approval_result.approval_id,
+                        "confidence_score": confidence,
+                    },
+                )
+
                 if approval_result.approval_id:
                     set_span_attribute(
                         approval_span, "approval_id", approval_result.approval_id
@@ -254,7 +310,7 @@ async def check_step_approval(
             f"Status: {approval_result.status.value}. Continuing pipeline."
         )
 
-        # Set output attributes (no approval needed)
+        # Set output attributes (no approval needed) - always set, never blank
         if approval_span:
             output_data = {
                 "approval_required": False,
@@ -263,6 +319,43 @@ async def check_step_approval(
                 "step_number": step_number,
             }
             set_span_output(approval_span, output_data)
+
+            # Add approval workflow metrics
+            try:
+                decision_time = time.time() - approval_start_time
+                set_span_attribute(
+                    approval_span, "approval.decision_time_seconds", decision_time
+                )
+                set_span_attribute(
+                    approval_span, "approval.requires_manual_review", False
+                )
+                # Determine auto-approval reason
+                auto_approval_reason = (
+                    "high_confidence" if confidence and confidence > 0.8 else "low_risk"
+                )
+                set_span_attribute(
+                    approval_span, "approval.auto_approval_reason", auto_approval_reason
+                )
+                if confidence is not None:
+                    set_span_attribute(
+                        approval_span, "approval.confidence_score", confidence
+                    )
+            except Exception:
+                pass
+
+            # Set duration
+            set_span_duration(approval_span, approval_start_time)
+
+            # Add auto-approved event
+            add_span_event(
+                approval_span,
+                "approval.auto_approved",
+                {
+                    "status": approval_result.status.value,
+                    "confidence_score": confidence,
+                },
+            )
+
             if Status and StatusCode:
                 set_span_status(approval_span, StatusCode.OK)
 
@@ -272,10 +365,41 @@ async def check_step_approval(
         # Approval system error - CRITICAL: Do not silently skip approvals
         # If approval check fails, we must fail the pipeline to ensure approvals are never skipped
         if approval_span:
-            record_span_exception(approval_span, e)
+            # Set output attributes (error result)
+            set_span_output(
+                approval_span,
+                {
+                    "approval_required": None,
+                    "status": "error",
+                    "error": str(e),
+                    "error_type": type(e).__name__,
+                },
+            )
+
+            # Set duration
+            set_span_duration(approval_span, approval_start_time)
+
+            # Enhanced error handling
+            set_span_error(
+                approval_span,
+                e,
+                {
+                    "step_name": step_name,
+                    "step_number": step_number,
+                },
+            )
+
+            # Add error event
+            add_span_event(
+                approval_span,
+                "approval_check.failed",
+                {
+                    "error_type": type(e).__name__,
+                },
+            )
+
             if Status and StatusCode:
                 set_span_status(approval_span, StatusCode.ERROR, str(e))
-            set_span_attribute(approval_span, "error.type", type(e).__name__)
 
         logger.error(
             f"[APPROVAL ERROR] Step {step_number} ({step_name}): Approval check failed. "

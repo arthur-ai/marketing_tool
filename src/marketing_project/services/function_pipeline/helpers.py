@@ -4,12 +4,17 @@ Helper methods for prompt generation and configuration.
 
 import json
 import logging
+import time
 from typing import Any, Dict, Optional
 
 from marketing_project.plugins.context_utils import ContextTransformer
 from marketing_project.prompts.prompts import get_template, has_template
 from marketing_project.services.function_pipeline.tracing import (
+    add_span_event,
+    ensure_span_has_minimum_metadata,
+    set_prompt_template,
     set_prompt_template_variables,
+    set_span_duration,
     set_span_input,
     set_span_kind,
     set_span_output,
@@ -115,8 +120,10 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
 
         # Create prompt preparation span
         prompt_span = None
+        prompt_start_time = None
         if _tracing_available:
             try:
+                prompt_start_time = time.time()
                 tracer = trace.get_tracer(__name__)
                 prompt_span = tracer.start_as_current_span(
                     f"pipeline.prompt_preparation.{step_name}",
@@ -127,7 +134,17 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                 # Set OpenInference span kind
                 set_span_kind(prompt_span, "TOOL")
 
-                # Set input attributes (template name + context dict)
+                # Add span event
+                add_span_event(
+                    prompt_span,
+                    "prompt_preparation.started",
+                    {
+                        "step_name": step_name,
+                        "template_name": template_name,
+                    },
+                )
+
+                # Set input attributes (template name + context dict) - always set, never blank
                 input_data = {
                     "template_name": template_name,
                     "template_language": self.lang,
@@ -135,9 +152,23 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                 }
                 set_span_input(prompt_span, input_data)
 
+                # Ensure minimum metadata
+                ensure_span_has_minimum_metadata(
+                    prompt_span,
+                    f"pipeline.prompt_preparation.{step_name}",
+                    "prompt_preparation",
+                )
+
                 # Set prompt template variables
                 context_keys_used = list(context.keys()) if context else []
                 set_prompt_template_variables(prompt_span, context_keys_used)
+
+                # Ensure minimum metadata
+                ensure_span_has_minimum_metadata(
+                    prompt_span,
+                    f"pipeline.prompt_preparation.{step_name}",
+                    "prompt_preparation",
+                )
 
                 # Set other attributes
                 prompt_span.set_attribute("step_name", step_name)
@@ -156,6 +187,22 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                 try:
                     # Load template using helper function (handles caching and fallback)
                     template = get_template(self.lang, template_name)
+
+                    # Set prompt template content and version in OpenInference format
+                    if prompt_span:
+                        try:
+                            # Get template source if available
+                            template_source = getattr(template, "source", None)
+                            if template_source:
+                                from marketing_project.prompts.prompts import (
+                                    TEMPLATE_VERSION,
+                                )
+
+                                set_prompt_template(
+                                    prompt_span, template_source, TEMPLATE_VERSION
+                                )
+                        except Exception:
+                            pass
 
                     # Prepare context for template rendering using ContextTransformer
                     template_context = ContextTransformer.prepare_template_context(
@@ -187,16 +234,79 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                     # Update span with prompt info
                     if prompt_span:
                         try:
-                            # Set output attributes (rendered prompt string)
+                            # Set output attributes (rendered prompt string) - always set, never blank
                             set_span_output(
                                 prompt_span,
-                                rendered_prompt,
+                                rendered_prompt if rendered_prompt else "",
                                 output_mime_type="text/plain",
                             )
 
                             prompt_span.set_attribute(
                                 "prompt_length", len(rendered_prompt)
                             )
+
+                            # Add template and prompt metrics
+                            try:
+                                # Get template source for complexity calculation
+                                template_source = getattr(template, "source", None)
+                                if template_source:
+                                    # Calculate template complexity (rough estimate)
+                                    template_complexity = len(template_source)
+                                    prompt_span.set_attribute(
+                                        "prompt.template_complexity",
+                                        template_complexity,
+                                    )
+
+                                # Template variable count
+                                prompt_span.set_attribute(
+                                    "prompt.variable_count", len(context_keys_used)
+                                )
+
+                                # Rendered prompt length
+                                prompt_span.set_attribute(
+                                    "prompt.rendered_length", len(rendered_prompt)
+                                )
+
+                                # Estimated tokens (rough: ~4 chars per token)
+                                estimated_tokens = len(rendered_prompt) // 4
+                                prompt_span.set_attribute(
+                                    "prompt.estimated_tokens", estimated_tokens
+                                )
+
+                                # Check for conditional logic in template
+                                has_conditionals = (
+                                    "{% if" in str(template_source)
+                                    if template_source
+                                    else False
+                                )
+                                prompt_span.set_attribute(
+                                    "prompt.has_conditional_logic", has_conditionals
+                                )
+
+                                # Template version
+                                from marketing_project.prompts.prompts import (
+                                    TEMPLATE_VERSION,
+                                )
+
+                                prompt_span.set_attribute(
+                                    "prompt.template_version", TEMPLATE_VERSION
+                                )
+                            except Exception:
+                                pass
+
+                            # Set duration
+                            if prompt_start_time:
+                                set_span_duration(prompt_span, prompt_start_time)
+
+                            # Add completion event
+                            add_span_event(
+                                prompt_span,
+                                "prompt_preparation.completed",
+                                {
+                                    "prompt_length": len(rendered_prompt),
+                                },
+                            )
+
                             prompt_span.set_status(Status(StatusCode.OK))
                         except Exception:
                             pass
@@ -205,7 +315,18 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                 except Exception as e:
                     if prompt_span:
                         try:
-                            prompt_span.record_exception(e)
+                            from marketing_project.services.function_pipeline.tracing import (
+                                set_span_error,
+                            )
+
+                            set_span_error(
+                                prompt_span,
+                                e,
+                                {
+                                    "template_name": template_name,
+                                    "step_name": step_name,
+                                },
+                            )
                             prompt_span.set_status(Status(StatusCode.ERROR, str(e)))
                         except Exception:
                             pass
@@ -236,6 +357,20 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
 
                     prompt_span.set_attribute("used_fallback", True)
                     prompt_span.set_attribute("prompt_length", len(fallback_prompt))
+
+                    # Set duration
+                    if prompt_start_time:
+                        set_span_duration(prompt_span, prompt_start_time)
+
+                    # Add fallback event
+                    add_span_event(
+                        prompt_span,
+                        "prompt_preparation.fallback_used",
+                        {
+                            "template_name": template_name,
+                        },
+                    )
+
                     prompt_span.set_status(Status(StatusCode.OK))
                 except Exception:
                     pass
@@ -243,6 +378,9 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
         finally:
             if prompt_span:
                 try:
+                    # Set duration if not already set
+                    if prompt_start_time:
+                        set_span_duration(prompt_span, prompt_start_time)
                     prompt_span.__exit__(None, None, None)
                 except Exception:
                     pass

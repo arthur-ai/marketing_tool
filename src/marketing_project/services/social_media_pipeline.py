@@ -60,7 +60,11 @@ from marketing_project.plugins.social_media_post_generation.tasks import (
 )
 from marketing_project.prompts.prompts import get_template, has_template
 from marketing_project.services.function_pipeline.tracing import (
+    ensure_span_has_minimum_metadata,
+    extract_model_info,
+    set_llm_invocation_parameters,
     set_llm_messages,
+    set_llm_response_format,
     set_llm_token_counts,
     set_span_input,
     set_span_kind,
@@ -630,9 +634,9 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                         # Set OpenInference span kind
                         set_span_kind(span, "LLM")
 
-                        # Set input attributes (full context dict)
+                        # Set input attributes (full context dict) - always set, never blank
+                        set_span_input(span, context if context else {})
                         if context:
-                            set_span_input(span, context)
                             content_type = context.get("content_type")
                             if content_type:
                                 span.set_attribute("content_type", content_type)
@@ -641,8 +645,18 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                                 span.set_attribute("platform", platform)
                                 span.set_attribute("social_media_platform", platform)
 
-                        # Set LLM input messages
-                        set_llm_messages(span, messages)
+                        # Extract and set model performance metrics
+                        model_info = extract_model_info(step_model)
+                        for key, value in model_info.items():
+                            span.set_attribute(f"llm.{key}", value)
+
+                        # Set LLM input messages (always set, never blank)
+                        set_llm_messages(span, messages if messages else [])
+
+                        # Ensure minimum metadata
+                        ensure_span_has_minimum_metadata(
+                            span, f"social_media_pipeline.{step_name}", "llm_call"
+                        )
 
                         # Set span attributes
                         span.set_attribute("step_name", step_name)
@@ -654,17 +668,28 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                         if job_id:
                             span.set_attribute("job_id", job_id)
 
+                        # Set LLM response format (JSON schema)
+                        response_format = {
+                            "type": "json_schema",
+                            "json_schema": {
+                                "name": step_name,
+                                "strict": True,
+                                "schema": schema,
+                            },
+                        }
+                        set_llm_response_format(span, response_format)
+
+                        # Set LLM invocation parameters
+                        invocation_params = {
+                            "temperature": step_temperature,
+                            "model": step_model,
+                        }
+                        set_llm_invocation_parameters(span, invocation_params)
+
                         response = await self.client.chat.completions.create(
                             model=step_model,
                             messages=messages,
-                            response_format={
-                                "type": "json_schema",
-                                "json_schema": {
-                                    "name": step_name,
-                                    "strict": True,
-                                    "schema": schema,
-                                },
-                            },
+                            response_format=response_format,
                             temperature=step_temperature,
                         )
 

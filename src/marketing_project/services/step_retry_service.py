@@ -12,11 +12,16 @@ from datetime import datetime
 from typing import Any, Dict, Optional
 
 from marketing_project.services.function_pipeline.tracing import (
+    add_span_event,
     close_span,
     create_span,
+    extract_quality_metrics,
     is_tracing_available,
+    link_spans,
     record_span_exception,
     set_span_attribute,
+    set_span_duration,
+    set_span_error,
     set_span_input,
     set_span_kind,
     set_span_output,
@@ -131,6 +136,7 @@ class StepRetryService:
 
         # Create telemetry span for step retry execution
         retry_step_span = None
+        retry_start_time = time.time()
         if is_tracing_available():
             retry_step_span = create_span(
                 "step_retry.execute",
@@ -139,18 +145,34 @@ class StepRetryService:
                     "job_id": job_id or "unknown",
                     "has_user_guidance": bool(user_guidance),
                 },
+                span_type="step_retry",
             )
             if retry_step_span:
                 # Set OpenInference span kind
                 set_span_kind(retry_step_span, "AGENT")
 
-                # Set input attributes (input_data + context)
+                # Set input attributes (input_data + context) - always set, never blank
                 input_data_for_span = {
-                    "input_data": input_data,
+                    "input_data": input_data if input_data else {},
                     "context": context or {},
-                    "user_guidance": user_guidance,
+                    "user_guidance": user_guidance or "",
                 }
                 set_span_input(retry_step_span, input_data_for_span)
+
+                # Ensure minimum metadata
+                ensure_span_has_minimum_metadata(
+                    retry_step_span, "step_retry.execute", "step_retry"
+                )
+
+                # Add started event
+                add_span_event(
+                    retry_step_span,
+                    "step_retry.started",
+                    {
+                        "step_name": step_name,
+                        "has_user_guidance": bool(user_guidance),
+                    },
+                )
 
                 if context:
                     content_type = context.get("content_type")
@@ -215,6 +237,23 @@ class StepRetryService:
                 # Set output attributes
                 set_span_output(retry_step_span, retry_result)
 
+                # Extract quality metrics
+                if result:
+                    extract_quality_metrics(retry_step_span, result)
+
+                # Set duration
+                set_span_duration(retry_step_span, retry_start_time)
+
+                # Add completion event
+                add_span_event(
+                    retry_step_span,
+                    "step_retry.completed",
+                    {
+                        "status": "success",
+                        "execution_time": execution_time,
+                    },
+                )
+
                 set_span_status(
                     retry_step_span, StatusCode.OK, "Step retry completed successfully"
                 )
@@ -245,9 +284,29 @@ class StepRetryService:
                 # Set output attributes (error result)
                 set_span_output(retry_step_span, error_result)
 
-                record_span_exception(retry_step_span, e)
+                # Set duration
+                set_span_duration(retry_step_span, retry_start_time)
+
+                # Enhanced error handling
+                set_span_error(
+                    retry_step_span,
+                    e,
+                    {
+                        "step_name": step_name,
+                        "execution_time": execution_time,
+                    },
+                )
+
+                # Add failure event
+                add_span_event(
+                    retry_step_span,
+                    "step_retry.failed",
+                    {
+                        "error_type": type(e).__name__,
+                    },
+                )
+
                 set_span_status(retry_step_span, StatusCode.ERROR, error_msg)
-                set_span_attribute(retry_step_span, "error.type", type(e).__name__)
                 set_span_attribute(retry_step_span, "execution_time", execution_time)
                 set_span_attribute(retry_step_span, "status", "error")
 

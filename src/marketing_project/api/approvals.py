@@ -5,6 +5,7 @@ Endpoints for managing human-in-the-loop approvals of non-deterministic agent ou
 """
 
 import logging
+import time
 from datetime import datetime
 from typing import List, Optional
 
@@ -836,6 +837,7 @@ async def decide_approval(approval_id: str, decision: ApprovalDecisionRequest):
         if decision.decision == "rerun":
             # Create telemetry span for rerun decision
             rerun_span = None
+            rerun_start_time = time.time()
             if is_tracing_available():
                 rerun_span = create_span(
                     "approval.rerun_decision",
@@ -846,19 +848,55 @@ async def decide_approval(approval_id: str, decision: ApprovalDecisionRequest):
                         "retry_attempt": approval.retry_count + 1,
                         "has_user_guidance": bool(decision.comment),
                     },
+                    span_type="rerun",
                 )
                 if rerun_span:
                     # Set OpenInference span kind
                     set_span_kind(rerun_span, "AGENT")
 
-                    # Set input attributes
+                    # Set input attributes - always set, never blank
                     input_data_for_span = {
                         "approval_id": approval_id,
                         "step_name": approval.pipeline_step,
-                        "input_data": approval.input_data,
-                        "user_guidance": decision.comment,
+                        "input_data": (
+                            approval.input_data if approval.input_data else {}
+                        ),
+                        "user_guidance": decision.comment or "",
                     }
                     set_span_input(rerun_span, input_data_for_span)
+
+                    # Ensure minimum metadata
+                    ensure_span_has_minimum_metadata(
+                        rerun_span, "approval.rerun_decision", "rerun"
+                    )
+
+                    # Add started event
+                    add_span_event(
+                        rerun_span,
+                        "rerun.started",
+                        {
+                            "approval_id": approval_id,
+                            "retry_attempt": approval.retry_count + 1,
+                        },
+                    )
+
+                    # Try to link to approval span if available
+                    try:
+                        from opentelemetry import trace
+
+                        current_span = trace.get_current_span()
+                        if current_span:
+                            span_context = current_span.get_span_context()
+                            if span_context and span_context.is_valid:
+                                link_spans(
+                                    rerun_span,
+                                    span_context,
+                                    {
+                                        "relationship": "rerun_from_approval",
+                                    },
+                                )
+                    except Exception:
+                        pass
 
                     if approval.input_data:
                         content_type = approval.input_data.get("content_type")
@@ -938,6 +976,19 @@ async def decide_approval(approval_id: str, decision: ApprovalDecisionRequest):
                     }
                     set_span_output(rerun_span, output_data)
 
+                    # Set duration
+                    set_span_duration(rerun_span, rerun_start_time)
+
+                    # Add success event
+                    add_span_event(
+                        rerun_span,
+                        "rerun.completed",
+                        {
+                            "retry_job_id": retry_job_id,
+                            "retry_attempt": approval.retry_count,
+                        },
+                    )
+
                     set_span_status(
                         rerun_span, StatusCode.OK, "Rerun initiated successfully"
                     )
@@ -959,9 +1010,29 @@ async def decide_approval(approval_id: str, decision: ApprovalDecisionRequest):
                     }
                     set_span_output(rerun_span, error_output)
 
-                    record_span_exception(rerun_span, e)
+                    # Set duration
+                    set_span_duration(rerun_span, rerun_start_time)
+
+                    # Enhanced error handling
+                    set_span_error(
+                        rerun_span,
+                        e,
+                        {
+                            "approval_id": approval_id,
+                            "step_name": approval.pipeline_step,
+                        },
+                    )
+
+                    # Add failure event
+                    add_span_event(
+                        rerun_span,
+                        "rerun.failed",
+                        {
+                            "error_type": type(e).__name__,
+                        },
+                    )
+
                     set_span_status(rerun_span, StatusCode.ERROR, str(e))
-                    set_span_attribute(rerun_span, "error.type", type(e).__name__)
                 raise
             finally:
                 close_span(rerun_span)

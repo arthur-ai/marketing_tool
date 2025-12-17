@@ -1138,7 +1138,7 @@ class PipelineStepConfig(BaseModel):
     step_name: str = Field(description="Name of the pipeline step")
     model: Optional[str] = Field(
         None,
-        description="OpenAI model to use for this step (e.g., 'gpt-4o-mini', 'gpt-4o')",
+        description="OpenAI model to use for this step (e.g., 'gpt-4o-mini', 'gpt-4o', 'gpt-5.1', 'gpt-5.2')",
     )
     temperature: Optional[float] = Field(
         None, ge=0.0, le=2.0, description="Sampling temperature for this step"
