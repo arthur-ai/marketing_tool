@@ -610,29 +610,45 @@ async def resume_job(job_id: str):
         existing_chain_order = existing_chain.get("chain_order", [root_job_id])
         existing_all_job_ids = existing_chain.get("all_job_ids", [root_job_id])
 
+        # Get session_id from original job to propagate to subjob
+        session_id = None
+        if original_job.metadata and "session_id" in original_job.metadata:
+            session_id = original_job.metadata["session_id"]
+        else:
+            # If not in original job, try to get from root job
+            root_job = await job_manager.get_job(root_job_id)
+            if root_job and root_job.metadata and "session_id" in root_job.metadata:
+                session_id = root_job.metadata["session_id"]
+
         # Create new job for resume
         resume_job_id = str(uuid.uuid4())
         new_chain_order = existing_chain_order + [resume_job_id]
         new_all_job_ids = existing_all_job_ids + [resume_job_id]
 
+        resume_metadata = {
+            "original_job_id": root_job_id,  # Use root job, not direct parent
+            "resumed_from_step": context_data.get("last_step_number"),
+            "resumed_from_step_name": context_data.get("last_step"),
+            "original_content_type": original_job.type,
+            "job_chain": {
+                "root_job_id": root_job_id,
+                "chain_length": len(new_chain_order),
+                "chain_order": new_chain_order,
+                "current_position": len(new_chain_order),
+                "all_job_ids": new_all_job_ids,
+                "chain_status": "in_progress",
+            },
+        }
+
+        # Propagate session_id to subjob
+        if session_id:
+            resume_metadata["session_id"] = session_id
+
         resume_job = await job_manager.create_job(
             job_id=resume_job_id,
             job_type="resume_pipeline",
             content_id=original_job.content_id,
-            metadata={
-                "original_job_id": root_job_id,  # Use root job, not direct parent
-                "resumed_from_step": context_data.get("last_step_number"),
-                "resumed_from_step_name": context_data.get("last_step"),
-                "original_content_type": original_job.type,
-                "job_chain": {
-                    "root_job_id": root_job_id,
-                    "chain_length": len(new_chain_order),
-                    "chain_order": new_chain_order,
-                    "current_position": len(new_chain_order),
-                    "all_job_ids": new_all_job_ids,
-                    "chain_status": "in_progress",
-                },
-            },
+            metadata=resume_metadata,
         )
 
         # Update chain metadata for all jobs in chain

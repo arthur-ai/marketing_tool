@@ -27,6 +27,29 @@ _content_manager: Optional[ContentSourceManager] = None
 config_loader = ContentSourceConfigLoader()
 
 
+def get_source_display_name(source_name: str) -> str:
+    """
+    Get the display name for a content source.
+
+    Maps internal source names to user-friendly display names.
+
+    Args:
+        source_name: Internal source name (e.g., "s3_content")
+
+    Returns:
+        Display name for the frontend (e.g., "S3 Database")
+    """
+    display_name_mapping = {
+        "s3_content": "S3",
+        "content_api": "API",
+        "content_database": "Database",
+        "web_content": "Web Scraping",
+        "local_content": "Local Files",
+        "rss_content": "RSS",
+    }
+    return display_name_mapping.get(source_name, source_name)
+
+
 def get_content_manager() -> ContentSourceManager:
     """Get the initialized content manager instance."""
     if _content_manager is None:
@@ -134,6 +157,7 @@ async def list_content_sources():
                 is_healthy = await source.health_check()
                 source_info = {
                     "name": source.config.name,
+                    "display_name": get_source_display_name(source.config.name),
                     "type": source.config.source_type.value,
                     "status": "healthy" if is_healthy else "unhealthy",
                     "healthy": is_healthy,
@@ -153,6 +177,7 @@ async def list_content_sources():
                 )
                 source_info = {
                     "name": source.config.name,
+                    "display_name": get_source_display_name(source.config.name),
                     "type": source.config.source_type.value,
                     "status": "error",
                     "healthy": False,
@@ -210,6 +235,7 @@ async def get_source_status(source_name: str):
         # Get additional source information
         source_info = {
             "name": source.config.name,
+            "display_name": get_source_display_name(source.config.name),
             "type": source.config.source_type.value,
             "status": "healthy" if is_healthy else "unhealthy",
             "last_checked": None,  # Could be implemented with timestamps

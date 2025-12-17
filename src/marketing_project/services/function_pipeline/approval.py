@@ -235,8 +235,6 @@ async def check_step_approval(
             )
 
             # Track step info
-            import time
-
             from marketing_project.models.pipeline_steps import PipelineStepInfo
 
             execution_time = time.time() - start_time

@@ -65,6 +65,7 @@ from marketing_project.services.function_pipeline.tracing import (
     set_llm_invocation_parameters,
     set_llm_messages,
     set_llm_response_format,
+    set_llm_system_and_provider,
     set_llm_token_counts,
     set_span_input,
     set_span_kind,
@@ -663,7 +664,9 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                         span.set_attribute("step_number", step_number)
                         span.set_attribute("model", step_model)
                         span.set_attribute("llm.model_name", step_model)
-                        span.set_attribute("llm.provider", "openai.responses")
+                        set_llm_system_and_provider(
+                            span, system="openai", provider="openai"
+                        )
                         span.set_attribute("temperature", step_temperature)
                         if job_id:
                             span.set_attribute("job_id", job_id)

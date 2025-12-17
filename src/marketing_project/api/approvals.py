@@ -772,33 +772,53 @@ async def decide_approval(approval_id: str, decision: ApprovalDecisionRequest):
                     )
 
                     # Create new job for resume
+                    # Get session_id from job to propagate to subjob
+                    session_id = None
+                    if job.metadata and "session_id" in job.metadata:
+                        session_id = job.metadata["session_id"]
+                    else:
+                        # If not in job, try to get from root job
+                        root_job = await job_manager.get_job(root_job_id)
+                        if (
+                            root_job
+                            and root_job.metadata
+                            and "session_id" in root_job.metadata
+                        ):
+                            session_id = root_job.metadata["session_id"]
+
                     resume_job_id = str(uuid.uuid4())
                     new_chain_order = existing_chain_order + [resume_job_id]
                     new_all_job_ids = existing_all_job_ids + [resume_job_id]
+
+                    resume_metadata = {
+                        "original_job_id": root_job_id,  # Use root job, not direct parent
+                        "resumed_from_step": context_data.get("last_step_number"),
+                        "resumed_from_step_name": context_data.get("last_step"),
+                        "original_content_type": job.type,
+                        "created_by_approval_id": approval.id,
+                        "created_by_approval_step": approval.step_name,
+                        "created_by_user": decision.reviewed_by,
+                        "approval_decision": decision.decision,
+                        "approval_comment": decision.comment,
+                        "job_chain": {
+                            "root_job_id": root_job_id,
+                            "chain_length": len(new_chain_order),
+                            "chain_order": new_chain_order,
+                            "current_position": len(new_chain_order),
+                            "all_job_ids": new_all_job_ids,
+                            "chain_status": "in_progress",
+                        },
+                    }
+
+                    # Propagate session_id to subjob
+                    if session_id:
+                        resume_metadata["session_id"] = session_id
 
                     resume_job = await job_manager.create_job(
                         job_id=resume_job_id,
                         job_type="resume_pipeline",
                         content_id=job.content_id,
-                        metadata={
-                            "original_job_id": root_job_id,  # Use root job, not direct parent
-                            "resumed_from_step": context_data.get("last_step_number"),
-                            "resumed_from_step_name": context_data.get("last_step"),
-                            "original_content_type": job.type,
-                            "created_by_approval_id": approval.id,
-                            "created_by_approval_step": approval.step_name,
-                            "created_by_user": decision.reviewed_by,
-                            "approval_decision": decision.decision,
-                            "approval_comment": decision.comment,
-                            "job_chain": {
-                                "root_job_id": root_job_id,
-                                "chain_length": len(new_chain_order),
-                                "chain_order": new_chain_order,
-                                "current_position": len(new_chain_order),
-                                "all_job_ids": new_all_job_ids,
-                                "chain_status": "in_progress",
-                            },
-                        },
+                        metadata=resume_metadata,
                     )
 
                     # Update chain metadata for all jobs in chain
@@ -931,19 +951,47 @@ async def decide_approval(approval_id: str, decision: ApprovalDecisionRequest):
                         len(decision.comment) if decision.comment else 0,
                     )
 
+                # Get session_id from approval job to propagate to subjob
+                approval_job = await job_manager.get_job(approval.job_id)
+                session_id = None
+                if approval_job:
+                    if approval_job.metadata and "session_id" in approval_job.metadata:
+                        session_id = approval_job.metadata["session_id"]
+                    else:
+                        # If not in job, try to get from root job via original_job_id
+                        original_job_id = (
+                            approval_job.metadata.get("original_job_id")
+                            if approval_job.metadata
+                            else None
+                        )
+                        if original_job_id:
+                            root_job = await job_manager.get_job(original_job_id)
+                            if (
+                                root_job
+                                and root_job.metadata
+                                and "session_id" in root_job.metadata
+                            ):
+                                session_id = root_job.metadata["session_id"]
+
                 # Create retry job
                 retry_job_id = str(uuid.uuid4())
+                retry_metadata = {
+                    "original_job_id": approval.job_id,
+                    "approval_id": approval_id,
+                    "step_name": pipeline_step,
+                    "retry_attempt": approval.retry_count + 1,
+                    "rerun_from_approval": True,  # Flag to indicate this is a rerun, not a reject retry
+                }
+
+                # Propagate session_id to subjob
+                if session_id:
+                    retry_metadata["session_id"] = session_id
+
                 retry_job = await job_manager.create_job(
                     job_id=retry_job_id,
                     job_type=f"retry_step_{pipeline_step}",
                     content_id=approval.job_id,
-                    metadata={
-                        "original_job_id": approval.job_id,
-                        "approval_id": approval_id,
-                        "step_name": pipeline_step,
-                        "retry_attempt": approval.retry_count + 1,
-                        "rerun_from_approval": True,  # Flag to indicate this is a rerun, not a reject retry
-                    },
+                    metadata=retry_metadata,
                 )
 
                 if rerun_span:
@@ -1050,18 +1098,46 @@ async def decide_approval(approval_id: str, decision: ApprovalDecisionRequest):
                 context_data = await manager.load_pipeline_context(approval.job_id)
                 context = context_data.get("context", {}) if context_data else {}
 
+                # Get session_id from approval job to propagate to subjob
+                approval_job = await job_manager.get_job(approval.job_id)
+                session_id = None
+                if approval_job:
+                    if approval_job.metadata and "session_id" in approval_job.metadata:
+                        session_id = approval_job.metadata["session_id"]
+                    else:
+                        # If not in job, try to get from root job via original_job_id
+                        original_job_id = (
+                            approval_job.metadata.get("original_job_id")
+                            if approval_job.metadata
+                            else None
+                        )
+                        if original_job_id:
+                            root_job = await job_manager.get_job(original_job_id)
+                            if (
+                                root_job
+                                and root_job.metadata
+                                and "session_id" in root_job.metadata
+                            ):
+                                session_id = root_job.metadata["session_id"]
+
                 # Create retry job
                 retry_job_id = str(uuid.uuid4())
+                retry_metadata = {
+                    "original_job_id": approval.job_id,
+                    "approval_id": approval_id,
+                    "step_name": pipeline_step,
+                    "retry_attempt": approval.retry_count + 1,
+                }
+
+                # Propagate session_id to subjob
+                if session_id:
+                    retry_metadata["session_id"] = session_id
+
                 retry_job = await job_manager.create_job(
                     job_id=retry_job_id,
                     job_type=f"retry_step_{pipeline_step}",
                     content_id=approval.job_id,
-                    metadata={
-                        "original_job_id": approval.job_id,
-                        "approval_id": approval_id,
-                        "step_name": pipeline_step,
-                        "retry_attempt": approval.retry_count + 1,
-                    },
+                    metadata=retry_metadata,
                 )
 
                 # Submit to ARQ worker with user guidance
@@ -1415,18 +1491,44 @@ async def retry_rejected_step(
         from marketing_project.services.job_manager import get_job_manager
 
         job_manager = get_job_manager()
+
+        # Get session_id from job to propagate to subjob
+        job = await job_manager.get_job(job_id)
+        session_id = None
+        if job:
+            if job.metadata and "session_id" in job.metadata:
+                session_id = job.metadata["session_id"]
+            else:
+                # If not in job, try to get from root job via original_job_id
+                original_job_id = (
+                    job.metadata.get("original_job_id") if job.metadata else None
+                )
+                if original_job_id:
+                    root_job = await job_manager.get_job(original_job_id)
+                    if (
+                        root_job
+                        and root_job.metadata
+                        and "session_id" in root_job.metadata
+                    ):
+                        session_id = root_job.metadata["session_id"]
+
         retry_job_id = str(uuid.uuid4())
+        retry_metadata = {
+            "original_job_id": job_id,
+            "approval_id": approval_id,
+            "step_name": pipeline_step,
+            "retry_attempt": approval.retry_count + 1,
+        }
+
+        # Propagate session_id to subjob
+        if session_id:
+            retry_metadata["session_id"] = session_id
 
         retry_job = await job_manager.create_job(
             job_id=retry_job_id,
             job_type=f"retry_step_{pipeline_step}",
             content_id=job_id,  # Link to original job
-            metadata={
-                "original_job_id": job_id,
-                "approval_id": approval_id,
-                "step_name": pipeline_step,
-                "retry_attempt": approval.retry_count + 1,
-            },
+            metadata=retry_metadata,
         )
 
         # Submit to ARQ worker with user guidance

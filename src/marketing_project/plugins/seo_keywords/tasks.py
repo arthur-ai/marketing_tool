@@ -6,6 +6,7 @@ This plugin handles SEO keyword extraction and analysis.
 
 import logging
 import re
+import time
 from typing import Any, Dict, List, Optional, Tuple
 
 from marketing_project.models.pipeline_steps import EngineConfig, SEOKeywordsResult
@@ -741,8 +742,6 @@ class SEOKeywordsPlugin(PipelineStepPlugin):
         # This ensures SEO keywords step respects approval settings
         if job_id and pipeline:
             try:
-                import time
-
                 from marketing_project.services.function_pipeline.approval import (
                     check_step_approval,
                 )
@@ -783,11 +782,23 @@ class SEOKeywordsPlugin(PipelineStepPlugin):
                         f"Returning sentinel to stop pipeline."
                     )
                     return ApprovalRequiredSentinel(approval_result)
-            except Exception as e:
-                logger.warning(
-                    f"Failed to check approval for SEO keywords step: {e}. "
-                    f"Continuing without approval check."
+            except Exception as approval_error:
+                from marketing_project.processors.approval_helper import (
+                    ApprovalCheckFailedException,
                 )
+
+                if isinstance(approval_error, ApprovalCheckFailedException):
+                    # Re-raise approval check failures - these are critical
+                    raise
+                else:
+                    # Catch any other errors in approval check (e.g., bugs, import errors)
+                    # Log the error but allow pipeline to continue to prevent blocking on approval bugs
+                    logger.error(
+                        f"[APPROVAL] Unexpected error in approval check for SEO keywords step: {approval_error}. "
+                        f"Continuing pipeline execution. Error type: {type(approval_error).__name__}",
+                        exc_info=True,
+                    )
+                    # Continue pipeline execution - approval check failed but we don't want to block
 
         return result
 

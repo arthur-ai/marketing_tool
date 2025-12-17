@@ -739,29 +739,44 @@ class FunctionPipeline:
             # ========================================
             if job_id:
                 from marketing_project.processors.approval_helper import (
+                    ApprovalCheckFailedException,
                     ApprovalRequiredSentinel,
                     ApprovalResult,
                 )
 
-                approval_result = await check_step_approval(
-                    parsed_result=parsed_result,
-                    step_name=step_name,
-                    step_number=step_number,
-                    job_id=job_id,
-                    prompt=prompt,
-                    system_instruction=system_instruction,
-                    context=context,
-                    start_time=start_time,
-                    step_info_list=self.step_info,
-                )
-
-                # If approval is required, return sentinel to signal pipeline should stop
-                if approval_result.requires_approval:
-                    logger.info(
-                        f"Pipeline stopping at step {step_number} ({step_name}) "
-                        f"due to approval requirement (approval_id: {approval_result.approval_id})"
+                try:
+                    approval_result = await check_step_approval(
+                        parsed_result=parsed_result,
+                        step_name=step_name,
+                        step_number=step_number,
+                        job_id=job_id,
+                        prompt=prompt,
+                        system_instruction=system_instruction,
+                        context=context,
+                        start_time=start_time,
+                        step_info_list=self.step_info,
                     )
-                    return ApprovalRequiredSentinel(approval_result)
+
+                    # If approval is required, return sentinel to signal pipeline should stop
+                    if approval_result.requires_approval:
+                        logger.info(
+                            f"Pipeline stopping at step {step_number} ({step_name}) "
+                            f"due to approval requirement (approval_id: {approval_result.approval_id})"
+                        )
+                        return ApprovalRequiredSentinel(approval_result)
+                except ApprovalCheckFailedException:
+                    # Re-raise approval check failures - these are critical and should fail the pipeline
+                    raise
+                except Exception as approval_error:
+                    # Catch any other errors in approval check (e.g., bugs, import errors)
+                    # Log the error but allow pipeline to continue to prevent blocking on approval bugs
+                    logger.error(
+                        f"[APPROVAL] Unexpected error in approval check for step {step_number} ({step_name}): {approval_error}. "
+                        f"Continuing pipeline execution. Error type: {type(approval_error).__name__}",
+                        exc_info=True,
+                    )
+                    # Continue pipeline execution - approval check failed but we don't want to block
+                    # This prevents bugs in approval system from blocking the entire pipeline
 
             # Track step info
             step_info = PipelineStepInfo(
@@ -1361,6 +1376,9 @@ class FunctionPipeline:
             if job_root_span and job_id:
                 try:
                     # Refresh job to get updated metadata
+                    from marketing_project.services.function_pipeline.tracing import (
+                        get_session_id_for_job,
+                    )
                     from marketing_project.services.job_manager import get_job_manager
 
                     job_manager = get_job_manager()
@@ -1369,6 +1387,15 @@ class FunctionPipeline:
                         add_job_metadata_to_span(
                             job_root_span, updated_job, job_id, "pipeline"
                         )
+
+                        # Ensure session.id is set (check parent chain if needed)
+                        if not updated_job.metadata.get("session_id"):
+                            session_id = await get_session_id_for_job(job_id)
+                            if session_id:
+                                set_span_attribute(
+                                    job_root_span, "session.id", session_id
+                                )
+
                     set_job_output(job_root_span, result)
                     set_span_status(
                         job_root_span, StatusCode.OK if StatusCode else None
@@ -2019,7 +2046,6 @@ class FunctionPipeline:
             self.pipeline_config = pipeline_config
             self.model = pipeline_config.default_model
             self.temperature = pipeline_config.default_temperature
-        import time
 
         step_start = time.time()
         logger.info("=" * 80)

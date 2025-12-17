@@ -80,7 +80,7 @@ Root span for the entire job lifecycle. Contains job-level metadata and aggregat
 
 #### User and Session
 - `user.id` - User ID who created the job
-- `session.id` - Session ID (if available)
+- `session.id` - Session ID (propagated from parent job if this is a subjob, ensuring all jobs in a chain share the same session)
 
 #### Content Information
 - `metadata.content_type` - Type of input content (blog, email, etc.)
@@ -93,7 +93,8 @@ Root span for the entire job lifecycle. Contains job-level metadata and aggregat
 - `metadata.step_number` - Current step number
 
 #### LLM Aggregated Metrics
-- `llm.provider` - Always "openai.responses"
+- `llm.system` - AI product/vendor (always "openai" per OpenInference spec)
+- `llm.provider` - Hosting provider (always "openai" per OpenInference spec)
 - `llm.model_name` - Primary model used
 - `llm.models_used` - JSON array of all models used (if multiple)
 - `llm.token_count.total` - Total tokens used across all steps
@@ -330,7 +331,8 @@ Tracks the complete LLM call lifecycle, including all retry attempts and final o
 - `step_number` - Step number
 - `model` - Model name (e.g., "gpt-4-turbo-preview")
 - `llm.model_name` - Model name
-- `llm.provider` - Always "openai.responses"
+- `llm.system` - AI product/vendor (always "openai" per OpenInference spec)
+- `llm.provider` - Hosting provider (always "openai" per OpenInference spec)
 - `llm.model.family` - Model family (e.g., "gpt-4", "gpt-3.5")
 - `llm.model.version` - Model version (e.g., "turbo", "preview")
 
@@ -393,7 +395,8 @@ Tracks a single LLM API call with full OpenInference LLM attributes.
 - `step_number` - Step number
 - `model` - Model name
 - `llm.model_name` - Model name
-- `llm.provider` - Always "openai.responses"
+- `llm.system` - AI product/vendor (always "openai" per OpenInference spec)
+- `llm.provider` - Hosting provider (always "openai" per OpenInference spec)
 - `llm.model.family` - Model family (extracted from model name)
 - `llm.model.version` - Model version (extracted from model name)
 - `llm.structured_output` - Always `true`
@@ -827,7 +830,8 @@ Tracks LLM calls for social media content generation, similar to function_pipeli
 - `step_number` - Step number
 - `model` - Model name
 - `llm.model_name` - Model name
-- `llm.provider` - Always "openai.responses"
+- `llm.system` - AI product/vendor (always "openai" per OpenInference spec)
+- `llm.provider` - Hosting provider (always "openai" per OpenInference spec)
 - `llm.model.family` - Model family (extracted from model name)
 - `llm.model.version` - Model version (extracted from model name)
 - `llm.structured_output` - Always `true`
@@ -983,6 +987,7 @@ job.abc123
 - Every operation is traced from job creation to completion
 - All spans are linked in a parent-child hierarchy
 - Job ID is propagated to all spans for correlation
+- **Session ID is propagated through entire job chains** - all jobs (root and subjobs) in a chain share the same `session.id`, enabling grouping of all related traces
 
 ### 2. Context Propagation
 - Pipeline context flows through all step execution spans

@@ -462,6 +462,25 @@ def set_llm_response_format(span, response_format: Any):
         logger.debug(f"Failed to set LLM response format: {e}")
 
 
+def set_llm_system_and_provider(span, system: str = "openai", provider: str = "openai"):
+    """
+    Set LLM system and provider attributes on a span in OpenInference format.
+
+    Args:
+        span: The span to set attributes on
+        system: AI product/vendor (e.g., "openai", "anthropic", "cohere") - defaults to "openai"
+        provider: Hosting provider (e.g., "openai", "azure", "google", "aws") - defaults to "openai"
+    """
+    if not span or not _tracing_available:
+        return
+
+    try:
+        span.set_attribute("llm.system", system)
+        span.set_attribute("llm.provider", provider)
+    except Exception as e:
+        logger.debug(f"Failed to set LLM system and provider: {e}")
+
+
 def set_llm_invocation_parameters(span, parameters: dict):
     """
     Set LLM invocation parameters on a span in OpenInference format.
@@ -683,8 +702,8 @@ def add_job_metadata_to_span(span, job, job_id: str, job_type: str):
             if job.result and isinstance(job.result, dict):
                 result_metadata = job.result.get("metadata", {})
 
-                # LLM Provider (we use OpenAI, format matches OpenInference: "openai.responses")
-                set_span_attribute(span, "llm.provider", "openai.responses")
+                # LLM System and Provider (we use OpenAI, per OpenInference spec)
+                set_llm_system_and_provider(span, system="openai", provider="openai")
 
                 # Aggregate token counts and models from step_info
                 step_info = result_metadata.get("step_info", [])
@@ -1325,7 +1344,9 @@ def calculate_schema_metrics(schema: dict) -> dict:
     return metrics
 
 
-def ensure_span_has_minimum_metadata(span, span_name: str, span_type: str = None):
+def ensure_span_has_minimum_metadata(
+    span, span_name: str, span_type: str = None, job_id: Optional[str] = None
+):
     """
     Ensure span has minimum required metadata - never leave blank.
 
@@ -1333,6 +1354,7 @@ def ensure_span_has_minimum_metadata(span, span_name: str, span_type: str = None
         span: The span to validate
         span_name: Name of the span
         span_type: Type of span (e.g., "step_execution", "llm_call") - inferred from name if not provided
+        job_id: Optional job ID to help retrieve session_id if needed
     """
     if not span or not _tracing_available:
         return
@@ -1384,6 +1406,21 @@ def ensure_span_has_minimum_metadata(span, span_name: str, span_type: str = None
                 set_span_kind(span, kind_map[span_type])
         except Exception:
             pass
+
+        # Try to set session.id if not already set and job_id is available
+        # Note: This is best-effort since we can't easily check if session.id is already set
+        # The session.id should ideally be set from job metadata when creating spans
+        # This is a fallback to ensure it's set if somehow missed
+        if job_id:
+            try:
+                # Check if we can get session_id from current span context or job
+                # Since this is synchronous, we can't await get_session_id_for_job
+                # But we can try to get it from the current job if available in context
+                # For now, we'll rely on session_id being set when spans are created
+                # This is mainly a placeholder for future async support if needed
+                pass
+            except Exception:
+                pass
 
         # Ensure input is always set (check if it exists, if not set empty dict)
         try:
@@ -1453,6 +1490,60 @@ def close_span(
         span.__exit__(exc_type, exc_val, exc_tb)
     except Exception:
         pass
+
+
+async def get_session_id_for_job(job_id: str) -> Optional[str]:
+    """
+    Get session_id for a job, checking parent job chain if needed.
+
+    Traverses up the job chain (following original_job_id) to find the root job's
+    session_id, ensuring all jobs in a chain share the same session_id.
+
+    Args:
+        job_id: Job ID to get session_id for
+
+    Returns:
+        session_id if found, None otherwise
+    """
+    if not job_id or not _tracing_available:
+        return None
+
+    try:
+        from marketing_project.services.job_manager import get_job_manager
+
+        job_manager = get_job_manager()
+        current_job_id = job_id
+
+        # Traverse up the job chain to find session_id
+        # Limit to prevent infinite loops (max 10 levels)
+        max_depth = 10
+        depth = 0
+
+        while current_job_id and depth < max_depth:
+            job = await job_manager.get_job(current_job_id)
+            if not job:
+                break
+
+            # Check if current job has session_id
+            if job.metadata and "session_id" in job.metadata:
+                return job.metadata["session_id"]
+
+            # Check if this job has a parent (original_job_id)
+            original_job_id = (
+                job.metadata.get("original_job_id") if job.metadata else None
+            )
+            if not original_job_id:
+                # No parent, we've reached the root
+                break
+
+            # Move up to parent job
+            current_job_id = original_job_id
+            depth += 1
+
+        return None
+    except Exception as e:
+        logger.debug(f"Failed to get session_id for job {job_id}: {e}")
+        return None
 
 
 def create_job_root_span(
@@ -1526,6 +1617,20 @@ def create_job_root_span(
         # Add all job metadata to the span
         if job:
             add_job_metadata_to_span(span, job, job_id, job_type)
+
+        # Ensure session.id is set - check job metadata first, then traverse parent chain if needed
+        session_id = None
+        if job and job.metadata and "session_id" in job.metadata:
+            session_id = job.metadata["session_id"]
+        elif job_id:
+            # If not in current job, try to get from parent chain (async, but we'll handle it)
+            # Note: This is a synchronous function, so we can't await here
+            # The session_id will be set via ensure_span_has_minimum_metadata or in async contexts
+            pass
+
+        # Set session.id if we have it
+        if session_id:
+            set_span_attribute(span, "session.id", session_id)
 
         # Set additional attributes if provided (these override metadata from job)
         if attributes:

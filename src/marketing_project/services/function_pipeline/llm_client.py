@@ -25,6 +25,7 @@ from marketing_project.services.function_pipeline.tracing import (
     set_llm_invocation_parameters,
     set_llm_messages,
     set_llm_response_format,
+    set_llm_system_and_provider,
     set_llm_token_counts,
     set_span_attribute,
     set_span_duration,
@@ -375,7 +376,9 @@ class LLMClient:
 
             # Set additional LLM attributes
             set_span_attribute(llm_call_span, "llm.model_name", step_model)
-            set_span_attribute(llm_call_span, "llm.provider", "openai.responses")
+            set_llm_system_and_provider(
+                llm_call_span, system="openai", provider="openai"
+            )
             set_span_attribute(llm_call_span, "llm.structured_output", True)
             set_span_attribute(llm_call_span, "llm.streaming", False)
 
@@ -670,7 +673,9 @@ class LLMClient:
                     set_span_attribute(span, "step_number", step_number)
                     set_span_attribute(span, "model", step_model)
                     set_span_attribute(span, "llm.model_name", step_model)
-                    set_span_attribute(span, "llm.provider", "openai.responses")
+                    set_llm_system_and_provider(
+                        span, system="openai", provider="openai"
+                    )
                     set_span_attribute(
                         span, "llm.structured_output", True
                     )  # We use structured output
