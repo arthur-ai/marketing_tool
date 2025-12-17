@@ -135,7 +135,9 @@ class SocialMediaPipeline:
 
         try:
             base_dir = Path(__file__).parent.parent.parent
-            config_file = base_dir / "config" / "platform_config.yml"
+            config_file = (
+                base_dir / "marketing_project" / "config" / "platform_config.yml"
+            )
 
             if not config_file.exists():
                 logger.warning(
@@ -973,6 +975,15 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
         # Execute step using plugin
         result = await plugin.execute(pipeline_context, self, job_id)
 
+        # Check if result is ApprovalRequiredSentinel (approval required, don't save step result)
+        from marketing_project.processors.approval_helper import (
+            ApprovalRequiredSentinel,
+        )
+
+        if isinstance(result, ApprovalRequiredSentinel):
+            # Return early - don't save step result for approval sentinel
+            return result
+
         # Save step result if job_id is provided
         if job_id:
             try:
@@ -1201,10 +1212,38 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                     # Other exceptions - step failed
                     raise
 
-                # Store result
+                # Check if result is ApprovalRequiredSentinel (approval required, stop execution)
+                from marketing_project.processors.approval_helper import (
+                    ApprovalRequiredSentinel,
+                )
+
+                if isinstance(step_result, ApprovalRequiredSentinel):
+                    # Approval required - stop pipeline execution
+                    # Return early with approval status
+                    from marketing_project.services.job_manager import (
+                        JobStatus,
+                        get_job_manager,
+                    )
+
+                    job_manager = get_job_manager()
+                    await job_manager.update_job_status(
+                        job_id, JobStatus.WAITING_FOR_APPROVAL
+                    )
+
+                    return {
+                        "status": "waiting_for_approval",
+                        "approval_id": step_result.approval_result.approval_id,
+                        "step_name": step_result.approval_result.step_name,
+                        "step_number": step_result.approval_result.step_number,
+                        "results": results,
+                        "platform": social_media_platform,
+                    }
+
+                # Store result - use model_dump(mode='json') to ensure datetime objects are serialized
                 try:
                     results[plugin.step_name] = step_result.model_dump(mode="json")
                 except (TypeError, ValueError):
+                    # Fallback to regular model_dump if mode='json' fails
                     results[plugin.step_name] = step_result.model_dump()
 
                 # Add platform field to social_media_post_generation result
@@ -1519,6 +1558,28 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
             "content_type": content_type,
         }
         seo_result = await seo_plugin.execute(seo_context, self, job_id)
+
+        # Check if result is ApprovalRequiredSentinel
+        from marketing_project.processors.approval_helper import (
+            ApprovalRequiredSentinel,
+        )
+
+        if isinstance(seo_result, ApprovalRequiredSentinel):
+            # Approval required - stop pipeline execution
+            from marketing_project.services.job_manager import (
+                JobStatus,
+                get_job_manager,
+            )
+
+            job_manager = get_job_manager()
+            await job_manager.update_job_status(job_id, JobStatus.WAITING_FOR_APPROVAL)
+            return {
+                "status": "waiting_for_approval",
+                "approval_id": seo_result.approval_result.approval_id,
+                "step_name": seo_result.approval_result.step_name,
+                "step_number": seo_result.approval_result.step_number,
+            }
+
         seo_result_dict = (
             seo_result.model_dump(mode="json")
             if hasattr(seo_result, "model_dump")
@@ -1535,6 +1596,24 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
             "social_media_platform": platforms[0],  # Use first platform for brief
         }
         brief_result = await brief_plugin.execute(brief_context, self, job_id)
+
+        # Check if result is ApprovalRequiredSentinel
+        if isinstance(brief_result, ApprovalRequiredSentinel):
+            # Approval required - stop pipeline execution
+            from marketing_project.services.job_manager import (
+                JobStatus,
+                get_job_manager,
+            )
+
+            job_manager = get_job_manager()
+            await job_manager.update_job_status(job_id, JobStatus.WAITING_FOR_APPROVAL)
+            return {
+                "status": "waiting_for_approval",
+                "approval_id": brief_result.approval_result.approval_id,
+                "step_name": brief_result.approval_result.step_name,
+                "step_number": brief_result.approval_result.step_number,
+            }
+
         brief_result_dict = (
             brief_result.model_dump(mode="json")
             if hasattr(brief_result, "model_dump")
@@ -1563,6 +1642,27 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
             angle_hook_result = await angle_hook_plugin.execute(
                 platform_context, self, job_id
             )
+
+            # Check if result is ApprovalRequiredSentinel
+            if isinstance(angle_hook_result, ApprovalRequiredSentinel):
+                # Approval required - stop pipeline execution
+                from marketing_project.services.job_manager import (
+                    JobStatus,
+                    get_job_manager,
+                )
+
+                job_manager = get_job_manager()
+                await job_manager.update_job_status(
+                    job_id, JobStatus.WAITING_FOR_APPROVAL
+                )
+                return platform, {
+                    "status": "waiting_for_approval",
+                    "approval_id": angle_hook_result.approval_result.approval_id,
+                    "step_name": angle_hook_result.approval_result.step_name,
+                    "step_number": angle_hook_result.approval_result.step_number,
+                    "platform": platform,
+                }
+
             angle_hook_result_dict = (
                 angle_hook_result.model_dump(mode="json")
                 if hasattr(angle_hook_result, "model_dump")
@@ -1573,6 +1673,27 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
             # Execute Post Generation step
             post_plugin = SocialMediaPostGenerationPlugin()
             post_result = await post_plugin.execute(platform_context, self, job_id)
+
+            # Check if result is ApprovalRequiredSentinel
+            if isinstance(post_result, ApprovalRequiredSentinel):
+                # Approval required - stop pipeline execution
+                from marketing_project.services.job_manager import (
+                    JobStatus,
+                    get_job_manager,
+                )
+
+                job_manager = get_job_manager()
+                await job_manager.update_job_status(
+                    job_id, JobStatus.WAITING_FOR_APPROVAL
+                )
+                return platform, {
+                    "status": "waiting_for_approval",
+                    "approval_id": post_result.approval_result.approval_id,
+                    "step_name": post_result.approval_result.step_name,
+                    "step_number": post_result.approval_result.step_number,
+                    "platform": platform,
+                }
+
             post_result_dict = (
                 post_result.model_dump(mode="json")
                 if hasattr(post_result, "model_dump")

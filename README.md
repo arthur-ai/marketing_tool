@@ -62,6 +62,9 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 # Install dependencies
 pip install -r requirements.txt
 
+# Install spaCy language model (required for SEO keywords engine)
+python -m spacy download en_core_web_sm
+
 # For development (optional)
 pip install -r requirements-dev.txt
 

@@ -9,6 +9,7 @@ Provides endpoints to:
 """
 
 import logging
+from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
@@ -93,22 +94,116 @@ class JobListResponse(BaseModel):
 
 # Endpoints
 @router.get("/jobs", response_model=JobListResponse)
-async def list_jobs(limit: int = 50):
+async def list_jobs(
+    limit: int = 50,
+    date_from: Optional[str] = Query(
+        None,
+        description="Filter jobs from this date (ISO format: YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)",
+    ),
+    date_to: Optional[str] = Query(
+        None,
+        description="Filter jobs until this date (ISO format: YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)",
+    ),
+):
     """
     List all jobs with step results.
 
     Args:
         limit: Maximum number of jobs to return (default: 50)
+        date_from: Filter jobs created/started from this date onwards (ISO format)
+        date_to: Filter jobs created/started until this date (ISO format)
 
     Returns:
-        List of jobs with their summaries
+        List of jobs with their summaries (filtered by date if provided)
     """
     try:
         step_manager = get_step_result_manager()
-        jobs = await step_manager.list_all_jobs(limit=limit)
+        jobs = await step_manager.list_all_jobs(
+            limit=None
+        )  # Get all jobs first for filtering
+
+        # Apply date filtering if provided
+        if date_from or date_to:
+            filtered_jobs = []
+
+            # Parse date_from
+            date_from_dt = None
+            if date_from:
+                try:
+                    # Try parsing with time first, then date only
+                    try:
+                        date_from_dt = datetime.fromisoformat(
+                            date_from.replace("Z", "+00:00")
+                        )
+                    except ValueError:
+                        # Try date only format
+                        date_from_dt = datetime.fromisoformat(date_from)
+                        # Set to start of day
+                        date_from_dt = date_from_dt.replace(
+                            hour=0, minute=0, second=0, microsecond=0
+                        )
+                except ValueError as e:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Invalid date_from format: {date_from}. Use ISO format (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)",
+                    )
+
+            # Parse date_to
+            date_to_dt = None
+            if date_to:
+                try:
+                    # Try parsing with time first, then date only
+                    try:
+                        date_to_dt = datetime.fromisoformat(
+                            date_to.replace("Z", "+00:00")
+                        )
+                    except ValueError:
+                        # Try date only format
+                        date_to_dt = datetime.fromisoformat(date_to)
+                        # Set to end of day
+                        date_to_dt = date_to_dt.replace(
+                            hour=23, minute=59, second=59, microsecond=999999
+                        )
+                except ValueError as e:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Invalid date_to format: {date_to}. Use ISO format (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)",
+                    )
+
+            # Filter jobs by date
+            for job in jobs:
+                # Use created_at as primary, fallback to started_at
+                job_date_str = job.get("created_at") or job.get("started_at")
+                if not job_date_str:
+                    continue  # Skip jobs without dates
+
+                try:
+                    # Parse job date
+                    job_date = datetime.fromisoformat(
+                        job_date_str.replace("Z", "+00:00")
+                    )
+
+                    # Check if job date is within range
+                    if date_from_dt and job_date < date_from_dt:
+                        continue
+                    if date_to_dt and job_date > date_to_dt:
+                        continue
+
+                    filtered_jobs.append(job)
+                except (ValueError, AttributeError):
+                    # Skip jobs with invalid date formats
+                    continue
+
+            jobs = filtered_jobs
+
+        # Apply limit after filtering
+        if limit:
+            jobs = jobs[:limit]
 
         return JobListResponse(jobs=jobs, total=len(jobs))
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to list jobs: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to list jobs: {str(e)}")

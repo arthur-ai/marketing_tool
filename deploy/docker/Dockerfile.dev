@@ -28,6 +28,9 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Download spaCy language model (required for SEO keywords engine)
+RUN python -m spacy download en_core_web_sm
+
 # Create necessary directories
 # Note: src/ will be mounted as a volume, so we don't install it during build
 # Note: logs go to Docker logs (stdout/stderr), not files
