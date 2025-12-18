@@ -1968,10 +1968,22 @@ async def startup(ctx):
 
     # Initialize telemetry
     try:
+        import os as os_module
+        import socket
+
         from marketing_project.services.telemetry import setup_tracing
 
-        if setup_tracing():
-            logger.info("✓ Telemetry initialized successfully")
+        # Generate unique worker instance identifier
+        # Use worker name + hostname + process ID to ensure uniqueness across all worker instances
+        worker_name = WorkerSettings.name  # "marketing-worker"
+        hostname = socket.gethostname()
+        pid = os_module.getpid()
+        worker_instance_id = f"{worker_name}-{hostname}-{pid}"
+
+        if setup_tracing(service_instance_id=worker_instance_id):
+            logger.info(
+                f"✓ Telemetry initialized successfully (instance: {worker_instance_id})"
+            )
         else:
             logger.info(
                 "⚠ Telemetry not configured (missing ARTHUR_API_KEY or ARTHUR_TASK_ID)"

@@ -38,6 +38,7 @@ def _json_serializer(obj: Any) -> Any:
 
 from marketing_project.models.pipeline_steps import (
     AngleHookResult,
+    BlogPostPreprocessingApprovalResult,
     PipelineConfig,
     PipelineResult,
     PipelineStepConfig,
@@ -45,6 +46,9 @@ from marketing_project.models.pipeline_steps import (
     SEOKeywordsResult,
     SocialMediaMarketingBriefResult,
     SocialMediaPostResult,
+)
+from marketing_project.plugins.blog_post_preprocessing_approval.tasks import (
+    BlogPostPreprocessingApprovalPlugin,
 )
 from marketing_project.plugins.context_utils import ContextTransformer
 from marketing_project.plugins.registry import get_plugin_registry
@@ -469,16 +473,18 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
         self, schema: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
-        Recursively fix JSON schema to add additionalProperties: false to all object types.
+        Recursively fix JSON schema to add additionalProperties: false to all object types
+        and ensure required array includes all non-optional fields.
 
         OpenAI's structured outputs require that all object types in the schema
-        explicitly set additionalProperties: false for strict mode.
+        explicitly set additionalProperties: false for strict mode, and that the
+        required array includes all properties that don't have default values.
 
         Args:
             schema: JSON schema dictionary
 
         Returns:
-            Fixed schema with additionalProperties set to false for all objects
+            Fixed schema with additionalProperties set to false and required array fixed
         """
         if not isinstance(schema, dict):
             return schema
@@ -497,6 +503,29 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                 fixed_schema["properties"][prop_name] = (
                     self._fix_schema_additional_properties(prop_schema)
                 )
+
+        # Fix required array: ensure all non-optional properties are included
+        if "properties" in fixed_schema and fixed_schema.get("type") == "object":
+            properties = fixed_schema["properties"]
+            required = fixed_schema.get("required", [])
+
+            # Find all properties that should be required (not optional)
+            for prop_name, prop_schema in properties.items():
+                # Check if property is optional (has default, is in anyOf with null, etc.)
+                is_optional = self._is_property_optional(prop_schema)
+
+                # If not optional and not in required, add it
+                if not is_optional and prop_name not in required:
+                    required.append(prop_name)
+
+            # Update required array
+            if required:
+                fixed_schema["required"] = sorted(
+                    list(set(required))
+                )  # Remove duplicates and sort
+            elif "required" in fixed_schema:
+                # If we had a required array but it's now empty, keep it as empty list
+                fixed_schema["required"] = []
 
         # Fix anyOf schemas (for Optional types)
         if "anyOf" in fixed_schema:
@@ -539,6 +568,38 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                 )
 
         return fixed_schema
+
+    def _is_property_optional(self, prop_schema: Dict[str, Any]) -> bool:
+        """
+        Check if a property schema represents an optional field.
+
+        Args:
+            prop_schema: Property schema dictionary
+
+        Returns:
+            True if the property is optional, False otherwise
+        """
+        # If it has a default value, it's optional
+        if "default" in prop_schema:
+            return True
+
+        # If it's wrapped in anyOf with null type, it's optional
+        if "anyOf" in prop_schema:
+            for sub_schema in prop_schema["anyOf"]:
+                if isinstance(sub_schema, dict) and sub_schema.get("type") == "null":
+                    return True
+
+        # If it's wrapped in oneOf with null type, it's optional
+        if "oneOf" in prop_schema:
+            for sub_schema in prop_schema["oneOf"]:
+                if isinstance(sub_schema, dict) and sub_schema.get("type") == "null":
+                    return True
+
+        # If type is explicitly null, it's optional
+        if prop_schema.get("type") == "null":
+            return True
+
+        return False
 
     async def _call_function(
         self,
@@ -949,6 +1010,7 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
         plugin: Any,
         pipeline_context: Dict[str, Any],
         job_id: Optional[str] = None,
+        execution_step_number: Optional[int] = None,
     ) -> Any:
         """
         Execute a pipeline step using its plugin.
@@ -957,6 +1019,7 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
             plugin: Plugin instance
             pipeline_context: Accumulated context from previous steps
             job_id: Optional job ID for tracking
+            execution_step_number: Optional execution step number (overrides plugin.step_number for saving)
 
         Returns:
             Step result as Pydantic model
@@ -998,10 +1061,17 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                     input_snapshot = copy.deepcopy(pipeline_context)
                     context_keys_used = list(pipeline_context.keys())
 
+                # Use execution_step_number if provided, otherwise use plugin.step_number
+                step_number_for_saving = (
+                    execution_step_number
+                    if execution_step_number is not None
+                    else plugin.step_number
+                )
+
                 step_manager = get_step_result_manager()
                 await step_manager.save_step_result(
                     job_id=job_id,
-                    step_number=plugin.step_number,
+                    step_number=step_number_for_saving,
                     step_name=plugin.step_name,
                     result_data=result.model_dump(mode="json"),
                     metadata={
@@ -1018,8 +1088,14 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                     context_keys_used=context_keys_used,
                 )
             except Exception as e:
+                # Use execution_step_number if provided, otherwise use plugin.step_number for error message
+                step_number_for_error = (
+                    execution_step_number
+                    if execution_step_number is not None
+                    else plugin.step_number
+                )
                 logger.warning(
-                    f"Failed to save step result to disk for step {plugin.step_number}: {e}"
+                    f"Failed to save step result to disk for step {step_number_for_error}: {e}"
                 )
 
         return result
@@ -1123,17 +1199,27 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
         quality_warnings = []
 
         try:
-            # Define the 4 steps in order
-            plugins = [
-                SEOKeywordsPlugin(),  # Step 1
-                SocialMediaMarketingBriefPlugin(),  # Step 2
-                SocialMediaAngleHookPlugin(),  # Step 3
-                SocialMediaPostGenerationPlugin(),  # Step 4
-            ]
+            # Define the steps in order
+            # For blog_post content, start with blog_post_preprocessing_approval (step 1)
+            plugins = []
+            if content_type == "blog_post":
+                plugins.append(BlogPostPreprocessingApprovalPlugin())  # Step 1
+
+            # Add the standard social media pipeline steps
+            plugins.extend(
+                [
+                    SEOKeywordsPlugin(),  # Step 2 (or 1 if not blog_post)
+                    SocialMediaMarketingBriefPlugin(),  # Step 3 (or 2 if not blog_post)
+                    SocialMediaAngleHookPlugin(),  # Step 4 (or 3 if not blog_post)
+                    SocialMediaPostGenerationPlugin(),  # Step 5 (or 4 if not blog_post)
+                ]
+            )
 
             # Execute each step
-            for plugin in plugins:
-                logger.info(f"Executing step {plugin.step_number}: {plugin.step_name}")
+            for step_index, plugin in enumerate(plugins, start=1):
+                logger.info(
+                    f"Executing step {step_index}/{len(plugins)}: {plugin.step_name}"
+                )
 
                 # Set plugin model config from pipeline config
                 step_config = self.pipeline_config.get_step_config(plugin.step_name)
@@ -1152,8 +1238,8 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                         )
 
                         job_manager = get_job_manager()
-                        # Calculate progress: each step is 25% (100% / 4 steps)
-                        step_progress = int((plugin.step_number / len(plugins)) * 100)
+                        # Calculate progress: each step is equal percentage (100% / total steps)
+                        step_progress = int((step_index / len(plugins)) * 100)
                         # Format step name for display (keep the actual step_name for mapping)
                         step_display_name = plugin.step_name.replace("_", " ").replace(
                             "social media ", ""
@@ -1161,7 +1247,7 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                         await job_manager.update_job_progress(
                             job_id,
                             step_progress,
-                            f"Step {plugin.step_number}/{len(plugins)}: {step_display_name}",
+                            f"Step {step_index}/{len(plugins)}: {step_display_name}",
                         )
                         # Also update current_step with the actual step_name for frontend mapping
                         job = await job_manager.get_job(job_id)
@@ -1198,6 +1284,7 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                         plugin=plugin,
                         pipeline_context=optimized_context,
                         job_id=job_id,
+                        execution_step_number=step_index,
                     )
                 except Exception as e:
                     # Check if this is an approval required exception
@@ -1549,6 +1636,64 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
         except json.JSONDecodeError as e:
             logger.error(f"Invalid JSON input: {e}")
             raise ValueError(f"Invalid JSON input: {e}")
+
+        # Execute blog_post_preprocessing_approval step first if content_type is blog_post
+        if content_type == "blog_post":
+            logger.info("Executing blog post preprocessing approval step...")
+            preprocessing_plugin = BlogPostPreprocessingApprovalPlugin()
+            preprocessing_context = {
+                "input_content": content,
+                "content_type": content_type,
+            }
+            preprocessing_result = await preprocessing_plugin.execute(
+                preprocessing_context, self, job_id
+            )
+
+            # Check if result is ApprovalRequiredSentinel
+            from marketing_project.processors.approval_helper import (
+                ApprovalRequiredSentinel,
+            )
+
+            if isinstance(preprocessing_result, ApprovalRequiredSentinel):
+                # Approval required - stop pipeline execution
+                from marketing_project.services.job_manager import (
+                    JobStatus,
+                    get_job_manager,
+                )
+
+                job_manager = get_job_manager()
+                await job_manager.update_job_status(
+                    job_id, JobStatus.WAITING_FOR_APPROVAL
+                )
+                return {
+                    "status": "waiting_for_approval",
+                    "approval_id": preprocessing_result.approval_result.approval_id,
+                    "step_name": preprocessing_result.approval_result.step_name,
+                    "step_number": preprocessing_result.approval_result.step_number,
+                }
+
+            # Update content with any extracted data from preprocessing
+            if isinstance(preprocessing_result, BlogPostPreprocessingApprovalResult):
+                # The preprocessing plugin already updated input_content in context
+                # but we need to update our local content dict
+                if preprocessing_result.author and not content.get("author"):
+                    content["author"] = preprocessing_result.author
+                if preprocessing_result.category and not content.get("category"):
+                    content["category"] = preprocessing_result.category
+                if preprocessing_result.tags and (
+                    not content.get("tags") or len(content.get("tags", [])) == 0
+                ):
+                    content["tags"] = preprocessing_result.tags
+                if (
+                    preprocessing_result.word_count is not None
+                    and content.get("word_count") is None
+                ):
+                    content["word_count"] = preprocessing_result.word_count
+                if (
+                    preprocessing_result.reading_time is not None
+                    and content.get("reading_time") is None
+                ):
+                    content["reading_time"] = preprocessing_result.reading_time
 
         # Execute SEO Keywords step once (shared across platforms)
         logger.info("Executing shared SEO Keywords step...")

@@ -416,49 +416,85 @@ class ApprovalManager:
     async def _load_approval_from_redis(
         self, approval_id: str
     ) -> Optional[ApprovalRequest]:
-        """Load approval from Redis."""
+        """
+        Load approval from Redis.
+
+        Returns None if key doesn't exist (expected after TTL expiration).
+        Logs warnings only for actual errors (parsing, deserialization).
+        """
+        approval_key = f"{APPROVAL_KEY_PREFIX}{approval_id}"
+
         try:
-            approval_key = f"{APPROVAL_KEY_PREFIX}{approval_id}"
 
             async def get_operation(redis_client: redis.Redis):
                 return await redis_client.get(approval_key)
 
             approval_json = await self._redis_manager.execute(get_operation)
 
-            if approval_json:
+            # Key doesn't exist - this is expected after TTL expiration, return None silently
+            if not approval_json:
+                return None
+
+            # Key exists, try to parse it
+            try:
                 approval_dict = json.loads(approval_json)
-                # Handle datetime strings - convert to datetime objects if needed
-                # Pydantic v2 can handle ISO format strings, but let's ensure compatibility
+            except json.JSONDecodeError as e:
+                # JSON parsing error - unexpected, log warning
+                logger.warning(
+                    f"Failed to parse JSON for approval {approval_id} from Redis (key: {approval_key}): {e}",
+                    extra={
+                        "approval_id": approval_id,
+                        "redis_key": approval_key,
+                        "error_type": type(e).__name__,
+                    },
+                )
+                return None
+
+            # Handle datetime strings - convert to datetime objects if needed
+            # Pydantic v2 can handle ISO format strings, but let's ensure compatibility
+            try:
+                return ApprovalRequest.model_validate(approval_dict)
+            except Exception as e:
+                # Fallback: try manual datetime parsing
+                if "created_at" in approval_dict and isinstance(
+                    approval_dict["created_at"], str
+                ):
+                    from datetime import datetime
+
+                    try:
+                        approval_dict["created_at"] = datetime.fromisoformat(
+                            approval_dict["created_at"].replace("Z", "+00:00")
+                        )
+                    except (ValueError, AttributeError):
+                        pass
+                if (
+                    "reviewed_at" in approval_dict
+                    and isinstance(approval_dict["reviewed_at"], str)
+                    and approval_dict["reviewed_at"]
+                ):
+                    from datetime import datetime
+
+                    try:
+                        approval_dict["reviewed_at"] = datetime.fromisoformat(
+                            approval_dict["reviewed_at"].replace("Z", "+00:00")
+                        )
+                    except (ValueError, AttributeError):
+                        pass
                 try:
-                    return ApprovalRequest.model_validate(approval_dict)
-                except Exception as e:
-                    # Fallback: try manual datetime parsing
-                    if "created_at" in approval_dict and isinstance(
-                        approval_dict["created_at"], str
-                    ):
-                        from datetime import datetime
-
-                        try:
-                            approval_dict["created_at"] = datetime.fromisoformat(
-                                approval_dict["created_at"].replace("Z", "+00:00")
-                            )
-                        except (ValueError, AttributeError):
-                            pass
-                    if (
-                        "reviewed_at" in approval_dict
-                        and isinstance(approval_dict["reviewed_at"], str)
-                        and approval_dict["reviewed_at"]
-                    ):
-                        from datetime import datetime
-
-                        try:
-                            approval_dict["reviewed_at"] = datetime.fromisoformat(
-                                approval_dict["reviewed_at"].replace("Z", "+00:00")
-                            )
-                        except (ValueError, AttributeError):
-                            pass
                     return ApprovalRequest(**approval_dict)
+                except Exception as validation_error:
+                    # Validation error - unexpected, log warning
+                    logger.warning(
+                        f"Failed to validate approval {approval_id} from Redis (key: {approval_key}): {type(validation_error).__name__}: {validation_error}",
+                        extra={
+                            "approval_id": approval_id,
+                            "redis_key": approval_key,
+                            "error_type": type(validation_error).__name__,
+                        },
+                    )
+                    return None
         except Exception as e:
+            # Unexpected error during Redis operation - log warning
             logger.warning(
                 f"Failed to load approval {approval_id} from Redis (key: {approval_key}): {type(e).__name__}: {e}",
                 extra={
@@ -467,20 +503,26 @@ class ApprovalManager:
                     "error_type": type(e).__name__,
                 },
             )
-        return None
+            return None
 
     async def _load_all_approvals_from_redis(self):
-        """Load all approvals from Redis into memory."""
+        """
+        Load all approvals from Redis into memory.
+
+        Automatically cleans up stale approval IDs (where keys have expired) from the set.
+        """
         try:
             # Get all approval IDs from the set
             async def smembers_operation(redis_client: redis.Redis):
                 return await redis_client.smembers(APPROVAL_LIST_KEY)
 
             approval_ids = await self._redis_manager.execute(smembers_operation)
-            logger.debug(f"Found {len(approval_ids)} approval ID(s) in Redis")
+            logger.debug(f"Found {len(approval_ids)} approval ID(s) in Redis set")
 
             loaded_count = 0
             skipped_count = 0
+            stale_ids = []
+
             for approval_id in approval_ids:
                 if approval_id not in self._approvals:
                     approval = await self._load_approval_from_redis(approval_id)
@@ -493,14 +535,48 @@ class ApprovalManager:
                             self._job_approvals[approval.job_id].append(approval_id)
                         loaded_count += 1
                     else:
+                        # Approval key doesn't exist (expired) - track for cleanup
+                        stale_ids.append(approval_id)
                         skipped_count += 1
-                        logger.warning(
-                            f"Failed to load approval {approval_id} from Redis"
-                        )
                 else:
                     skipped_count += 1
 
-            if loaded_count > 0:
+            # Clean up stale IDs from the set in batches
+            if stale_ids:
+                batch_size = 100
+                removed_count = 0
+
+                for i in range(0, len(stale_ids), batch_size):
+                    batch = stale_ids[i : i + batch_size]
+
+                    async def remove_batch_operation(redis_client: redis.Redis):
+                        return await redis_client.srem(APPROVAL_LIST_KEY, *batch)
+
+                    try:
+                        removed = await self._redis_manager.execute(
+                            remove_batch_operation
+                        )
+                        removed_count += removed if removed else 0
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to remove stale approval IDs from set: {e}",
+                            extra={
+                                "batch_size": len(batch),
+                                "error_type": type(e).__name__,
+                            },
+                        )
+
+                if removed_count > 0:
+                    logger.info(
+                        f"Cleaned up {removed_count} stale approval ID(s) from Redis set "
+                        f"(loaded {loaded_count}, skipped {skipped_count - removed_count} already in memory)"
+                    )
+                else:
+                    logger.debug(
+                        f"Found {len(stale_ids)} stale approval ID(s) but failed to remove them "
+                        f"(loaded {loaded_count}, skipped {skipped_count} already in memory)"
+                    )
+            elif loaded_count > 0:
                 logger.info(
                     f"Loaded {loaded_count} approval(s) from Redis (skipped {skipped_count} already in memory)"
                 )
@@ -510,6 +586,121 @@ class ApprovalManager:
                 )
         except Exception as e:
             logger.warning(f"Failed to load approvals from Redis: {e}")
+
+    async def cleanup_stale_approvals(self, dry_run: bool = False) -> Dict[str, int]:
+        """
+        Clean up stale approval IDs from Redis set.
+
+        Scans all approval IDs in the set and removes those whose keys no longer exist.
+        This is useful for maintenance and can be called explicitly or scheduled periodically.
+
+        Args:
+            dry_run: If True, only report what would be removed without actually removing
+
+        Returns:
+            Dictionary with cleanup statistics:
+            - total_ids: Total IDs in set
+            - existing_keys: Number of keys that exist
+            - stale_ids: Number of stale IDs found
+            - removed: Number actually removed (0 if dry_run)
+        """
+        stats = {
+            "total_ids": 0,
+            "existing_keys": 0,
+            "stale_ids": 0,
+            "removed": 0,
+        }
+
+        try:
+            # Get all approval IDs from the set
+            async def smembers_operation(redis_client: redis.Redis):
+                return await redis_client.smembers(APPROVAL_LIST_KEY)
+
+            approval_ids = await self._redis_manager.execute(smembers_operation)
+            stats["total_ids"] = len(approval_ids) if approval_ids else 0
+
+            if stats["total_ids"] == 0:
+                logger.debug("No approval IDs found in Redis set to clean up")
+                return stats
+
+            stale_ids = []
+
+            # Check each approval ID to see if the key exists
+            for approval_id in approval_ids:
+                approval_key = f"{APPROVAL_KEY_PREFIX}{approval_id}"
+
+                async def exists_operation(redis_client: redis.Redis):
+                    return await redis_client.exists(approval_key)
+
+                try:
+                    exists = await self._redis_manager.execute(exists_operation)
+                    if exists:
+                        stats["existing_keys"] += 1
+                    else:
+                        stale_ids.append(approval_id)
+                        stats["stale_ids"] += 1
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to check existence of approval {approval_id}: {e}",
+                        extra={
+                            "approval_id": approval_id,
+                            "error_type": type(e).__name__,
+                        },
+                    )
+                    # Treat as stale if we can't check
+                    stale_ids.append(approval_id)
+                    stats["stale_ids"] += 1
+
+            # Remove stale IDs if not dry run
+            if stale_ids and not dry_run:
+                batch_size = 100
+                removed_count = 0
+
+                for i in range(0, len(stale_ids), batch_size):
+                    batch = stale_ids[i : i + batch_size]
+
+                    async def remove_batch_operation(redis_client: redis.Redis):
+                        return await redis_client.srem(APPROVAL_LIST_KEY, *batch)
+
+                    try:
+                        removed = await self._redis_manager.execute(
+                            remove_batch_operation
+                        )
+                        removed_count += removed if removed else 0
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to remove stale approval IDs from set: {e}",
+                            extra={
+                                "batch_size": len(batch),
+                                "error_type": type(e).__name__,
+                            },
+                        )
+
+                stats["removed"] = removed_count
+
+                if removed_count > 0:
+                    logger.info(
+                        f"Cleaned up {removed_count} stale approval ID(s) from Redis set "
+                        f"(total: {stats['total_ids']}, existing: {stats['existing_keys']}, stale: {stats['stale_ids']})"
+                    )
+                elif stats["stale_ids"] > 0:
+                    logger.warning(
+                        f"Found {stats['stale_ids']} stale approval ID(s) but failed to remove them"
+                    )
+            elif stale_ids and dry_run:
+                logger.info(
+                    f"DRY RUN: Would remove {len(stale_ids)} stale approval ID(s) from Redis set "
+                    f"(total: {stats['total_ids']}, existing: {stats['existing_keys']}, stale: {stats['stale_ids']})"
+                )
+            elif stats["stale_ids"] == 0:
+                logger.debug(
+                    f"No stale approval IDs found (total: {stats['total_ids']}, all keys exist)"
+                )
+
+        except Exception as e:
+            logger.error(f"Failed to cleanup stale approvals: {e}", exc_info=True)
+
+        return stats
 
     async def _save_job_approval_mapping(self, job_id: str, approval_id: str):
         """Save job-to-approval mapping to Redis."""

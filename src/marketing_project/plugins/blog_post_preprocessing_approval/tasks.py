@@ -130,6 +130,15 @@ class BlogPostPreprocessingApprovalPlugin(PipelineStepPlugin):
         # Execute the step using the base implementation
         result = await self._execute_step(context, pipeline, job_id)
 
+        # Check if result is ApprovalRequiredSentinel (approval required, stop execution)
+        from marketing_project.processors.approval_helper import (
+            ApprovalRequiredSentinel,
+        )
+
+        if isinstance(result, ApprovalRequiredSentinel):
+            # Return the sentinel to stop pipeline execution
+            return result
+
         # Merge AI-extracted data back into input_content for subsequent steps
         # This allows the pipeline to use extracted author, category, tags, etc.
         input_content = context.get("input_content", {})
@@ -241,9 +250,15 @@ class BlogPostPreprocessingApprovalPlugin(PipelineStepPlugin):
                     "AI successfully extracted missing data - approval not required"
                 )
 
-        logger.info(
-            f"Blog post preprocessing approval step completed. "
-            f"is_valid={result.is_valid}, requires_approval={result.requires_approval}, "
-            f"validation_issues={len(result.validation_issues)}"
-        )
+        # Only log details if result is not a sentinel
+        if isinstance(result, BlogPostPreprocessingApprovalResult):
+            logger.info(
+                f"Blog post preprocessing approval step completed. "
+                f"is_valid={result.is_valid}, requires_approval={result.requires_approval}, "
+                f"validation_issues={len(result.validation_issues)}"
+            )
+        else:
+            logger.info(
+                "Blog post preprocessing approval step completed with sentinel result"
+            )
         return result

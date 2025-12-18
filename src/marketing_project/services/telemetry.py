@@ -18,7 +18,106 @@ logger = logging.getLogger(__name__)
 _tracer_provider: Optional[object] = None
 
 
-def setup_tracing() -> bool:
+class FilteringSpanProcessor:
+    """
+    Span processor that filters out noisy Redis operations like ZRANGEBYSCORE.
+
+    ARQ uses ZRANGEBYSCORE frequently to poll for jobs, which creates excessive
+    telemetry noise. This processor wraps another span processor and filters
+    out spans for specific Redis commands before they reach the exporter.
+    """
+
+    def __init__(self, wrapped_processor, filtered_commands=None):
+        """
+        Initialize the filtering span processor.
+
+        Args:
+            wrapped_processor: The underlying span processor to forward spans to
+            filtered_commands: List of Redis command names to filter out.
+                              Default: ['ZRANGEBYSCORE', 'ZPOPMIN', 'ZPOPMAX']
+        """
+        self.wrapped_processor = wrapped_processor
+        # Commands that are called frequently by ARQ for job polling
+        # These create too much noise in telemetry
+        self.filtered_commands = filtered_commands or [
+            "ZRANGEBYSCORE",
+            "ZPOPMIN",
+            "ZPOPMAX",
+        ]
+
+    def on_start(self, span, parent_context=None):
+        """Called when a span starts - forward to wrapped processor."""
+        self.wrapped_processor.on_start(span, parent_context)
+
+    def on_end(self, span):
+        """Filter spans before forwarding to wrapped processor."""
+        # Check if this is a Redis span with a filtered command
+        span_name = getattr(span, "name", "")
+
+        # Check span attributes for Redis command
+        # Redis instrumentation sets db.operation or db.statement attributes
+        should_filter = False
+
+        # Try to get attributes from span (different span types store them differently)
+        attrs = {}
+        if hasattr(span, "attributes"):
+            attrs = span.attributes if isinstance(span.attributes, dict) else {}
+        elif hasattr(span, "_attributes"):
+            # Some span implementations use _attributes
+            attrs = span._attributes if isinstance(span._attributes, dict) else {}
+        elif hasattr(span, "resource") and hasattr(span.resource, "attributes"):
+            # Check resource attributes as fallback
+            attrs = (
+                span.resource.attributes
+                if isinstance(span.resource.attributes, dict)
+                else {}
+            )
+
+        # Check db.operation attribute (most common for Redis instrumentation)
+        if attrs:
+            db_operation = attrs.get("db.operation", "")
+            if db_operation:
+                # db.operation might be a string or AttributeValue, convert to string
+                db_op_str = str(db_operation).upper()
+                if db_op_str in [cmd.upper() for cmd in self.filtered_commands]:
+                    should_filter = True
+
+            # Also check db.statement (some instrumentation uses this)
+            if not should_filter:
+                db_statement = attrs.get("db.statement", "")
+                if db_statement:
+                    # db.statement might be the full command, check if it starts with filtered command
+                    statement_str = str(db_statement).upper()
+                    for cmd in self.filtered_commands:
+                        if statement_str.startswith(cmd.upper()):
+                            should_filter = True
+                            break
+
+        # Also check span name (some Redis instrumentation uses command name as span name)
+        if not should_filter and span_name:
+            span_name_upper = span_name.upper()
+            for cmd in self.filtered_commands:
+                if cmd.upper() in span_name_upper:
+                    should_filter = True
+                    break
+
+        # If this span should be filtered, don't forward it to the exporter
+        if should_filter:
+            return
+
+        # Not a filtered span, forward to wrapped processor
+        self.wrapped_processor.on_end(span)
+
+    def shutdown(self):
+        """Shutdown the wrapped processor."""
+        self.wrapped_processor.shutdown()
+
+    def force_flush(self, timeout_millis=30000):
+        """Force flush the wrapped processor."""
+        return self.wrapped_processor.force_flush(timeout_millis)
+
+
+def setup_tracing(service_instance_id: Optional[str] = None) -> bool:
     """
     Set up OpenInference tracing with Arthur endpoint and/or console export.
 
@@ -28,6 +127,11 @@ def setup_tracing() -> bool:
     3. Configures exporter(s): OTLP exporter for Arthur and/or Console exporter for local development
     4. Instruments OpenAI SDK (if used)
     5. Instruments LangChain (if used)
+
+    Args:
+        service_instance_id: Optional unique identifier for this service instance (e.g., worker-1, worker-2).
+                            This helps differentiate telemetry from multiple instances of the same service.
+                            If not provided, will use OTEL_SERVICE_INSTANCE_ID env var or generate from hostname+pid.
 
     Returns:
         True if tracing was successfully set up, False otherwise
@@ -39,6 +143,7 @@ def setup_tracing() -> bool:
         OTEL_EXPORT_CONSOLE: Enable console export for local development (default: "false")
                               Set to "true" to export spans to stdout/stderr (visible in Docker logs)
         OTEL_SERVICE_NAME: Service name for tracing (default: "marketing-tool")
+        OTEL_SERVICE_INSTANCE_ID: Unique instance identifier (default: auto-generated from hostname+pid)
         OTEL_DEPLOYMENT_ENVIRONMENT: Deployment environment (default: "production")
         OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT: Capture message content (default: "true")
     """
@@ -73,7 +178,10 @@ def setup_tracing() -> bool:
         from opentelemetry import trace as trace_api
         from opentelemetry.sdk import trace as trace_sdk
         from opentelemetry.sdk.resources import Resource
-        from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+        from opentelemetry.sdk.trace.export import (
+            BatchSpanProcessor,
+            SimpleSpanProcessor,
+        )
 
         # Import exporters conditionally
         if use_arthur:
@@ -125,10 +233,26 @@ def setup_tracing() -> bool:
         )
         deployment_env = os.getenv("OTEL_DEPLOYMENT_ENVIRONMENT", "production")
 
+        # Determine service instance ID
+        # This is critical for distinguishing multiple worker instances (worker-1, worker-2, etc.)
+        if service_instance_id:
+            instance_id = service_instance_id
+        else:
+            instance_id = os.getenv("OTEL_SERVICE_INSTANCE_ID")
+            if not instance_id:
+                # Auto-generate from hostname + process ID for uniqueness
+                import os as os_module
+                import socket
+
+                hostname = socket.gethostname()
+                pid = os_module.getpid()
+                instance_id = f"{hostname}-{pid}"
+
         # Build resource attributes
         resource_attrs = {
             # OpenInference standard attributes
             "service.name": service_name,
+            "service.instance.id": instance_id,  # Unique identifier for this instance
             "deployment.environment": deployment_env,
         }
         # Add Arthur-specific metadata only if using Arthur
@@ -150,17 +274,25 @@ def setup_tracing() -> bool:
                 endpoint=endpoint,
                 headers={"Authorization": f"Bearer {arthur_api_key}"},
             )
-            _tracer_provider.add_span_processor(SimpleSpanProcessor(arthur_exporter))
+            # Create span processor and wrap it with filtering to exclude noisy Redis operations
+            base_processor = SimpleSpanProcessor(arthur_exporter)
+            filtered_processor = FilteringSpanProcessor(base_processor)
+            _tracer_provider.add_span_processor(filtered_processor)
             exporters_configured.append(f"Arthur ({endpoint})")
-            logger.info(f"Arthur OTLP exporter configured: {endpoint}")
+            logger.info(
+                f"Arthur OTLP exporter configured: {endpoint} (filtering ZRANGEBYSCORE and other polling commands)"
+            )
 
         # Add console exporter if configured (for local development/Docker logs)
         if export_console:
             console_exporter = ConsoleSpanExporter()
-            _tracer_provider.add_span_processor(SimpleSpanProcessor(console_exporter))
+            # Create span processor and wrap it with filtering to exclude noisy Redis operations
+            base_processor = SimpleSpanProcessor(console_exporter)
+            filtered_processor = FilteringSpanProcessor(base_processor)
+            _tracer_provider.add_span_processor(filtered_processor)
             exporters_configured.append("Console (stdout/stderr)")
             logger.info(
-                "Console span exporter enabled - spans will appear in Docker logs"
+                "Console span exporter enabled - spans will appear in Docker logs (filtering ZRANGEBYSCORE and other polling commands)"
             )
 
         # Instrument OpenAI SDK if available
@@ -207,7 +339,7 @@ def setup_tracing() -> bool:
         logger.info(
             f"Telemetry initialized successfully: "
             f"exporters={', '.join(exporters_configured)}, "
-            f"service={service_name}, environment={deployment_env}"
+            f"service={service_name}, instance={instance_id}, environment={deployment_env}"
         )
         return True
 
