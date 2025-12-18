@@ -117,6 +117,8 @@ class ContextSummarizer:
         """
         # Define context dependencies for each step
         context_dependencies = {
+            "blog_post_preprocessing_approval": ["input_content"],
+            "transcript_preprocessing_approval": ["input_content"],
             "seo_keywords": ["input_content"],
             "social_media_marketing_brief": ["seo_keywords", "input_content"],
             "social_media_angle_hook": [
@@ -166,7 +168,26 @@ class ContextSummarizer:
                         max_length=300,
                     )
                 else:
-                    optimized_context[key]
+                    optimized_context[key] = value
+
+        # Always include input_content and content_type as safety net (required by many steps)
+        if "input_content" in full_context:
+            # Only add if not already included from relevant_keys
+            if "input_content" not in optimized_context:
+                value = full_context["input_content"]
+                # Summarize if it's a large data structure
+                if isinstance(value, (dict, list)):
+                    optimized_context["input_content"] = (
+                        ContextSummarizer.summarize_step_output(
+                            value if isinstance(value, dict) else {"items": value},
+                            max_length=300,
+                        )
+                    )
+                else:
+                    optimized_context["input_content"] = value
+
+        if "content_type" in full_context:
+            optimized_context["content_type"] = full_context["content_type"]
 
         # Always include platform and email_type
         if "social_media_platform" in full_context:
