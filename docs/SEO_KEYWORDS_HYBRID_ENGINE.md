@@ -79,7 +79,7 @@ The Local Semantic Engine supports these operations:
 
 ### Local Semantic Engine Processing
 
-1. **Preprocessing** (spaCy)
+1. **Preprocessing** (syntok + UDPipe)
    - Parse document into title, headings, body
    - Extract tokens, noun chunks, sentences
 
@@ -97,7 +97,7 @@ The Local Semantic Engine supports these operations:
    - Each field uses appropriate operation
    - Operations can depend on other fields
 
-5. **Density & Placement** (spaCy)
+5. **Density & Placement** (UDPipe)
    - Count occurrences (exact + lemma-based)
    - Calculate density
    - Record placement locations
@@ -109,13 +109,18 @@ The Local Semantic Engine supports these operations:
 ## Dependencies
 
 Required packages (added to `requirements.in`):
-- `spacy>=3.7.0`
+- `syntok>=1.4.4` - Tokenization and sentence segmentation
+- `ufal.udpipe>=1.2.0` - Lemmatization, POS tagging, and dependency parsing
 - `yake>=0.4.8`
 - `rake-nltk>=1.0.6`
 
 Post-installation:
+The UDPipe English model is automatically downloaded on first use and cached at `~/.udpipe/models/`.
+If you need to download it manually:
 ```bash
-python -m spacy download en_core_web_sm
+mkdir -p ~/.udpipe/models
+wget -O ~/.udpipe/models/english-ewt-ud-2.5-191206.udpipe \
+  https://lindat.mff.cuni.cz/repository/xmlui/bitstream/handle/11234/1-3131/english-ewt-ud-2.5-191206.udpipe
 ```
 
 ## Performance Considerations

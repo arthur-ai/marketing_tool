@@ -1,7 +1,7 @@
 """
 Local + Semantic SEO keywords extraction engine.
 
-This engine uses local NLP (spaCy, YAKE, RAKE, TF-IDF) and semantic processing
+This engine uses local NLP (syntok, UDPipe, YAKE, RAKE, TF-IDF) and semantic processing
 (Hugging Face embeddings, zero-shot classification) to extract keywords.
 """
 
@@ -17,11 +17,11 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 try:
-    import spacy
+    from marketing_project.services.nlp_processor import NLPProcessor, get_nlp_processor
 
-    HAS_SPACY = True
+    HAS_NLP_PROCESSOR = True
 except ImportError:
-    HAS_SPACY = False
+    HAS_NLP_PROCESSOR = False
 
 try:
     from transformers import pipeline as hf_pipeline
@@ -50,13 +50,6 @@ try:
     HAS_RAKE = True
 except ImportError:
     HAS_RAKE = False
-
-try:
-    from keyphrase_vectorizers import KeyphraseCountVectorizer
-
-    HAS_KEYPHRASE_VECTORIZER = True
-except ImportError:
-    HAS_KEYPHRASE_VECTORIZER = False
 
 try:
     import networkx as nx
@@ -112,12 +105,11 @@ class LocalSemanticSEOKeywordsEngine(Engine):
 
     def __init__(self):
         """Initialize the local semantic engine."""
-        self._nlp = None
+        self._nlp_processor = None
         self._embedding_model = None
         self._zero_shot_classifier = None
         self._yake_extractor = None
         self._rake_extractor = None
-        self._keyphrase_vectorizer = None
         self._fasttext_model = None
         self._topic_model = None
         # Cache for parsed documents (keyed by content hash)
@@ -127,24 +119,20 @@ class LocalSemanticSEOKeywordsEngine(Engine):
             os.getenv("LOCAL_SEMANTIC_ENGINE_CACHE_SIZE", "50")
         )
 
-    def _get_nlp(self):
-        """Lazy load spaCy model."""
-        if not HAS_SPACY:
+    def _get_nlp_processor(self):
+        """Lazy load NLP processor (syntok + UDPipe)."""
+        if not HAS_NLP_PROCESSOR:
             raise ImportError(
-                "spacy is not installed. Please install it: pip install spacy && python -m spacy download en_core_web_sm"
+                "NLP processor dependencies not installed. "
+                "Please install: pip install syntok ufal.udpipe"
             )
-        if self._nlp is None:
+        if self._nlp_processor is None:
             try:
-                import spacy
-
-                self._nlp = spacy.load("en_core_web_sm")
-            except OSError:
-                logger.error(
-                    "spaCy model 'en_core_web_sm' not found. "
-                    "Please run: python -m spacy download en_core_web_sm"
-                )
+                self._nlp_processor = get_nlp_processor()
+            except Exception as e:
+                logger.error(f"Failed to initialize NLP processor: {e}")
                 raise
-        return self._nlp
+        return self._nlp_processor
 
     def _get_embedding_model(self):
         """Lazy load sentence transformer model."""
@@ -216,23 +204,6 @@ class LocalSemanticSEOKeywordsEngine(Engine):
                 logger.error(f"Failed to initialize RAKE: {e}")
                 raise
         return self._rake_extractor
-
-    def _get_keyphrase_vectorizer(self):
-        """Lazy load KeyPhrase-BERT vectorizer."""
-        if not HAS_KEYPHRASE_VECTORIZER:
-            logger.warning(
-                "keyphrase-vectorizers not available, skipping KeyPhrase-BERT"
-            )
-            return None
-        if self._keyphrase_vectorizer is None:
-            try:
-                from keyphrase_vectorizers import KeyphraseCountVectorizer
-
-                self._keyphrase_vectorizer = KeyphraseCountVectorizer()
-            except Exception as e:
-                logger.warning(f"Failed to initialize KeyPhrase-BERT: {e}")
-                return None
-        return self._keyphrase_vectorizer
 
     def supports_operation(self, operation: str) -> bool:
         """Check if operation is supported."""
@@ -310,7 +281,7 @@ class LocalSemanticSEOKeywordsEngine(Engine):
         self, content: str, title: str = "", context: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
-        Preprocess document with spaCy, using cache if available.
+        Preprocess document with NLP processor (syntok + UDPipe), using cache if available.
 
         Args:
             content: Content text
@@ -339,24 +310,25 @@ class LocalSemanticSEOKeywordsEngine(Engine):
                 headings.extend(content_structure.get("h2_headings", []))
                 headings.extend(content_structure.get("h3_headings", []))
 
-        # Parse with spaCy
-        nlp = self._get_nlp()
-        doc = nlp(content)
-        title_doc = nlp(title) if title else None
+        # Parse with NLP processor
+        nlp_processor = self._get_nlp_processor()
+        doc = nlp_processor.process(content)
+        title_doc = nlp_processor.process(title) if title else None
 
         # Extract headings if not already available
         if headings is None:
             headings = self._extract_headings(content)
 
+        # Create compatible parsed_doc structure
         parsed_doc = {
-            "doc": doc,
-            "title_doc": title_doc,
+            "doc": doc,  # Document object
+            "title_doc": title_doc,  # Document object or None
             "title": title,
             "headings": headings,
             "body_text": content,
-            "tokens": [token for token in doc],
-            "noun_chunks": [chunk.text for chunk in doc.noun_chunks],
-            "sentences": [sent.text for sent in doc.sents],
+            "tokens": doc.tokens,  # List of Token objects
+            "noun_chunks": doc.noun_chunks,  # List of noun chunk strings
+            "sentences": doc.sentences,  # List of sentence strings
         }
 
         # Cache the parsed document (with size limit)
@@ -371,7 +343,7 @@ class LocalSemanticSEOKeywordsEngine(Engine):
 
     def _preprocess_document(self, content: str, title: str = "") -> Dict[str, Any]:
         """
-        Preprocess document with spaCy (non-cached version for backward compatibility).
+        Preprocess document with NLP processor (non-cached version for backward compatibility).
 
         Args:
             content: Content text
@@ -468,35 +440,6 @@ class LocalSemanticSEOKeywordsEngine(Engine):
         except Exception as e:
             logger.warning(f"TF-IDF extraction failed: {e}")
 
-        # KeyPhrase-BERT extraction (Phase 1.1)
-        try:
-            kp_vectorizer = self._get_keyphrase_vectorizer()
-            if kp_vectorizer:
-                kp_vectorizer.fit([full_text])
-                kp_keywords = kp_vectorizer.get_feature_names_out()
-                # Get TF-IDF scores for keyphrases
-                tfidf_for_kp = TfidfVectorizer(ngram_range=(1, 5), stop_words="english")
-                tfidf_for_kp.fit([full_text])
-                kp_scores = tfidf_for_kp.transform([full_text]).toarray()[0]
-                kp_feature_names = tfidf_for_kp.get_feature_names_out()
-
-                for phrase in kp_keywords[:50]:  # Top 50
-                    if phrase in kp_feature_names:
-                        idx = list(kp_feature_names).index(phrase)
-                        score = float(kp_scores[idx])
-                    else:
-                        score = 0.5  # Default score
-
-                    candidates.append(
-                        {
-                            "text": phrase,
-                            "kbert_score": score,
-                            "source": "kbert",
-                        }
-                    )
-        except Exception as e:
-            logger.warning(f"KeyPhrase-BERT extraction failed: {e}")
-
         # PhraseRank/PositionRank extraction (Phase 1.2)
         try:
             if HAS_NETWORKX:
@@ -534,10 +477,10 @@ class LocalSemanticSEOKeywordsEngine(Engine):
         phrase_positions = defaultdict(list)
 
         # Extract noun phrases and build graph
-        nlp = self._get_nlp()
+        nlp_processor = self._get_nlp_processor()
         for sent_idx, sentence in enumerate(sentences[:50]):  # Limit for performance
-            doc = nlp(sentence)
-            phrases = [chunk.text.lower().strip() for chunk in doc.noun_chunks]
+            doc = nlp_processor.process(sentence)
+            phrases = [chunk.lower().strip() for chunk in doc.noun_chunks]
 
             # Add phrases as nodes
             for phrase in phrases:
@@ -622,8 +565,6 @@ class LocalSemanticSEOKeywordsEngine(Engine):
                 candidate_map[normalized]["rake_score"] = cand["rake_score"]
             if "tfidf_score" in cand:
                 candidate_map[normalized]["tfidf_score"] = cand["tfidf_score"]
-            if "kbert_score" in cand:
-                candidate_map[normalized]["kbert_score"] = cand["kbert_score"]
             if "phraserank_score" in cand:
                 candidate_map[normalized]["phraserank_score"] = cand["phraserank_score"]
 
@@ -651,18 +592,15 @@ class LocalSemanticSEOKeywordsEngine(Engine):
 
         # Initialize scores for new sources if missing
         for cand in merged:
-            if "kbert_score" not in cand:
-                cand["kbert_score"] = 0.0
             if "phraserank_score" not in cand:
                 cand["phraserank_score"] = 0.0
 
-        # Sort by combined importance (updated weights for new sources)
+        # Sort by combined importance (updated weights - removed kbert_score, increased YAKE weight)
         merged.sort(
             key=lambda x: (
-                x.get("yake_score", 0) * 0.25
-                + x.get("tfidf_score", 0) * 0.20
-                + x.get("rake_score", 0) * 0.15
-                + x.get("kbert_score", 0) * 0.20
+                x.get("yake_score", 0) * 0.35
+                + x.get("tfidf_score", 0) * 0.25
+                + x.get("rake_score", 0) * 0.20
                 + x.get("phraserank_score", 0) * 0.15
                 + (1.0 if x["in_title"] else 0.0) * 0.05
             ),
@@ -1141,7 +1079,7 @@ class LocalSemanticSEOKeywordsEngine(Engine):
         total_words = len(content.split())
 
         analyses = []
-        nlp = self._get_nlp()
+        nlp_processor = self._get_nlp_processor()
 
         for keyword in keywords:
             keyword_lower = keyword.lower()
@@ -1151,12 +1089,12 @@ class LocalSemanticSEOKeywordsEngine(Engine):
             exact_count = content_lower.count(keyword_lower)
 
             # Count lemma-based occurrences
-            keyword_doc = nlp(keyword)
-            keyword_lemmas = {token.lemma_.lower() for token in keyword_doc}
+            keyword_doc = nlp_processor.process(keyword)
+            keyword_lemmas = {token.lemma.lower() for token in keyword_doc.tokens}
             lemma_count = sum(
                 1
-                for token in parsed_doc["doc"]
-                if token.lemma_.lower() in keyword_lemmas
+                for token in parsed_doc["doc"].tokens
+                if token.lemma.lower() in keyword_lemmas
             )
 
             occurrences = max(exact_count, lemma_count // len(keyword_words))

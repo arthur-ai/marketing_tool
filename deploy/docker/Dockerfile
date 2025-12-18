@@ -25,8 +25,10 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Download spaCy language model (required for SEO keywords engine)
-RUN python -m spacy download en_core_web_sm
+# Download UDPipe English model (required for SEO keywords engine)
+RUN mkdir -p /root/.udpipe/models && \
+    wget -q -O /root/.udpipe/models/english-ewt-ud-2.5-191206.udpipe \
+    https://lindat.mff.cuni.cz/repository/xmlui/bitstream/handle/11234/1-3131/english-ewt-ud-2.5-191206.udpipe
 
 # Copy application code (includes config and prompts now)
 COPY src/ ./src/

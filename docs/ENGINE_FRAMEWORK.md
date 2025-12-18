@@ -126,7 +126,7 @@ The framework is designed to be extensible:
 ### Example 1: SEO Keywords (Current Implementation)
 
 - **LLM Engine**: Extracts all keywords via LLM
-- **Local Semantic Engine**: Uses spaCy, YAKE, RAKE, TF-IDF, embeddings
+- **Local Semantic Engine**: Uses syntok, UDPipe, YAKE, RAKE, TF-IDF, embeddings
 - **Composer**: Mixes LLM and local based on field config
 
 ### Example 2: Article Generation (Future)
@@ -139,7 +139,7 @@ The framework is designed to be extensible:
 
 ## Best Practices
 
-1. **Lazy Loading**: Load heavy models (spaCy, transformers) on first use
+1. **Lazy Loading**: Load heavy models (UDPipe, transformers) on first use
 2. **Error Handling**: Gracefully handle missing dependencies
 3. **Caching**: Cache engine instances in registry
 4. **Operation Granularity**: Keep operations focused and composable

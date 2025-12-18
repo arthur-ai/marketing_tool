@@ -522,7 +522,7 @@ if eval "$CF_COMMAND"; then
             print_info "ECR Repository URI: $ECR_URI"
             echo ""
             print_info "To build and push your Docker image:"
-            echo "  # Build the image (includes spaCy model download)"
+            echo "  # Build the image (includes UDPipe model download)"
             echo "  # Note: Run this from the project root directory"
             echo "  docker build -t $ECR_URI:latest -f deploy/docker/Dockerfile ."
             echo ""
@@ -535,7 +535,7 @@ if eval "$CF_COMMAND"; then
             echo "  # Update the ECS service to use the new image"
             echo "  aws ecs update-service --cluster $PROJECT_NAME-$ENVIRONMENT-cluster --service $PROJECT_NAME-$ENVIRONMENT-service --force-new-deployment"
             echo ""
-            print_info "Note: The Dockerfile automatically downloads the spaCy language model (en_core_web_sm) required for SEO keywords engine operations."
+            print_info "Note: The Dockerfile automatically downloads the UDPipe English model required for SEO keywords engine operations."
         fi
 
     else

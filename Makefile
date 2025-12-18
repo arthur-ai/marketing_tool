@@ -1,5 +1,5 @@
 # Marketing Project Makefile
-.PHONY: help install install-dev test test-unit test-integration lint format clean build run serve docker-build docker-run deploy-staging deploy-production dev-up dev-down dev-restart dev-logs dev-build prod-up prod-down prod-restart prod-logs prod-build docker-clean
+.PHONY: help install install-dev test test-unit test-integration lint format clean build run serve docker-build docker-run deploy-staging deploy-production dev-up dev-down dev-restart dev-logs dev-build prod-up prod-down prod-restart prod-logs prod-build docker-clean pip-compile pip-compile-dev pip-compile-all
 
 # Default target
 help:
@@ -38,6 +38,9 @@ help:
 	@echo "  clean            Clean up temporary files"
 	@echo "  docker-clean     Clean up Docker resources"
 	@echo "  build            Build the package"
+	@echo "  pip-compile      Regenerate requirements.txt with Python 3.13"
+	@echo "  pip-compile-dev  Regenerate requirements-dev.txt with Python 3.13"
+	@echo "  pip-compile-all  Regenerate both requirements files with Python 3.13"
 	@echo ""
 	@echo "Deployment:"
 	@echo "  deploy-staging   Deploy to staging environment"
@@ -195,6 +198,18 @@ ci-test: install-dev test lint security
 ci-build: docker-build
 
 ci-deploy: deploy-staging
+
+# Dependency management
+pip-compile:
+	@echo "Regenerating requirements.txt with Python 3.13..."
+	docker run --rm -v "$(PWD):/workspace" -w /workspace python:3.13-slim bash -c "pip install --no-cache-dir pip-tools && pip-compile --upgrade requirements.in"
+
+pip-compile-dev:
+	@echo "Regenerating requirements-dev.txt with Python 3.13..."
+	docker run --rm -v "$(PWD):/workspace" -w /workspace python:3.13-slim bash -c "pip install --no-cache-dir pip-tools && pip-compile --upgrade requirements-dev.in"
+
+pip-compile-all: pip-compile pip-compile-dev
+	@echo "All requirements files regenerated with Python 3.13!"
 
 # GitHub Actions helpers
 gh-format: format
