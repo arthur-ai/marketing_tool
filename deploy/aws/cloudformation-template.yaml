@@ -654,6 +654,9 @@ Resources:
               Value: '50'
             - Name: SEO_METRICS_CACHE_SIZE
               Value: '200'
+            # Numba cache configuration (required for UMAP in ECS)
+            - Name: NUMBA_CACHE_DIR
+              Value: '/tmp'
             # Telemetry configuration (optional)
             - Name: ARTHUR_BASE_URL
               Value: !Ref ArthurBaseUrl
@@ -770,6 +773,9 @@ Resources:
               Value: '50'
             - Name: SEO_METRICS_CACHE_SIZE
               Value: '200'
+            # Numba cache configuration (required for UMAP in ECS)
+            - Name: NUMBA_CACHE_DIR
+              Value: '/tmp'
             # Telemetry configuration (optional)
             - Name: ARTHUR_BASE_URL
               Value: !Ref ArthurBaseUrl

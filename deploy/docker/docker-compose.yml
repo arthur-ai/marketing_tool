@@ -29,6 +29,8 @@ services:
       - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:password@postgres:5432/marketing_project}
       # Optional MongoDB URL (uncomment if you need it)
       # - MONGODB_URL=mongodb://mongodb:27017/marketing_project
+      # Numba cache configuration (required for UMAP in Docker)
+      - NUMBA_CACHE_DIR=/tmp
     volumes:
       - ./uploads:/app/uploads
       - ../../content:/app/content
@@ -126,6 +128,8 @@ services:
       # ARQ worker settings
       - ARQ_MAX_JOBS=${ARQ_MAX_JOBS:-10}
       - ARQ_JOB_TIMEOUT=${ARQ_JOB_TIMEOUT:-600}
+      # Numba cache configuration (required for UMAP in Docker)
+      - NUMBA_CACHE_DIR=/tmp
     volumes: []
     command: arq marketing_project.worker.WorkerSettings
     restart: unless-stopped

@@ -30,3 +30,6 @@ data:
   # Feature flags
   UPLOAD_ENABLED: "true"
   CONTENT_POLLING_ENABLED: "true"
+
+  # Numba cache configuration (required for UMAP in Docker/K8s)
+  NUMBA_CACHE_DIR: "/tmp"
