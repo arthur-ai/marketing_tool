@@ -5,9 +5,11 @@ API endpoints for social media post preview, validation, and editing.
 import logging
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from marketing_project.middleware.keycloak_auth import get_current_user
+from marketing_project.models.user_context import UserContext
 from marketing_project.services.platform_error_handler import PlatformErrorHandler
 from marketing_project.services.social_media_pipeline import SocialMediaPipeline
 
@@ -83,7 +85,9 @@ class PostUpdateResponse(BaseModel):
 
 
 @router.post("/preview", response_model=PostPreviewResponse)
-async def preview_post(request: PostPreviewRequest):
+async def preview_post(
+    request: PostPreviewRequest, user: UserContext = Depends(get_current_user)
+):
     """
     Generate a formatted preview of a social media post.
 
@@ -152,7 +156,9 @@ async def preview_post(request: PostPreviewRequest):
 
 
 @router.post("/validate", response_model=PostValidationResponse)
-async def validate_post(request: PostValidationRequest):
+async def validate_post(
+    request: PostValidationRequest, user: UserContext = Depends(get_current_user)
+):
     """
     Validate a social media post against platform-specific rules.
 
@@ -263,7 +269,9 @@ async def validate_post(request: PostValidationRequest):
 
 
 @router.post("/update", response_model=PostUpdateResponse)
-async def update_post(request: PostUpdateRequest):
+async def update_post(
+    request: PostUpdateRequest, user: UserContext = Depends(get_current_user)
+):
     """
     Update a social media post content.
 

@@ -7,9 +7,11 @@ Endpoints for managing design kit configuration.
 import logging
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Body, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
+from ..middleware.keycloak_auth import get_current_user
 from ..models.design_kit_config import DesignKitConfig
+from ..models.user_context import UserContext
 from ..services.design_kit_manager import get_design_kit_manager
 from ..services.job_manager import get_job_manager
 
@@ -23,7 +25,8 @@ async def get_design_kit_config(
     refresh: bool = Query(
         False,
         description="If true, submit a background job to regenerate config using AI",
-    )
+    ),
+    user: UserContext = Depends(get_current_user),
 ):
     """
     Get the currently active design kit configuration.
@@ -100,7 +103,9 @@ async def get_design_kit_config(
 
 
 @router.get("/config/{version}", response_model=DesignKitConfig)
-async def get_design_kit_config_by_version(version: str):
+async def get_design_kit_config_by_version(
+    version: str, user: UserContext = Depends(get_current_user)
+):
     """
     Get design kit configuration by version.
 
@@ -132,7 +137,9 @@ async def get_design_kit_config_by_version(version: str):
 
 
 @router.get("/config/{content_type}/type", response_model=Dict[str, Any])
-async def get_design_kit_config_by_content_type(content_type: str):
+async def get_design_kit_config_by_content_type(
+    content_type: str, user: UserContext = Depends(get_current_user)
+):
     """
     Get content-type-specific design kit configuration.
 
@@ -167,7 +174,8 @@ async def get_design_kit_config_by_content_type(content_type: str):
 
 @router.post("/config", response_model=DesignKitConfig)
 async def create_or_update_design_kit_config(
-    request: dict = Body(..., description="Request body with config and set_active")
+    request: dict = Body(..., description="Request body with config and set_active"),
+    user: UserContext = Depends(get_current_user),
 ):
     """
     Create or update design kit configuration.
@@ -207,7 +215,8 @@ async def create_or_update_design_kit_config(
 
 @router.post("/generate")
 async def generate_design_kit_config(
-    request: dict = Body(..., description="Request body with use_internal_docs")
+    request: dict = Body(..., description="Request body with use_internal_docs"),
+    user: UserContext = Depends(get_current_user),
 ):
     """
     Generate new design kit configuration using AI/LLM (runs as background job).
@@ -272,7 +281,9 @@ async def generate_design_kit_config(
 
 
 @router.get("/versions", response_model=List[str])
-async def list_design_kit_versions():
+async def list_design_kit_versions(
+    user: UserContext = Depends(get_current_user),
+):
     """
     List all available design kit configuration versions.
 
@@ -291,7 +302,9 @@ async def list_design_kit_versions():
 
 
 @router.post("/activate/{version}")
-async def activate_design_kit_version(version: str):
+async def activate_design_kit_version(
+    version: str, user: UserContext = Depends(get_current_user)
+):
     """
     Activate a specific design kit configuration version.
 

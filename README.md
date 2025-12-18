@@ -169,14 +169,47 @@ The Marketing Project provides a comprehensive REST API with enterprise-grade se
 
 ### **Authentication**
 
-All protected endpoints require an API key in the `X-API-Key` header:
+The application uses Keycloak for authentication and authorization. All protected endpoints require a valid JWT token from Keycloak.
+
+#### **Getting an Access Token**
+
+1. Authenticate with Keycloak through the frontend application, or
+2. Use Keycloak's token endpoint directly:
 
 ```bash
-curl -H "X-API-Key: your-api-key-here" \
+curl -X POST "https://your-keycloak-server.com/realms/your-realm/protocol/openid-connect/token" \
+     -H "Content-Type: application/x-www-form-urlencoded" \
+     -d "client_id=your-client-id" \
+     -d "client_secret=your-client-secret" \
+     -d "grant_type=client_credentials" \
+     -d "scope=openid"
+```
+
+#### **Using the Access Token**
+
+Include the token in the `Authorization` header:
+
+```bash
+curl -H "Authorization: Bearer your-access-token-here" \
      -H "Content-Type: application/json" \
      -d '{"content": {"id": "test", "title": "Test", "content": "Test content", "snippet": "Summary"}}' \
      http://localhost:8000/api/v1/process/blog
 ```
+
+#### **Public Endpoints**
+
+The following endpoints do not require authentication:
+- `GET /api/v1/health` - Health check
+- `GET /api/v1/ready` - Readiness check
+
+#### **Role-Based Access Control**
+
+Some endpoints may require specific roles:
+- Admin-only endpoints require the `admin` role
+- Editor endpoints require the `editor` or `admin` role
+- Regular user endpoints are accessible to all authenticated users
+
+For detailed Keycloak setup instructions, see [docs/KEYCLOAK_SETUP.md](docs/KEYCLOAK_SETUP.md).
 
 ### **API Documentation**
 

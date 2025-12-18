@@ -12,10 +12,12 @@ import logging
 from datetime import datetime
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
+from marketing_project.middleware.keycloak_auth import get_current_user
+from marketing_project.models.user_context import UserContext
 from marketing_project.services.step_result_manager import get_step_result_manager
 
 logger = logging.getLogger(__name__)
@@ -104,6 +106,7 @@ async def list_jobs(
         None,
         description="Filter jobs until this date (ISO format: YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)",
     ),
+    user: UserContext = Depends(get_current_user),
 ):
     """
     List all jobs with step results.
@@ -220,6 +223,7 @@ async def get_job_results(
     ),
     group_by_job: bool = Query(False, description="Group steps by job_id"),
     search: Optional[str] = Query(None, description="Search within step names/results"),
+    user: UserContext = Depends(get_current_user),
 ):
     """
     Get detailed results for a specific job.
@@ -325,7 +329,7 @@ async def get_job_results(
 
 
 @router.get("/jobs/{job_id}/timeline")
-async def get_job_timeline(job_id: str):
+async def get_job_timeline(job_id: str, user: UserContext = Depends(get_current_user)):
     """
     Get chronological timeline of all events for a job and its subjobs.
 
@@ -547,6 +551,7 @@ async def get_step_result(
     execution_context_id: Optional[str] = Query(
         None, description="Optional execution context ID to search in specific context"
     ),
+    user: UserContext = Depends(get_current_user),
 ):
     """
     Get the content of a specific step result.
@@ -586,6 +591,7 @@ async def get_step_result_by_name(
     execution_context_id: Optional[str] = Query(
         None, description="Optional execution context ID to search in specific context"
     ),
+    user: UserContext = Depends(get_current_user),
 ):
     """
     Get the content of a specific step result by step name.
@@ -625,6 +631,7 @@ async def download_step_result(
     execution_context_id: Optional[str] = Query(
         None, description="Optional execution context ID to search in specific context"
     ),
+    user: UserContext = Depends(get_current_user),
 ):
     """
     Download a step result file.
@@ -695,7 +702,7 @@ async def download_step_result(
 
 
 @router.get("/jobs/{job_id}/pipeline-flow")
-async def get_pipeline_flow(job_id: str):
+async def get_pipeline_flow(job_id: str, user: UserContext = Depends(get_current_user)):
     """
     Get complete pipeline flow visualization data.
 
@@ -732,7 +739,9 @@ async def get_pipeline_flow(job_id: str):
 
 
 @router.delete("/jobs/{job_id}")
-async def delete_job_results(job_id: str):
+async def delete_job_results(
+    job_id: str, user: UserContext = Depends(get_current_user)
+):
     """
     Delete all results for a specific job.
 

@@ -19,14 +19,16 @@ import json
 import logging
 from typing import Dict
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from ..middleware.keycloak_auth import get_current_user
 from ..models import (
     BlogProcessorRequest,
     ReleaseNotesProcessorRequest,
     TranscriptProcessorRequest,
 )
+from ..models.user_context import UserContext
 from ..processors import process_blog_post, process_release_notes, process_transcript
 from ..services.job_manager import get_job_manager
 
@@ -61,7 +63,9 @@ async def _process_blog_post_job(content_json: str, job_id: str) -> Dict:
 
 
 @router.post("/process/blog", response_model=JobSubmissionResponse)
-async def process_blog_endpoint(request: BlogProcessorRequest):
+async def process_blog_endpoint(
+    request: BlogProcessorRequest, user: UserContext = Depends(get_current_user)
+):
     """
     Submit blog post for processing (returns job ID immediately).
 
@@ -211,7 +215,9 @@ async def _process_release_notes_job(content_json: str, job_id: str) -> Dict:
 
 
 @router.post("/process/release-notes", response_model=JobSubmissionResponse)
-async def process_release_notes_endpoint(request: ReleaseNotesProcessorRequest):
+async def process_release_notes_endpoint(
+    request: ReleaseNotesProcessorRequest, user: UserContext = Depends(get_current_user)
+):
     """
     Submit release notes for processing (returns job ID immediately).
 
@@ -284,7 +290,9 @@ async def _process_transcript_job(content_json: str, job_id: str) -> Dict:
 
 
 @router.post("/process/transcript", response_model=JobSubmissionResponse)
-async def process_transcript_endpoint(request: TranscriptProcessorRequest):
+async def process_transcript_endpoint(
+    request: TranscriptProcessorRequest, user: UserContext = Depends(get_current_user)
+):
     """
     Submit transcript for processing (returns job ID immediately).
 

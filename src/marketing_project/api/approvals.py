@@ -9,14 +9,20 @@ import time
 from datetime import datetime
 from typing import List, Optional
 
-from fastapi import APIRouter, Body, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
+from ..middleware.keycloak_auth import get_current_user
 from ..services.function_pipeline.tracing import (
+    add_span_event,
     close_span,
     create_span,
+    ensure_span_has_minimum_metadata,
     is_tracing_available,
+    link_spans,
     record_span_exception,
     set_span_attribute,
+    set_span_duration,
+    set_span_error,
     set_span_input,
     set_span_kind,
     set_span_output,
@@ -29,7 +35,6 @@ try:
 except ImportError:
     Status = None
     StatusCode = None
-
 from ..models.approval_models import (
     ApprovalDecisionRequest,
     ApprovalListItem,
@@ -39,6 +44,7 @@ from ..models.approval_models import (
     PendingApprovalsResponse,
     RetryStepRequest,
 )
+from ..models.user_context import UserContext
 from ..services.approval_manager import (
     get_approval_manager,
     get_approval_manager_sync,
@@ -53,7 +59,8 @@ router = APIRouter()
 
 @router.get("/pending", response_model=PendingApprovalsResponse)
 async def get_pending_approvals(
-    job_id: Optional[str] = Query(None, description="Filter by job ID")
+    job_id: Optional[str] = Query(None, description="Filter by job ID"),
+    user: UserContext = Depends(get_current_user),
 ):
     """
     Get all pending approval requests.
@@ -224,7 +231,7 @@ async def get_pending_approvals(
 
 
 @router.delete("/all")
-async def delete_all_approvals():
+async def delete_all_approvals(user: UserContext = Depends(get_current_user)):
     """
     Delete all approvals from the system.
 
@@ -255,7 +262,7 @@ async def delete_all_approvals():
 
 
 @router.get("/analytics")
-async def get_approval_analytics():
+async def get_approval_analytics(user: UserContext = Depends(get_current_user)):
     """
     Get comprehensive approval analytics including metrics, trends, and performance.
 
@@ -440,7 +447,7 @@ async def get_approval_analytics():
 
 
 @router.get("/stats", response_model=ApprovalStats)
-async def get_approval_stats():
+async def get_approval_stats(user: UserContext = Depends(get_current_user)):
     """
     Get approval statistics.
 
@@ -458,7 +465,7 @@ async def get_approval_stats():
 
 
 @router.get("/settings", response_model=ApprovalSettings)
-async def get_approval_settings():
+async def get_approval_settings(user: UserContext = Depends(get_current_user)):
     """
     Get current approval settings.
     """
@@ -472,7 +479,9 @@ async def get_approval_settings():
 
 
 @router.post("/settings", response_model=ApprovalSettings)
-async def update_approval_settings(settings: ApprovalSettings):
+async def update_approval_settings(
+    settings: ApprovalSettings, user: UserContext = Depends(get_current_user)
+):
     """
     Update approval settings.
 
@@ -489,7 +498,9 @@ async def update_approval_settings(settings: ApprovalSettings):
 
 
 @router.get("/{approval_id}/impact")
-async def get_approval_impact(approval_id: str):
+async def get_approval_impact(
+    approval_id: str, user: UserContext = Depends(get_current_user)
+):
     """
     Get approval impact analysis showing what changed after approval.
 
@@ -598,7 +609,7 @@ async def get_approval_impact(approval_id: str):
 
 
 @router.get("/{approval_id}")
-async def get_approval(approval_id: str):
+async def get_approval(approval_id: str, user: UserContext = Depends(get_current_user)):
     """
     Get details of a specific approval request with full context.
 
@@ -682,7 +693,11 @@ async def get_approval(approval_id: str):
 
 
 @router.post("/{approval_id}/decide", response_model=ApprovalRequest)
-async def decide_approval(approval_id: str, decision: ApprovalDecisionRequest):
+async def decide_approval(
+    approval_id: str,
+    decision: ApprovalDecisionRequest,
+    user: UserContext = Depends(get_current_user),
+):
     """
     Make a decision on an approval request.
 
@@ -1186,7 +1201,9 @@ async def decide_approval(approval_id: str, decision: ApprovalDecisionRequest):
 
 
 @router.get("/jobs/{job_id}/all")
-async def get_all_approvals_for_job(job_id: str):
+async def get_all_approvals_for_job(
+    job_id: str, user: UserContext = Depends(get_current_user)
+):
     """
     Get all approvals across the entire job chain.
 
@@ -1257,6 +1274,7 @@ async def get_all_approvals_for_job(job_id: str):
 async def bulk_approve(
     approval_ids: List[str] = Body(..., description="List of approval IDs to approve"),
     decision: ApprovalDecisionRequest = Body(..., description="Approval decision"),
+    user: UserContext = Depends(get_current_user),
 ):
     """
     Approve multiple similar approvals at once.
@@ -1325,7 +1343,9 @@ async def bulk_approve(
 
 @router.get("/job/{job_id}", response_model=PendingApprovalsResponse)
 async def get_job_approvals(
-    job_id: str, status: Optional[str] = Query(None, description="Filter by status")
+    job_id: str,
+    status: Optional[str] = Query(None, description="Filter by status"),
+    user: UserContext = Depends(get_current_user),
 ):
     """
     Get all approvals for a specific job.
@@ -1439,7 +1459,9 @@ async def get_job_approvals(
 
 @router.post("/{approval_id}/retry")
 async def retry_rejected_step(
-    approval_id: str, retry_request: Optional[RetryStepRequest] = None
+    approval_id: str,
+    retry_request: Optional[RetryStepRequest] = None,
+    user: UserContext = Depends(get_current_user),
 ):
     """
     Retry a single rejected pipeline step.
