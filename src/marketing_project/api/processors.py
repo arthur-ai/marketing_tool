@@ -19,16 +19,19 @@ import json
 import logging
 from typing import Dict
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from ..middleware.keycloak_auth import get_current_user
 from ..models import (
     BlogProcessorRequest,
     ReleaseNotesProcessorRequest,
     TranscriptProcessorRequest,
 )
+from ..models.user_context import UserContext
 from ..processors import process_blog_post, process_release_notes, process_transcript
 from ..services.job_manager import get_job_manager
+from .user_settings import resolve_user_settings
 
 logger = logging.getLogger("marketing_project.api.processors")
 
@@ -61,7 +64,9 @@ async def _process_blog_post_job(content_json: str, job_id: str) -> Dict:
 
 
 @router.post("/process/blog", response_model=JobSubmissionResponse)
-async def process_blog_endpoint(request: BlogProcessorRequest):
+async def process_blog_endpoint(
+    request: BlogProcessorRequest, user: UserContext = Depends(get_current_user)
+):
     """
     Submit blog post for processing (returns job ID immediately).
 
@@ -123,10 +128,14 @@ async def process_blog_endpoint(request: BlogProcessorRequest):
         # Get job manager
         job_manager = get_job_manager()
 
+        # Resolve per-user settings and store in job metadata
+        resolved_settings = await resolve_user_settings(user.user_id)
+
         # Create job metadata
         job_metadata = {
             "content_type": "blog_post",
             "output_content_type": output_content_type,
+            "user_settings": resolved_settings.model_dump(),
         }
 
         # Add social media parameters if applicable
@@ -152,6 +161,8 @@ async def process_blog_endpoint(request: BlogProcessorRequest):
             job_type="blog_post",
             content_id=request.content.id,
             metadata=job_metadata,
+            user_id=user.user_id,
+            user_context=user,
         )
 
         # Convert Pydantic model to JSON string for processor
@@ -211,7 +222,9 @@ async def _process_release_notes_job(content_json: str, job_id: str) -> Dict:
 
 
 @router.post("/process/release-notes", response_model=JobSubmissionResponse)
-async def process_release_notes_endpoint(request: ReleaseNotesProcessorRequest):
+async def process_release_notes_endpoint(
+    request: ReleaseNotesProcessorRequest, user: UserContext = Depends(get_current_user)
+):
     """
     Submit release notes for processing (returns job ID immediately).
 
@@ -226,6 +239,9 @@ async def process_release_notes_endpoint(request: ReleaseNotesProcessorRequest):
         # Get job manager
         job_manager = get_job_manager()
 
+        # Resolve per-user settings and store in job metadata
+        resolved_settings = await resolve_user_settings(user.user_id)
+
         # Create job
         output_content_type = request.output_content_type or "blog_post"
         job = await job_manager.create_job(
@@ -234,7 +250,10 @@ async def process_release_notes_endpoint(request: ReleaseNotesProcessorRequest):
             metadata={
                 "content_type": "release_notes",
                 "output_content_type": output_content_type,
+                "user_settings": resolved_settings.model_dump(),
             },
+            user_id=user.user_id,
+            user_context=user,
         )
 
         # Convert Pydantic model to JSON string for processor
@@ -284,7 +303,9 @@ async def _process_transcript_job(content_json: str, job_id: str) -> Dict:
 
 
 @router.post("/process/transcript", response_model=JobSubmissionResponse)
-async def process_transcript_endpoint(request: TranscriptProcessorRequest):
+async def process_transcript_endpoint(
+    request: TranscriptProcessorRequest, user: UserContext = Depends(get_current_user)
+):
     """
     Submit transcript for processing (returns job ID immediately).
 
@@ -299,6 +320,9 @@ async def process_transcript_endpoint(request: TranscriptProcessorRequest):
         # Get job manager
         job_manager = get_job_manager()
 
+        # Resolve per-user settings and store in job metadata
+        resolved_settings = await resolve_user_settings(user.user_id)
+
         # Create job
         output_content_type = request.output_content_type or "blog_post"
         logger.info(
@@ -311,7 +335,10 @@ async def process_transcript_endpoint(request: TranscriptProcessorRequest):
             metadata={
                 "content_type": "transcript",
                 "output_content_type": output_content_type,
+                "user_settings": resolved_settings.model_dump(),
             },
+            user_id=user.user_id,
+            user_context=user,
         )
 
         # Convert Pydantic model to JSON string for processor

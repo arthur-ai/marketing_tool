@@ -174,6 +174,77 @@ class PipelineSettingsModel(Base):
         }
 
 
+class UserSettingsModel(Base):
+    """Per-user pipeline and approval settings (overrides global defaults)."""
+
+    __tablename__ = "user_settings"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String, nullable=False, unique=True, index=True)
+
+    # Pipeline preferences (None = use global default)
+    disabled_steps = Column(JSONB, nullable=True)  # List[str] | None
+
+    # Approval preferences (None = use global default)
+    require_approval = Column(Boolean, nullable=True)
+    approval_agents = Column(JSONB, nullable=True)  # List[str] | None
+    auto_approve_threshold = Column(String, nullable=True)  # float as string
+    approval_timeout_seconds = Column(Integer, nullable=True)
+
+    # LLM preferences (None = use global default)
+    preferred_model = Column(String, nullable=True)
+    preferred_temperature = Column(String, nullable=True)  # float as string
+
+    created_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert model to dictionary."""
+        return {
+            "user_id": self.user_id,
+            "disabled_steps": (
+                self.disabled_steps
+                if isinstance(self.disabled_steps, list)
+                else (
+                    json.loads(self.disabled_steps)
+                    if isinstance(self.disabled_steps, str)
+                    else None
+                )
+            ),
+            "require_approval": self.require_approval,
+            "approval_agents": (
+                self.approval_agents
+                if isinstance(self.approval_agents, list)
+                else (
+                    json.loads(self.approval_agents)
+                    if isinstance(self.approval_agents, str)
+                    else None
+                )
+            ),
+            "auto_approve_threshold": (
+                float(self.auto_approve_threshold)
+                if self.auto_approve_threshold is not None
+                else None
+            ),
+            "approval_timeout_seconds": self.approval_timeout_seconds,
+            "preferred_model": self.preferred_model,
+            "preferred_temperature": (
+                float(self.preferred_temperature)
+                if self.preferred_temperature is not None
+                else None
+            ),
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
 class JobModel(Base):
     """Database model for job storage and tracking."""
 
@@ -190,6 +261,9 @@ class JobModel(Base):
         String, nullable=False, index=True
     )  # pending, queued, processing, completed, failed, etc.
     content_id = Column(String, nullable=False)  # Content identifier
+    user_id = Column(
+        String, nullable=True, index=True
+    )  # User ID who triggered the job (nullable for backward compatibility)
     progress = Column(Integer, default=0, nullable=False)  # 0-100
     current_step = Column(String, nullable=True)  # Current step name
     result = Column(JSONB, nullable=True)  # Job result data
@@ -213,6 +287,7 @@ class JobModel(Base):
     __table_args__ = (
         Index("idx_jobs_status_created", "status", "created_at"),
         Index("idx_jobs_type_status", "job_type", "status"),
+        Index("idx_jobs_user_id", "user_id"),
     )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -231,6 +306,7 @@ class JobModel(Base):
             "type": self.job_type,
             "status": status_enum,
             "content_id": self.content_id,
+            "user_id": self.user_id,
             "created_at": self.created_at,
             "started_at": self.started_at,
             "completed_at": self.completed_at,

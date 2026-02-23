@@ -12,10 +12,14 @@ import logging
 from datetime import datetime
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
+from marketing_project.middleware.keycloak_auth import get_current_user
+from marketing_project.middleware.rbac import verify_job_ownership
+from marketing_project.models.user_context import UserContext
+from marketing_project.services.job_manager import get_job_manager
 from marketing_project.services.step_result_manager import get_step_result_manager
 
 logger = logging.getLogger(__name__)
@@ -77,12 +81,12 @@ class JobListItem(BaseModel):
     """Summary information for a job in the list."""
 
     job_id: str = Field(..., description="Job identifier")
-    content_type: str = Field(None, description="Type of content processed")
-    content_id: str = Field(None, description="Content identifier")
-    started_at: str = Field(None, description="Job start timestamp")
-    completed_at: str = Field(None, description="Job completion timestamp")
+    content_type: Optional[str] = Field(None, description="Type of content processed")
+    content_id: Optional[str] = Field(None, description="Content identifier")
+    started_at: Optional[str] = Field(None, description="Job start timestamp")
+    completed_at: Optional[str] = Field(None, description="Job completion timestamp")
     step_count: int = Field(..., description="Number of step results")
-    created_at: str = Field(None, description="Result creation timestamp")
+    created_at: Optional[str] = Field(None, description="Result creation timestamp")
 
 
 class JobListResponse(BaseModel):
@@ -104,6 +108,7 @@ async def list_jobs(
         None,
         description="Filter jobs until this date (ISO format: YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)",
     ),
+    user: UserContext = Depends(get_current_user),
 ):
     """
     List all jobs with step results.
@@ -121,6 +126,13 @@ async def list_jobs(
         jobs = await step_manager.list_all_jobs(
             limit=None
         )  # Get all jobs first for filtering
+
+        # Scope to current user's jobs unless admin
+        if not user.has_role("admin"):
+            job_manager = get_job_manager()
+            user_jobs = await job_manager.list_jobs(user_id=user.user_id, limit=10000)
+            user_job_ids = {j.id for j in user_jobs}
+            jobs = [j for j in jobs if j.get("job_id") in user_job_ids]
 
         # Apply date filtering if provided
         if date_from or date_to:
@@ -220,6 +232,7 @@ async def get_job_results(
     ),
     group_by_job: bool = Query(False, description="Group steps by job_id"),
     search: Optional[str] = Query(None, description="Search within step names/results"),
+    user: UserContext = Depends(get_current_user),
 ):
     """
     Get detailed results for a specific job.
@@ -235,6 +248,9 @@ async def get_job_results(
         Job results with all step information (filtered and grouped as requested)
     """
     try:
+        job_manager = get_job_manager()
+        await verify_job_ownership(job_id, user, job_manager)
+
         step_manager = get_step_result_manager()
         results = await step_manager.get_job_results(job_id)
 
@@ -313,6 +329,8 @@ async def get_job_results(
 
         return JobResultsSummary(**results)
 
+    except HTTPException:
+        raise
     except FileNotFoundError:
         raise HTTPException(
             status_code=404, detail=f"No results found for job {job_id}"
@@ -325,7 +343,7 @@ async def get_job_results(
 
 
 @router.get("/jobs/{job_id}/timeline")
-async def get_job_timeline(job_id: str):
+async def get_job_timeline(job_id: str, user: UserContext = Depends(get_current_user)):
     """
     Get chronological timeline of all events for a job and its subjobs.
 
@@ -340,9 +358,10 @@ async def get_job_timeline(job_id: str):
     """
     try:
         from marketing_project.services.approval_manager import get_approval_manager
-        from marketing_project.services.job_manager import get_job_manager
 
         job_manager = get_job_manager()
+        await verify_job_ownership(job_id, user, job_manager)
+
         step_manager = get_step_result_manager()
 
         # Get job chain to find all related jobs
@@ -547,6 +566,7 @@ async def get_step_result(
     execution_context_id: Optional[str] = Query(
         None, description="Optional execution context ID to search in specific context"
     ),
+    user: UserContext = Depends(get_current_user),
 ):
     """
     Get the content of a specific step result.
@@ -560,6 +580,9 @@ async def get_step_result(
         Step result data as JSON
     """
     try:
+        job_manager = get_job_manager()
+        await verify_job_ownership(job_id, user, job_manager)
+
         step_manager = get_step_result_manager()
         result = await step_manager.get_step_result(
             job_id, step_filename, execution_context_id
@@ -567,6 +590,8 @@ async def get_step_result(
 
         return result
 
+    except HTTPException:
+        raise
     except FileNotFoundError:
         raise HTTPException(
             status_code=404,
@@ -586,6 +611,7 @@ async def get_step_result_by_name(
     execution_context_id: Optional[str] = Query(
         None, description="Optional execution context ID to search in specific context"
     ),
+    user: UserContext = Depends(get_current_user),
 ):
     """
     Get the content of a specific step result by step name.
@@ -599,6 +625,9 @@ async def get_step_result_by_name(
         Step result data as JSON
     """
     try:
+        job_manager = get_job_manager()
+        await verify_job_ownership(job_id, user, job_manager)
+
         step_manager = get_step_result_manager()
         result = await step_manager.get_step_result_by_name(
             job_id, step_name, execution_context_id
@@ -606,6 +635,8 @@ async def get_step_result_by_name(
 
         return result
 
+    except HTTPException:
+        raise
     except FileNotFoundError:
         raise HTTPException(
             status_code=404,
@@ -625,6 +656,7 @@ async def download_step_result(
     execution_context_id: Optional[str] = Query(
         None, description="Optional execution context ID to search in specific context"
     ),
+    user: UserContext = Depends(get_current_user),
 ):
     """
     Download a step result file.
@@ -638,6 +670,9 @@ async def download_step_result(
         File download response
     """
     try:
+        job_manager = get_job_manager()
+        await verify_job_ownership(job_id, user, job_manager)
+
         step_manager = get_step_result_manager()
 
         # Check if using S3
@@ -680,6 +715,8 @@ async def download_step_result(
             filename=download_filename,
         )
 
+    except HTTPException:
+        raise
     except FileNotFoundError:
         raise HTTPException(
             status_code=404,
@@ -695,7 +732,7 @@ async def download_step_result(
 
 
 @router.get("/jobs/{job_id}/pipeline-flow")
-async def get_pipeline_flow(job_id: str):
+async def get_pipeline_flow(job_id: str, user: UserContext = Depends(get_current_user)):
     """
     Get complete pipeline flow visualization data.
 
@@ -714,12 +751,17 @@ async def get_pipeline_flow(job_id: str):
     try:
         from marketing_project.models.pipeline_steps import PipelineFlowResponse
 
+        job_manager = get_job_manager()
+        await verify_job_ownership(job_id, user, job_manager)
+
         step_manager = get_step_result_manager()
         flow_data = await step_manager.get_pipeline_flow(job_id)
 
         # Convert to Pydantic model for validation
         return PipelineFlowResponse(**flow_data)
 
+    except HTTPException:
+        raise
     except FileNotFoundError:
         raise HTTPException(
             status_code=404, detail=f"No results found for job {job_id}"
@@ -732,7 +774,9 @@ async def get_pipeline_flow(job_id: str):
 
 
 @router.delete("/jobs/{job_id}")
-async def delete_job_results(job_id: str):
+async def delete_job_results(
+    job_id: str, user: UserContext = Depends(get_current_user)
+):
     """
     Delete all results for a specific job.
 
@@ -743,6 +787,9 @@ async def delete_job_results(job_id: str):
         Success status
     """
     try:
+        job_manager = get_job_manager()
+        await verify_job_ownership(job_id, user, job_manager)
+
         step_manager = get_step_result_manager()
         success = await step_manager.cleanup_job(job_id)
 

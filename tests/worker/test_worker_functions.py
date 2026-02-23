@@ -87,7 +87,9 @@ async def test_resume_pipeline_job(mock_ctx):
         "marketing_project.services.function_pipeline.FunctionPipeline"
     ) as mock_pipeline_class:
         with patch("marketing_project.worker.get_job_manager") as mock_job_mgr:
-            with patch("marketing_project.services.function_pipeline.AsyncOpenAI"):
+            with patch(
+                "marketing_project.services.function_pipeline.pipeline.AsyncOpenAI"
+            ):
                 mock_pipeline = MagicMock()
                 mock_pipeline.resume_pipeline = AsyncMock(
                     return_value={"pipeline_status": "completed"}
@@ -120,7 +122,8 @@ async def test_retry_step_job(mock_ctx):
             "marketing_project.services.step_retry_service.get_retry_service"
         ) as mock_get_service,
         patch(
-            "marketing_project.services.approval_manager.get_approval_manager"
+            "marketing_project.services.approval_manager.get_approval_manager",
+            new_callable=AsyncMock,
         ) as mock_get_approval_mgr,
         patch("marketing_project.worker.get_job_manager") as mock_get_job_mgr,
     ):

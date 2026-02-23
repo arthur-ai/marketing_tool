@@ -10,7 +10,7 @@ version: '3.8'
 services:
   api:
     environment:
-      - POSTGRES_URL=postgresql://postgres:password@postgres:5432/marketing_project
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/marketing_project
       - MONGODB_URL=mongodb://mongodb:27017/marketing_project
       # REDIS_URL is already configured in main docker-compose.yml
     depends_on:

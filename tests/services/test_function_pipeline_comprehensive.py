@@ -12,7 +12,9 @@ from marketing_project.services.function_pipeline import FunctionPipeline
 @pytest.fixture
 def mock_openai():
     """Mock OpenAI client."""
-    with patch("marketing_project.services.function_pipeline.AsyncOpenAI") as mock:
+    with patch(
+        "marketing_project.services.function_pipeline.pipeline.AsyncOpenAI"
+    ) as mock:
         mock_client = MagicMock()
         mock.return_value = mock_client
         yield mock_client
@@ -112,7 +114,7 @@ async def test_execute_single_step(function_pipeline):
     }
 
     with patch(
-        "marketing_project.services.function_pipeline.get_plugin_registry"
+        "marketing_project.services.function_pipeline.pipeline.get_plugin_registry"
     ) as mock_registry:
         mock_plugin = MagicMock()
         mock_plugin.get_required_context_keys.return_value = ["input_content"]
@@ -152,7 +154,7 @@ async def test_execute_single_step_invalid_json(function_pipeline):
 async def test_execute_single_step_not_found(function_pipeline):
     """Test execute_single_step with non-existent step."""
     with patch(
-        "marketing_project.services.function_pipeline.get_plugin_registry"
+        "marketing_project.services.function_pipeline.pipeline.get_plugin_registry"
     ) as mock_registry:
         mock_registry.return_value.get_plugin.return_value = None
         mock_registry.return_value.get_all_plugins.return_value = {}
@@ -169,7 +171,7 @@ async def test_execute_single_step_not_found(function_pipeline):
 async def test_execute_single_step_missing_context(function_pipeline):
     """Test execute_single_step with missing required context."""
     with patch(
-        "marketing_project.services.function_pipeline.get_plugin_registry"
+        "marketing_project.services.function_pipeline.pipeline.get_plugin_registry"
     ) as mock_registry:
         mock_plugin = MagicMock()
         mock_plugin.get_required_context_keys.return_value = ["required_key"]

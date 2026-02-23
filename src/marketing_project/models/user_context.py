@@ -114,7 +114,7 @@ def create_user_context_from_claims(claims: dict) -> UserContext:
     user_id = claims.get("sub", "")
 
     # Extract email
-    email = claims.get("email") or claims.get("email_verified")
+    email = claims.get("email")
 
     # Extract username
     username = (

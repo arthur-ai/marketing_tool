@@ -12,7 +12,9 @@ from marketing_project.services.step_retry_service import StepRetryService
 @pytest.fixture
 def mock_openai():
     """Mock OpenAI client."""
-    with patch("marketing_project.services.function_pipeline.AsyncOpenAI") as mock:
+    with patch(
+        "marketing_project.services.function_pipeline.pipeline.AsyncOpenAI"
+    ) as mock:
         mock_client = MagicMock()
         mock.return_value = mock_client
         yield mock_client

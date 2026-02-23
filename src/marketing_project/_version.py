@@ -88,7 +88,7 @@ def get_version():
 
     # Fallback to default version
     # Update this to match the latest release version
-    return "1.0.85"
+    return "2.0.0"
 
 
 # Get the version when the module is imported

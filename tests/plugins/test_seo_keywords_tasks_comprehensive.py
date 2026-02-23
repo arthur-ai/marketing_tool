@@ -55,7 +55,7 @@ async def test_execute(seo_keywords_plugin):
     }
 
     with patch(
-        "marketing_project.services.function_pipeline.AsyncOpenAI"
+        "marketing_project.services.function_pipeline.pipeline.AsyncOpenAI"
     ) as mock_openai:
         mock_pipeline = FunctionPipeline()
         mock_pipeline._call_function = AsyncMock(

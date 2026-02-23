@@ -308,10 +308,9 @@ class PipelineStepPlugin(ABC):
 
         This method handles the common execution flow:
         1. Build prompt context
-        2. Get user prompt from template
-        3. Get system instruction
-        4. Call pipeline's _call_function
-        5. Return result
+        2. Get user prompt and system instruction (from Arthur if configured, else local .j2)
+        3. Call pipeline's _call_function
+        4. Return result
 
         Plugins can override _build_prompt_context() to customize prompt context.
 
@@ -326,13 +325,23 @@ class PipelineStepPlugin(ABC):
         # Build prompt context (plugins can override _build_prompt_context)
         prompt_context = self._build_prompt_context(context)
 
-        # Get user prompt from template
-        prompt = pipeline._get_user_prompt(self.step_name, prompt_context)
+        # Fetch prompts from Arthur (required — no local template fallback).
+        from marketing_project.services.arthur_prompt_client import fetch_arthur_prompt
 
-        # Get system instruction (pass prompt_context for platform-specific templates)
-        system_instruction = pipeline._get_system_instruction(
-            self.step_name, context=prompt_context
-        )
+        arthur_messages = await fetch_arthur_prompt(self.step_name)
+        if arthur_messages is None:
+            raise RuntimeError(
+                f"Arthur prompt unavailable for step '{self.step_name}'. "
+                "Ensure ARTHUR_BASE_URL, ARTHUR_API_KEY, and ARTHUR_TASK_ID are set "
+                "and the prompt exists with a 'production' version tag."
+            )
+
+        system_instruction, user_template = arthur_messages
+
+        from jinja2 import Environment
+
+        env = Environment(autoescape=False)
+        prompt = env.from_string(user_template).render(**prompt_context)
 
         # Get execution step number from context if available (dynamic numbering)
         # Otherwise fall back to static step_number (for backward compatibility)

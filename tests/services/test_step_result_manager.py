@@ -130,15 +130,16 @@ async def test_get_step_result(step_result_manager):
     )
 
     # Mock job manager to return a job
+    # Patch where it's imported from (job_manager module)
     with patch(
         "marketing_project.services.job_manager.get_job_manager"
-    ) as mock_job_manager:
+    ) as mock_get_job_manager:
         mock_job = MagicMock()
         mock_job.id = "test-job-1"
         mock_job.metadata = {}  # No original_job_id, so it's the root job
         mock_job_mgr = MagicMock()
         mock_job_mgr.get_job = AsyncMock(return_value=mock_job)
-        mock_job_manager.return_value = mock_job_mgr
+        mock_get_job_manager.return_value = mock_job_mgr
 
         # Retrieve it using step_filename instead of step_number
         step_filename = step_result_manager._get_step_filename(1, "seo_keywords")

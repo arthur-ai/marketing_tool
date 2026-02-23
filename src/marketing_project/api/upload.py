@@ -15,9 +15,12 @@ from urllib.parse import urlparse
 
 import requests
 from bs4 import BeautifulSoup
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, HttpUrl
+
+from marketing_project.middleware.keycloak_auth import get_current_user
+from marketing_project.models.user_context import UserContext
 
 # Document processing imports
 try:
@@ -64,7 +67,9 @@ s3_storage = S3Storage(prefix="")
 
 @router.post("/upload")
 async def upload_file(
-    file: UploadFile = File(...), content_type: str = Form("blog_post")
+    file: UploadFile = File(...),
+    content_type: str = Form("blog_post"),
+    user: UserContext = Depends(get_current_user),
 ):
     """
     Upload a file and process it for the marketing pipeline.
@@ -112,7 +117,24 @@ async def upload_file(
         with open(upload_path, "wb") as buffer:
             buffer.write(content)
 
-        logger.info(f"File uploaded: {safe_filename} ({len(content)} bytes)")
+        # Persist upload ownership metadata
+        meta_path = os.path.join(UPLOAD_DIR, f"{file_id}.meta.json")
+        with open(meta_path, "w") as mf:
+            json.dump(
+                {
+                    "file_id": file_id,
+                    "filename": file.filename,
+                    "uploaded_by": user.user_id,
+                    "uploaded_at": datetime.utcnow().isoformat(),
+                    "content_type": content_type,
+                    "size": len(content),
+                },
+                mf,
+            )
+
+        logger.info(
+            f"File uploaded: {safe_filename} ({len(content)} bytes) by user {user.user_id}"
+        )
 
         # Process file based on content type
         processed_path = await process_uploaded_file(
@@ -140,6 +162,7 @@ async def upload_file(
                 "upload_path": upload_path,
                 "processed_path": processed_path,
                 "s3_uploaded": s3_uploaded,
+                "uploaded_by": user.user_id,
             },
         )
 
@@ -714,7 +737,9 @@ def extract_blog_content_from_url(url: str) -> Dict[str, Any]:
 
 @router.post("/upload/from-url")
 @router.post("/upload/url")  # Alias for test compatibility
-async def upload_from_url(request: URLExtractionRequest):
+async def upload_from_url(
+    request: URLExtractionRequest, user: UserContext = Depends(get_current_user)
+):
     """
     Extract blog post content from a URL and process it for the marketing pipeline.
 
@@ -799,7 +824,9 @@ async def upload_from_url(request: URLExtractionRequest):
 
 
 @router.get("/upload/status/{file_id}")
-async def get_upload_status(file_id: str):
+async def get_upload_status(
+    file_id: str, user: UserContext = Depends(get_current_user)
+):
     """
     Get the status of an uploaded file.
     """

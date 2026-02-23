@@ -5,9 +5,11 @@ API endpoints for pipeline settings management.
 import logging
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from marketing_project.middleware.rbac import require_roles
+from marketing_project.models.user_context import UserContext
 from marketing_project.services.pipeline_settings_manager import (
     PipelineSettings,
     get_pipeline_settings_manager,
@@ -43,7 +45,7 @@ class PipelineSettingsResponse(BaseModel):
 
 
 @router.get("/pipeline", response_model=PipelineSettingsResponse)
-async def get_pipeline_settings():
+async def get_pipeline_settings(user: UserContext = Depends(require_roles(["admin"]))):
     """
     Get current pipeline settings.
 
@@ -81,7 +83,10 @@ async def get_pipeline_settings():
 
 
 @router.post("/pipeline", response_model=PipelineSettingsResponse)
-async def save_pipeline_settings(request: PipelineSettingsRequest):
+async def save_pipeline_settings(
+    request: PipelineSettingsRequest,
+    user: UserContext = Depends(require_roles(["admin"])),
+):
     """
     Save pipeline settings.
 

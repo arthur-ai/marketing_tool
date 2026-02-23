@@ -570,12 +570,20 @@ def add_job_metadata_to_span(span, job, job_id: str, job_type: str):
                     ),
                 )
 
+            # User information (from job.user_id or metadata)
+            if job.user_id:
+                set_span_attribute(span, "user.id", job.user_id)
+            elif job.metadata and "triggered_by_user_id" in job.metadata:
+                set_span_attribute(
+                    span, "user.id", job.metadata["triggered_by_user_id"]
+                )
+
             # Metadata fields (following OpenInference format)
             if job.metadata:
                 metadata = job.metadata
 
-                # User and session information
-                if "user_id" in metadata:
+                # User and session information (check metadata as fallback)
+                if "user_id" in metadata and not job.user_id:
                     set_span_attribute(span, "user.id", metadata["user_id"])
                 if "session_id" in metadata:
                     set_span_attribute(span, "session.id", metadata["session_id"])
@@ -1407,28 +1415,10 @@ def ensure_span_has_minimum_metadata(
         except Exception:
             pass
 
-        # Try to set session.id if not already set and job_id is available
-        # Note: This is best-effort since we can't easily check if session.id is already set
-        # The session.id should ideally be set from job metadata when creating spans
-        # This is a fallback to ensure it's set if somehow missed
-        if job_id:
-            try:
-                # Check if we can get session_id from current span context or job
-                # Since this is synchronous, we can't await get_session_id_for_job
-                # But we can try to get it from the current job if available in context
-                # For now, we'll rely on session_id being set when spans are created
-                # This is mainly a placeholder for future async support if needed
-                pass
-            except Exception:
-                pass
-
-        # Ensure input is always set (check if it exists, if not set empty dict)
-        try:
-            # We can't easily check if input.value exists, so we'll ensure it's set
-            # This will be handled by ensuring set_span_input is always called
-            pass
-        except Exception:
-            pass
+        # session.id is resolved at span-creation time via create_job_root_span (which accepts
+        # an explicit session_id parameter) or by the caller setting it directly.
+        # Async callers that need to traverse the parent chain should call
+        # get_session_id_for_job(job_id) and pass the result to create_job_root_span.
 
     except Exception as e:
         logger.debug(f"Failed to ensure span minimum metadata: {e}")
@@ -1460,17 +1450,6 @@ def close_span(
     if not span or not _tracing_available:
         return
     try:
-        # Ensure output is set if not already set
-        try:
-            # Check if output.value exists by trying to get it
-            # If it doesn't exist, set default output
-            if hasattr(span, "attributes"):
-                # We can't easily check, so we'll ensure it's set via set_span_output
-                # This is a best-effort check
-                pass
-        except Exception:
-            pass
-
         # Set duration if start_time provided
         if start_time:
             set_span_duration(span, start_time)
@@ -1553,6 +1532,7 @@ def create_job_root_span(
     input_mime_type: str = "application/json",
     job: Optional[Any] = None,
     attributes: Optional[dict] = None,
+    session_id: Optional[str] = None,
 ):
     """
     Create a root span for a job execution.
@@ -1618,19 +1598,18 @@ def create_job_root_span(
         if job:
             add_job_metadata_to_span(span, job, job_id, job_type)
 
-        # Ensure session.id is set - check job metadata first, then traverse parent chain if needed
-        session_id = None
-        if job and job.metadata and "session_id" in job.metadata:
-            session_id = job.metadata["session_id"]
-        elif job_id:
-            # If not in current job, try to get from parent chain (async, but we'll handle it)
-            # Note: This is a synchronous function, so we can't await here
-            # The session_id will be set via ensure_span_has_minimum_metadata or in async contexts
-            pass
+            # Ensure user.id is set from job.user_id if not already set
+            if job.user_id:
+                set_span_attribute(span, "user.id", job.user_id)
 
-        # Set session.id if we have it
-        if session_id:
-            set_span_attribute(span, "session.id", session_id)
+        # Resolve session.id: explicit param > job metadata.
+        # Callers in async contexts should pass session_id=await get_session_id_for_job(job_id)
+        # when the job is a subjob whose session_id may live in an ancestor's metadata.
+        resolved_session_id = session_id or (
+            job.metadata.get("session_id") if job and job.metadata else None
+        )
+        if resolved_session_id:
+            set_span_attribute(span, "session.id", resolved_session_id)
 
         # Set additional attributes if provided (these override metadata from job)
         if attributes:

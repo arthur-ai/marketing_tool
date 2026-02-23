@@ -15,6 +15,7 @@ from marketing_project.services.function_pipeline.tracing import (
     add_span_event,
     close_span,
     create_span,
+    ensure_span_has_minimum_metadata,
     extract_quality_metrics,
     is_tracing_available,
     link_spans,

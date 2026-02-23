@@ -149,4 +149,4 @@ def test_app_context_with_release_notes():
     context = AppContext(content=release_notes, content_type="release_notes")
     assert context.content.id == "release-123"
     assert context.content_type == "release_notes"
-    assert context.content.version == "1.0.0"
+    assert context.content.version == "2.0.0"

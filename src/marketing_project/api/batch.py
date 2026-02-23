@@ -5,10 +5,12 @@ API endpoints for batch processing multiple content items.
 import logging
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from marketing_project.middleware.keycloak_auth import get_current_user
 from marketing_project.models.processor_models import BlogProcessorRequest
+from marketing_project.models.user_context import UserContext
 from marketing_project.processors import (  # Exported for test compatibility
     process_blog_post,
 )
@@ -44,7 +46,9 @@ class BatchJobResponse(BaseModel):
 
 
 @router.post("/blog", response_model=BatchJobResponse)
-async def process_batch_blog(request: BatchBlogRequest):
+async def process_batch_blog(
+    request: BatchBlogRequest, user: UserContext = Depends(get_current_user)
+):
     """
     Process multiple blog posts in a single batch.
 
@@ -108,6 +112,8 @@ async def process_batch_blog(request: BatchBlogRequest):
                     job_type="blog_post",
                     content_id=item_request.content.id,
                     metadata=job_metadata,
+                    user_id=user.user_id,
+                    user_context=user,
                 )
 
                 # Convert to JSON and submit to ARQ
@@ -171,7 +177,9 @@ async def process_batch_blog(request: BatchBlogRequest):
 
 
 @router.get("/campaign/{campaign_id}/jobs")
-async def get_campaign_jobs(campaign_id: str):
+async def get_campaign_jobs(
+    campaign_id: str, user: UserContext = Depends(get_current_user)
+):
     """
     Get all jobs for a specific campaign.
 
@@ -186,7 +194,7 @@ async def get_campaign_jobs(campaign_id: str):
         # Get all jobs and filter by campaign_id
         # Note: This is a simplified implementation - in production, you'd want
         # a more efficient query mechanism
-        all_jobs = await job_manager.list_jobs(limit=1000)
+        all_jobs = await job_manager.list_jobs(limit=1000, user_id=user.user_id)
         campaign_jobs = [
             job for job in all_jobs if job.metadata.get("campaign_id") == campaign_id
         ]

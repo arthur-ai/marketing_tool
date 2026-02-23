@@ -7,6 +7,7 @@ This file provides a comprehensive view of all API endpoints in the system.
 from fastapi import APIRouter
 
 # Import all sub-routers directly from their modules to avoid circular imports
+from marketing_project.api.admin_users import router as admin_users_router
 from marketing_project.api.analytics import router as analytics_router
 from marketing_project.api.approvals import router as approvals_router
 from marketing_project.api.batch import router as batch_router
@@ -18,12 +19,12 @@ from marketing_project.api.health import router as health_router
 from marketing_project.api.internal_docs import router as internal_docs_router
 from marketing_project.api.jobs import router as jobs_router
 from marketing_project.api.processors import router as processors_router
-from marketing_project.api.scheduling import router as scheduling_router
 from marketing_project.api.settings import router as settings_router
 from marketing_project.api.social_media import router as social_media_router
 from marketing_project.api.step_results import router as step_results_router
 from marketing_project.api.system import router as system_router
 from marketing_project.api.upload import router as upload_router
+from marketing_project.api.user_settings import router as user_settings_router
 
 
 def register_routes() -> APIRouter:
@@ -151,15 +152,6 @@ def register_routes() -> APIRouter:
     api_router.include_router(social_media_router, tags=["Social Media"])
 
     # ========================================
-    # SCHEDULING ROUTES
-    # ========================================
-    # POST /api/v1/schedule/post - Schedule a post
-    # GET /api/v1/schedule/posts - List scheduled posts
-    # GET /api/v1/schedule/posts/{schedule_id} - Get scheduled post
-    # DELETE /api/v1/schedule/posts/{schedule_id} - Cancel scheduled post
-    api_router.include_router(scheduling_router, tags=["Scheduling"])
-
-    # ========================================
     # FEEDBACK ROUTES
     # ========================================
     # POST /api/v1/feedback - Submit feedback
@@ -179,6 +171,29 @@ def register_routes() -> APIRouter:
     # GET /api/v1/settings/pipeline - Get pipeline settings
     # POST /api/v1/settings/pipeline - Save pipeline settings
     api_router.include_router(settings_router, tags=["Settings"])
+
+    # ========================================
+    # ADMIN USER MANAGEMENT ROUTES
+    # ========================================
+    # GET /api/v1/admin/users                      - [Admin] List all users
+    # GET /api/v1/admin/users/{user_id}             - [Admin] Get user by ID
+    # GET /api/v1/admin/users/{user_id}/roles       - [Admin] Get user roles
+    # PUT /api/v1/admin/users/{user_id}/roles       - [Admin] Set user roles
+    api_router.include_router(
+        admin_users_router, prefix="/admin/users", tags=["Admin - User Management"]
+    )
+
+    # ========================================
+    # USER SETTINGS ROUTES
+    # ========================================
+    # GET /api/v1/users/me/settings - Get own settings
+    # PUT /api/v1/users/me/settings - Upsert own settings
+    # DELETE /api/v1/users/me/settings - Reset own settings
+    # GET /api/v1/users/{user_id}/settings - [Admin] Get user settings
+    # PUT /api/v1/users/{user_id}/settings - [Admin] Update user settings
+    api_router.include_router(
+        user_settings_router, prefix="/users", tags=["User Settings"]
+    )
 
     return api_router
 

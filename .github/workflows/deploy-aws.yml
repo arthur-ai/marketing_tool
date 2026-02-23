@@ -209,6 +209,15 @@ jobs:
           OTEL_SERVICE_NAME: ${{ secrets.OTEL_SERVICE_NAME || 'marketing-tool' }}
           OTEL_DEPLOYMENT_ENVIRONMENT: ${{ secrets.OTEL_DEPLOYMENT_ENVIRONMENT || 'production' }}
           OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT: ${{ secrets.OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT || 'true' }}
+          # Keycloak configuration (optional - leave KEYCLOAK_SERVER_URL empty to disable)
+          KEYCLOAK_SERVER_URL: ${{ secrets.KEYCLOAK_SERVER_URL || '' }}
+          KEYCLOAK_REALM: ${{ secrets.KEYCLOAK_REALM || '' }}
+          KEYCLOAK_BACKEND_CLIENT_ID: ${{ secrets.KEYCLOAK_BACKEND_CLIENT_ID || '' }}
+          KEYCLOAK_BACKEND_CLIENT_SECRET: ${{ secrets.KEYCLOAK_BACKEND_CLIENT_SECRET || '' }}
+          KEYCLOAK_FRONTEND_CLIENT_ID: ${{ secrets.KEYCLOAK_FRONTEND_CLIENT_ID || '' }}
+          KEYCLOAK_FRONTEND_CLIENT_SECRET: ${{ secrets.KEYCLOAK_FRONTEND_CLIENT_SECRET || '' }}
+          NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET || '' }}
+          KEYCLOAK_VERIFY_SSL: ${{ secrets.KEYCLOAK_VERIFY_SSL || 'true' }}
         run: |
           cd deploy/aws
           chmod +x deploy.sh

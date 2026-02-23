@@ -21,3 +21,8 @@ redis>=5.0.0
 # If you want HTTP endpoint tests (for your FastAPI server)
 httpx>=0.26.0
 pytest-httpx>=0.30.0
+
+# Keycloak authentication test dependencies
+pytest-mock>=3.12.0
+cryptography>=41.0.0
+pyjwt>=2.8.0

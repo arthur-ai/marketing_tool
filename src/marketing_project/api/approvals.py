@@ -9,14 +9,25 @@ import time
 from datetime import datetime
 from typing import List, Optional
 
-from fastapi import APIRouter, Body, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
+from ..middleware.keycloak_auth import get_current_user
+from ..middleware.rbac import (
+    require_roles,
+    verify_approval_ownership,
+    verify_job_ownership,
+)
 from ..services.function_pipeline.tracing import (
+    add_span_event,
     close_span,
     create_span,
+    ensure_span_has_minimum_metadata,
     is_tracing_available,
+    link_spans,
     record_span_exception,
     set_span_attribute,
+    set_span_duration,
+    set_span_error,
     set_span_input,
     set_span_kind,
     set_span_output,
@@ -29,7 +40,6 @@ try:
 except ImportError:
     Status = None
     StatusCode = None
-
 from ..models.approval_models import (
     ApprovalDecisionRequest,
     ApprovalListItem,
@@ -39,6 +49,7 @@ from ..models.approval_models import (
     PendingApprovalsResponse,
     RetryStepRequest,
 )
+from ..models.user_context import UserContext
 from ..services.approval_manager import (
     get_approval_manager,
     get_approval_manager_sync,
@@ -53,7 +64,8 @@ router = APIRouter()
 
 @router.get("/pending", response_model=PendingApprovalsResponse)
 async def get_pending_approvals(
-    job_id: Optional[str] = Query(None, description="Filter by job ID")
+    job_id: Optional[str] = Query(None, description="Filter by job ID"),
+    user: UserContext = Depends(get_current_user),
 ):
     """
     Get all pending approval requests.
@@ -142,6 +154,12 @@ async def get_pending_approvals(
 
         approvals = filtered_approvals
 
+        # Scope to current user's jobs unless admin
+        if not user.has_role("admin"):
+            user_jobs = await job_manager.list_jobs(user_id=user.user_id, limit=1000)
+            user_job_ids = {j.id for j in user_jobs}
+            approvals = [a for a in approvals if a.job_id in user_job_ids]
+
         # If no pending approvals but job_id provided, check if job is waiting and recreate approval
         if len(approvals) == 0 and job_id:
             job = await job_manager.get_job(job_id)
@@ -224,7 +242,7 @@ async def get_pending_approvals(
 
 
 @router.delete("/all")
-async def delete_all_approvals():
+async def delete_all_approvals(user: UserContext = Depends(require_roles(["admin"]))):
     """
     Delete all approvals from the system.
 
@@ -255,7 +273,7 @@ async def delete_all_approvals():
 
 
 @router.get("/analytics")
-async def get_approval_analytics():
+async def get_approval_analytics(user: UserContext = Depends(get_current_user)):
     """
     Get comprehensive approval analytics including metrics, trends, and performance.
 
@@ -440,7 +458,7 @@ async def get_approval_analytics():
 
 
 @router.get("/stats", response_model=ApprovalStats)
-async def get_approval_stats():
+async def get_approval_stats(user: UserContext = Depends(get_current_user)):
     """
     Get approval statistics.
 
@@ -458,7 +476,7 @@ async def get_approval_stats():
 
 
 @router.get("/settings", response_model=ApprovalSettings)
-async def get_approval_settings():
+async def get_approval_settings(user: UserContext = Depends(get_current_user)):
     """
     Get current approval settings.
     """
@@ -472,7 +490,10 @@ async def get_approval_settings():
 
 
 @router.post("/settings", response_model=ApprovalSettings)
-async def update_approval_settings(settings: ApprovalSettings):
+async def update_approval_settings(
+    settings: ApprovalSettings,
+    user: UserContext = Depends(require_roles(["admin"])),
+):
     """
     Update approval settings.
 
@@ -489,7 +510,9 @@ async def update_approval_settings(settings: ApprovalSettings):
 
 
 @router.get("/{approval_id}/impact")
-async def get_approval_impact(approval_id: str):
+async def get_approval_impact(
+    approval_id: str, user: UserContext = Depends(get_current_user)
+):
     """
     Get approval impact analysis showing what changed after approval.
 
@@ -500,13 +523,13 @@ async def get_approval_impact(approval_id: str):
     - Impact on downstream steps
     """
     try:
-        manager = await get_approval_manager()
-        approval = await manager.get_approval(approval_id)
+        from ..services.job_manager import get_job_manager
 
-        if not approval:
-            raise HTTPException(
-                status_code=404, detail=f"Approval {approval_id} not found"
-            )
+        manager = await get_approval_manager()
+        job_manager = get_job_manager()
+        approval = await verify_approval_ownership(
+            approval_id, user, manager, job_manager
+        )
 
         # Original output is stored in approval.output_data
         original_output = approval.output_data
@@ -549,9 +572,6 @@ async def get_approval_impact(approval_id: str):
 
         # Check impact on downstream steps (if subjob was created)
         downstream_impact = None
-        from ..services.job_manager import get_job_manager
-
-        job_manager = get_job_manager()
 
         job = await job_manager.get_job(approval.job_id)
         if job:
@@ -598,7 +618,7 @@ async def get_approval_impact(approval_id: str):
 
 
 @router.get("/{approval_id}")
-async def get_approval(approval_id: str):
+async def get_approval(approval_id: str, user: UserContext = Depends(get_current_user)):
     """
     Get details of a specific approval request with full context.
 
@@ -611,19 +631,15 @@ async def get_approval(approval_id: str):
     - Timestamps
     """
     try:
-        manager = await get_approval_manager()
-        approval = await manager.get_approval(approval_id)
-
-        if not approval:
-            raise HTTPException(
-                status_code=404, detail=f"Approval {approval_id} not found"
-            )
-
-        # Enhance approval with additional context
         from ..services.job_manager import get_job_manager
 
+        manager = await get_approval_manager()
         job_manager = get_job_manager()
+        approval = await verify_approval_ownership(
+            approval_id, user, manager, job_manager
+        )
 
+        # Enhance approval with additional context
         resume_job_id = None
         resume_job = None
 
@@ -682,7 +698,11 @@ async def get_approval(approval_id: str):
 
 
 @router.post("/{approval_id}/decide", response_model=ApprovalRequest)
-async def decide_approval(approval_id: str, decision: ApprovalDecisionRequest):
+async def decide_approval(
+    approval_id: str,
+    decision: ApprovalDecisionRequest,
+    user: UserContext = Depends(get_current_user),
+):
     """
     Make a decision on an approval request.
 
@@ -690,14 +710,15 @@ async def decide_approval(approval_id: str, decision: ApprovalDecisionRequest):
     Once decided, the pipeline can continue with the approved/modified output.
     """
     try:
-        manager = await get_approval_manager()
+        import uuid
 
-        # Get approval first to check job_id
-        approval = await manager.get_approval(approval_id)
-        if not approval:
-            raise HTTPException(
-                status_code=404, detail=f"Approval {approval_id} not found"
-            )
+        from ..services.job_manager import JobStatus, get_job_manager
+
+        manager = await get_approval_manager()
+        job_manager = get_job_manager()
+
+        # Verify ownership before allowing decision
+        await verify_approval_ownership(approval_id, user, manager, job_manager)
 
         # Make decision
         approval = await manager.decide_approval(approval_id, decision)
@@ -706,13 +727,6 @@ async def decide_approval(approval_id: str, decision: ApprovalDecisionRequest):
             f"Approval {approval_id} decided: {decision.decision} "
             f"by {decision.reviewed_by or 'unknown'}"
         )
-
-        # Import job manager utilities for resume/retry logic
-        import uuid
-
-        from ..services.job_manager import JobStatus, get_job_manager
-
-        job_manager = get_job_manager()
 
         # Handle approval/modify - automatically resume pipeline
         if decision.decision in ["approve", "modify"]:
@@ -814,11 +828,30 @@ async def decide_approval(approval_id: str, decision: ApprovalDecisionRequest):
                     if session_id:
                         resume_metadata["session_id"] = session_id
 
+                    # Preserve user_id from parent job
+                    parent_user_id = job.user_id or (
+                        root_job.user_id if root_job else None
+                    )
+                    parent_user_context = None
+                    if parent_user_id and root_job:
+                        # Try to reconstruct user context from metadata
+                        from marketing_project.models.user_context import UserContext
+
+                        triggered_by = root_job.metadata.get("triggered_by_user_id")
+                        if triggered_by == parent_user_id:
+                            parent_user_context = UserContext(
+                                user_id=parent_user_id,
+                                username=root_job.metadata.get("triggered_by_username"),
+                                email=root_job.metadata.get("triggered_by_email"),
+                            )
+
                     resume_job = await job_manager.create_job(
                         job_id=resume_job_id,
                         job_type="resume_pipeline",
                         content_id=job.content_id,
                         metadata=resume_metadata,
+                        user_id=parent_user_id,
+                        user_context=parent_user_context,
                     )
 
                     # Update chain metadata for all jobs in chain
@@ -987,11 +1020,36 @@ async def decide_approval(approval_id: str, decision: ApprovalDecisionRequest):
                 if session_id:
                     retry_metadata["session_id"] = session_id
 
+                # Preserve user_id from approval job
+                parent_user_id = approval_job.user_id if approval_job else None
+                if not parent_user_id and original_job_id:
+                    root_job = await job_manager.get_job(original_job_id)
+                    parent_user_id = root_job.user_id if root_job else None
+
+                parent_user_context = None
+                if parent_user_id:
+                    # Try to reconstruct user context from metadata
+                    from marketing_project.models.user_context import UserContext
+
+                    source_job = approval_job or (root_job if original_job_id else None)
+                    if source_job:
+                        triggered_by = source_job.metadata.get("triggered_by_user_id")
+                        if triggered_by == parent_user_id:
+                            parent_user_context = UserContext(
+                                user_id=parent_user_id,
+                                username=source_job.metadata.get(
+                                    "triggered_by_username"
+                                ),
+                                email=source_job.metadata.get("triggered_by_email"),
+                            )
+
                 retry_job = await job_manager.create_job(
                     job_id=retry_job_id,
                     job_type=f"retry_step_{pipeline_step}",
                     content_id=approval.job_id,
                     metadata=retry_metadata,
+                    user_id=parent_user_id,
+                    user_context=parent_user_context,
                 )
 
                 if rerun_span:
@@ -1133,11 +1191,36 @@ async def decide_approval(approval_id: str, decision: ApprovalDecisionRequest):
                 if session_id:
                     retry_metadata["session_id"] = session_id
 
+                # Preserve user_id from approval job
+                parent_user_id = approval_job.user_id if approval_job else None
+                if not parent_user_id and original_job_id:
+                    root_job = await job_manager.get_job(original_job_id)
+                    parent_user_id = root_job.user_id if root_job else None
+
+                parent_user_context = None
+                if parent_user_id:
+                    # Try to reconstruct user context from metadata
+                    from marketing_project.models.user_context import UserContext
+
+                    source_job = approval_job or (root_job if original_job_id else None)
+                    if source_job:
+                        triggered_by = source_job.metadata.get("triggered_by_user_id")
+                        if triggered_by == parent_user_id:
+                            parent_user_context = UserContext(
+                                user_id=parent_user_id,
+                                username=source_job.metadata.get(
+                                    "triggered_by_username"
+                                ),
+                                email=source_job.metadata.get("triggered_by_email"),
+                            )
+
                 retry_job = await job_manager.create_job(
                     job_id=retry_job_id,
                     job_type=f"retry_step_{pipeline_step}",
                     content_id=approval.job_id,
                     metadata=retry_metadata,
+                    user_id=parent_user_id,
+                    user_context=parent_user_context,
                 )
 
                 # Submit to ARQ worker with user guidance
@@ -1178,6 +1261,8 @@ async def decide_approval(approval_id: str, decision: ApprovalDecisionRequest):
 
         return approval
 
+    except HTTPException:
+        raise
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -1186,7 +1271,9 @@ async def decide_approval(approval_id: str, decision: ApprovalDecisionRequest):
 
 
 @router.get("/jobs/{job_id}/all")
-async def get_all_approvals_for_job(job_id: str):
+async def get_all_approvals_for_job(
+    job_id: str, user: UserContext = Depends(get_current_user)
+):
     """
     Get all approvals across the entire job chain.
 
@@ -1197,6 +1284,9 @@ async def get_all_approvals_for_job(job_id: str):
 
         manager = await get_approval_manager()
         job_manager = get_job_manager()
+
+        # Verify ownership of the root job
+        await verify_job_ownership(job_id, user, job_manager)
 
         # Get job chain to find all related jobs
         chain_data = await job_manager.get_job_chain(job_id)
@@ -1257,6 +1347,7 @@ async def get_all_approvals_for_job(job_id: str):
 async def bulk_approve(
     approval_ids: List[str] = Body(..., description="List of approval IDs to approve"),
     decision: ApprovalDecisionRequest = Body(..., description="Approval decision"),
+    user: UserContext = Depends(get_current_user),
 ):
     """
     Approve multiple similar approvals at once.
@@ -1275,7 +1366,10 @@ async def bulk_approve(
                 detail="Bulk approve endpoint only supports 'approve' decision",
             )
 
+        from ..services.job_manager import get_job_manager
+
         manager = await get_approval_manager()
+        job_manager = get_job_manager()
         approved_approvals = []
         errors = []
 
@@ -1285,6 +1379,15 @@ async def bulk_approve(
                 if not approval:
                     errors.append({"approval_id": approval_id, "error": "Not found"})
                     continue
+
+                # Skip approvals the user doesn't own (non-admins only)
+                if not user.has_role("admin"):
+                    job = await job_manager.get_job(approval.job_id)
+                    if not job or job.user_id != user.user_id:
+                        errors.append(
+                            {"approval_id": approval_id, "error": "Access denied"}
+                        )
+                        continue
 
                 if approval.status != "pending":
                     errors.append(
@@ -1325,7 +1428,9 @@ async def bulk_approve(
 
 @router.get("/job/{job_id}", response_model=PendingApprovalsResponse)
 async def get_job_approvals(
-    job_id: str, status: Optional[str] = Query(None, description="Filter by status")
+    job_id: str,
+    status: Optional[str] = Query(None, description="Filter by status"),
+    user: UserContext = Depends(get_current_user),
 ):
     """
     Get all approvals for a specific job.
@@ -1342,6 +1447,9 @@ async def get_job_approvals(
         from ..services.job_manager import JobStatus, get_job_manager
 
         job_manager = get_job_manager()
+
+        # Verify ownership of the job
+        await verify_job_ownership(job_id, user, job_manager)
 
         # If no approvals found but job is waiting, try to recreate from pipeline context
         approvals = await manager.list_approvals(job_id=job_id, status=status)
@@ -1432,6 +1540,8 @@ async def get_job_approvals(
             pending=len(pending),
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to get approvals for job {job_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -1439,7 +1549,9 @@ async def get_job_approvals(
 
 @router.post("/{approval_id}/retry")
 async def retry_rejected_step(
-    approval_id: str, retry_request: Optional[RetryStepRequest] = None
+    approval_id: str,
+    retry_request: Optional[RetryStepRequest] = None,
+    user: UserContext = Depends(get_current_user),
 ):
     """
     Retry a single rejected pipeline step.
@@ -1458,13 +1570,15 @@ async def retry_rejected_step(
             - message: Success message
     """
     try:
-        manager = await get_approval_manager()
-        approval = await manager.get_approval(approval_id)
+        from marketing_project.services.job_manager import get_job_manager
 
-        if not approval:
-            raise HTTPException(
-                status_code=404, detail=f"Approval {approval_id} not found"
-            )
+        manager = await get_approval_manager()
+        job_manager = get_job_manager()
+
+        # Verify ownership before allowing retry
+        approval = await verify_approval_ownership(
+            approval_id, user, manager, job_manager
+        )
 
         # Validate approval is rejected
         if approval.status != "rejected":
@@ -1487,10 +1601,6 @@ async def retry_rejected_step(
 
         # Create a new job for the retry
         import uuid
-
-        from marketing_project.services.job_manager import get_job_manager
-
-        job_manager = get_job_manager()
 
         # Get session_id from job to propagate to subjob
         job = await job_manager.get_job(job_id)
@@ -1524,11 +1634,34 @@ async def retry_rejected_step(
         if session_id:
             retry_metadata["session_id"] = session_id
 
+        # Preserve user_id from job
+        parent_user_id = job.user_id if job else None
+        if not parent_user_id and original_job_id:
+            root_job = await job_manager.get_job(original_job_id)
+            parent_user_id = root_job.user_id if root_job else None
+
+        parent_user_context = None
+        if parent_user_id:
+            # Try to reconstruct user context from metadata
+            from marketing_project.models.user_context import UserContext
+
+            source_job = job or (root_job if original_job_id else None)
+            if source_job:
+                triggered_by = source_job.metadata.get("triggered_by_user_id")
+                if triggered_by == parent_user_id:
+                    parent_user_context = UserContext(
+                        user_id=parent_user_id,
+                        username=source_job.metadata.get("triggered_by_username"),
+                        email=source_job.metadata.get("triggered_by_email"),
+                    )
+
         retry_job = await job_manager.create_job(
             job_id=retry_job_id,
             job_type=f"retry_step_{pipeline_step}",
             content_id=job_id,  # Link to original job
             metadata=retry_metadata,
+            user_id=parent_user_id,
+            user_context=parent_user_context,
         )
 
         # Submit to ARQ worker with user guidance

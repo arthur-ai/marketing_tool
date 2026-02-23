@@ -24,7 +24,7 @@ from marketing_project.services.step_retry_service import (
 @pytest.fixture
 def step_retry_service():
     """Create a StepRetryService instance for testing."""
-    with patch("marketing_project.services.function_pipeline.AsyncOpenAI"):
+    with patch("marketing_project.services.function_pipeline.pipeline.AsyncOpenAI"):
         service = StepRetryService(model="gpt-5.1", temperature=0.7, lang="en")
         # Mock the pipeline
         service.pipeline = MagicMock()
@@ -37,7 +37,7 @@ def step_retry_service():
 
 def test_step_retry_service_initialization():
     """Test StepRetryService initialization."""
-    with patch("marketing_project.services.function_pipeline.AsyncOpenAI"):
+    with patch("marketing_project.services.function_pipeline.pipeline.AsyncOpenAI"):
         service = StepRetryService(model="gpt-4", temperature=0.5, lang="es")
         assert service.pipeline is not None
         assert service.pipeline.model == "gpt-4"

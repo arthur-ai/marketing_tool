@@ -31,6 +31,9 @@ services:
       # - MONGODB_URL=mongodb://mongodb:27017/marketing_project
       # Numba cache configuration (required for UMAP in Docker)
       - NUMBA_CACHE_DIR=/tmp
+      # Keycloak configuration (use host.docker.internal for Mac/Windows Docker Desktop)
+      # For Linux, you may need to use the host's IP address or add extra_hosts
+      - KEYCLOAK_SERVER_URL=${KEYCLOAK_SERVER_URL:-http://host.docker.internal:8080}
     volumes:
       - ./uploads:/app/uploads
       - ../../content:/app/content
@@ -130,6 +133,8 @@ services:
       - ARQ_JOB_TIMEOUT=${ARQ_JOB_TIMEOUT:-600}
       # Numba cache configuration (required for UMAP in Docker)
       - NUMBA_CACHE_DIR=/tmp
+      # Keycloak configuration (use host.docker.internal for Mac/Windows Docker Desktop)
+      - KEYCLOAK_SERVER_URL=${KEYCLOAK_SERVER_URL:-http://host.docker.internal:8080}
     volumes: []
     command: arq marketing_project.worker.WorkerSettings
     restart: unless-stopped

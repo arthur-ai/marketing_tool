@@ -5,13 +5,15 @@ Content source management API endpoints.
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from marketing_project.middleware.keycloak_auth import get_current_user
 from marketing_project.models import (
     ContentFetchResponse,
     ContentSourceListResponse,
     ContentSourceResponse,
 )
+from marketing_project.models.user_context import UserContext
 from marketing_project.services.content_source_config_loader import (
     ContentSourceConfigLoader,
 )
@@ -135,7 +137,7 @@ async def initialize_content_sources():
 
 
 @router.get("/content-sources", response_model=ContentSourceListResponse)
-async def list_content_sources():
+async def list_content_sources(user: UserContext = Depends(get_current_user)):
     """
     List all configured content sources.
 
@@ -209,7 +211,9 @@ async def list_content_sources():
 @router.get(
     "/content-sources/{source_name}/status", response_model=ContentSourceResponse
 )
-async def get_source_status(source_name: str):
+async def get_source_status(
+    source_name: str, user: UserContext = Depends(get_current_user)
+):
     """
     Get the status of a specific content source.
 
@@ -265,7 +269,10 @@ async def get_source_status(source_name: str):
     "/content-sources/{source_name}/fetch", response_model=ContentFetchResponse
 )
 async def fetch_from_source(
-    source_name: str, limit: int = 10, include_cached: bool = True
+    source_name: str,
+    limit: int = 10,
+    include_cached: bool = True,
+    user: UserContext = Depends(get_current_user),
 ):
     """
     Fetch content from a specific content source, or from all sources if source_name is "all".

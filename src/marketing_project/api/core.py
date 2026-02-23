@@ -6,9 +6,11 @@ import json
 import logging
 import time
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 
+from marketing_project.api.user_settings import resolve_user_settings
 from marketing_project.config.settings import PROMPTS_DIR
+from marketing_project.middleware.keycloak_auth import get_current_user
 from marketing_project.models import (
     AnalyzeRequest,
     BlogPostContext,
@@ -23,6 +25,7 @@ from marketing_project.models import (
     StepRequirementsResponse,
     TranscriptContext,
 )
+from marketing_project.models.user_context import UserContext
 from marketing_project.plugins.content_analysis import analyze_content_for_pipeline
 from marketing_project.plugins.registry import get_plugin_registry
 from marketing_project.processors import (
@@ -40,7 +43,11 @@ router = APIRouter()
 
 
 @router.post("/analyze", response_model=ContentAnalysisResponse)
-async def analyze_content(request: AnalyzeRequest, background_tasks: BackgroundTasks):
+async def analyze_content(
+    request: AnalyzeRequest,
+    background_tasks: BackgroundTasks,
+    user: UserContext = Depends(get_current_user),
+):
     """
     Analyze content for marketing pipeline processing.
 
@@ -73,7 +80,11 @@ async def analyze_content(request: AnalyzeRequest, background_tasks: BackgroundT
 
 
 @router.post("/pipeline", response_model=PipelineResponse)
-async def run_pipeline(request: PipelineRequest, background_tasks: BackgroundTasks):
+async def run_pipeline(
+    request: PipelineRequest,
+    background_tasks: BackgroundTasks,
+    user: UserContext = Depends(get_current_user),
+):
     """
     Run the complete marketing pipeline on content with auto-routing.
 
@@ -184,7 +195,7 @@ async def run_pipeline(request: PipelineRequest, background_tasks: BackgroundTas
 
 @router.get("/pipeline/steps", response_model=StepListResponse)
 @router.get("/steps", response_model=StepListResponse)  # Alias for test compatibility
-async def list_pipeline_steps():
+async def list_pipeline_steps(user: UserContext = Depends(get_current_user)):
     """
     List all available pipeline steps.
 
@@ -216,7 +227,9 @@ async def list_pipeline_steps():
 @router.get(
     "/pipeline/steps/{step_name}/requirements", response_model=StepRequirementsResponse
 )
-async def get_step_requirements(step_name: str):
+async def get_step_requirements(
+    step_name: str, user: UserContext = Depends(get_current_user)
+):
     """
     Get requirements for a specific pipeline step.
 
@@ -282,7 +295,11 @@ async def get_step_requirements(step_name: str):
 @router.post(
     "/steps/{step_name}/execute", response_model=StepExecutionResponse
 )  # Alias for test compatibility
-async def execute_pipeline_step(step_name: str, request: StepExecutionRequest):
+async def execute_pipeline_step(
+    step_name: str,
+    request: StepExecutionRequest,
+    user: UserContext = Depends(get_current_user),
+):
     """
     Execute a single pipeline step independently.
 
@@ -322,6 +339,9 @@ async def execute_pipeline_step(step_name: str, request: StepExecutionRequest):
         # Get job manager
         job_manager = get_job_manager()
 
+        # Resolve per-user settings and store in job metadata
+        resolved_settings = await resolve_user_settings(user.user_id)
+
         # Create content ID from content if available
         content_id = request.content.get("id", f"step_{step_name}_{int(time.time())}")
 
@@ -331,6 +351,7 @@ async def execute_pipeline_step(step_name: str, request: StepExecutionRequest):
             "step_number": plugin.step_number,
             "content": request.content,
             "context_keys": list(request.context.keys()),
+            "user_settings": resolved_settings.model_dump(),
         }
 
         # Store pipeline_config in metadata if provided
@@ -347,6 +368,8 @@ async def execute_pipeline_step(step_name: str, request: StepExecutionRequest):
             job_type=f"step_{step_name}",
             content_id=content_id,
             metadata=job_metadata,
+            user_id=user.user_id,
+            user_context=user,
         )
 
         # Convert content to JSON string

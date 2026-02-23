@@ -45,7 +45,7 @@ def mock_openai_response():
 class TestFunctionPipelineInitialization:
     """Test FunctionPipeline initialization."""
 
-    @patch("marketing_project.services.function_pipeline.AsyncOpenAI")
+    @patch("marketing_project.services.function_pipeline.pipeline.AsyncOpenAI")
     def test_init_defaults(self, mock_openai_class):
         """Test FunctionPipeline initialization with defaults."""
         mock_client = AsyncMock()
@@ -57,7 +57,7 @@ class TestFunctionPipelineInitialization:
         assert pipeline.lang == "en"
         assert pipeline.step_info == []
 
-    @patch("marketing_project.services.function_pipeline.AsyncOpenAI")
+    @patch("marketing_project.services.function_pipeline.pipeline.AsyncOpenAI")
     def test_init_custom_params(self, mock_openai_class):
         """Test FunctionPipeline initialization with custom parameters."""
         mock_client = AsyncMock()
@@ -73,7 +73,7 @@ class TestFunctionPipelineExecution:
     """Test FunctionPipeline execution."""
 
     @pytest.mark.asyncio
-    @patch("marketing_project.services.function_pipeline.AsyncOpenAI")
+    @patch("marketing_project.services.function_pipeline.pipeline.AsyncOpenAI")
     async def test_execute_pipeline_success(
         self, mock_openai_class, sample_content_json
     ):
@@ -161,7 +161,7 @@ class TestFunctionPipelineExecution:
         mock_formatting.validate_context = lambda ctx: True
 
         with patch(
-            "marketing_project.services.function_pipeline.get_plugin_registry"
+            "marketing_project.services.function_pipeline.pipeline.get_plugin_registry"
         ) as mock_registry_func:
             mock_registry = MagicMock()
             mock_registry.validate_dependencies = lambda: (True, [])
@@ -196,7 +196,7 @@ class TestFunctionPipelineExecution:
             assert result["metadata"]["job_id"] == job_id
 
     @pytest.mark.asyncio
-    @patch("marketing_project.services.function_pipeline.AsyncOpenAI")
+    @patch("marketing_project.services.function_pipeline.pipeline.AsyncOpenAI")
     async def test_execute_pipeline_invalid_json(self, mock_openai_class):
         """Test pipeline execution with invalid JSON."""
         mock_client = AsyncMock()
@@ -208,7 +208,7 @@ class TestFunctionPipelineExecution:
             await pipeline.execute_pipeline("invalid json {", content_type="blog_post")
 
     @pytest.mark.asyncio
-    @patch("marketing_project.services.function_pipeline.AsyncOpenAI")
+    @patch("marketing_project.services.function_pipeline.pipeline.AsyncOpenAI")
     async def test_execute_pipeline_dependency_validation_failure(
         self, mock_openai_class, sample_content_json
     ):
@@ -217,7 +217,7 @@ class TestFunctionPipelineExecution:
         mock_openai_class.return_value = mock_client
         with (
             patch(
-                "marketing_project.services.function_pipeline.get_plugin_registry"
+                "marketing_project.services.function_pipeline.pipeline.get_plugin_registry"
             ) as mock_registry_func,
             patch(
                 "marketing_project.services.job_manager.get_job_manager"
@@ -261,7 +261,7 @@ class TestFunctionPipelineExecution:
             ).get("error", "")
 
     @pytest.mark.asyncio
-    @patch("marketing_project.services.function_pipeline.AsyncOpenAI")
+    @patch("marketing_project.services.function_pipeline.pipeline.AsyncOpenAI")
     async def test_execute_pipeline_with_output_content_type(
         self, mock_openai_class, sample_content_json
     ):
@@ -286,7 +286,7 @@ class TestFunctionPipelineExecution:
         mock_plugin.validate_context = lambda ctx: True
 
         with patch(
-            "marketing_project.services.function_pipeline.get_plugin_registry"
+            "marketing_project.services.function_pipeline.pipeline.get_plugin_registry"
         ) as mock_registry_func:
             mock_registry = MagicMock()
             mock_registry.validate_dependencies = lambda: (True, [])
@@ -309,7 +309,7 @@ class TestFunctionPipelineExecution:
             assert call_args[1]["context"]["output_content_type"] == "press_release"
 
     @pytest.mark.asyncio
-    @patch("marketing_project.services.function_pipeline.AsyncOpenAI")
+    @patch("marketing_project.services.function_pipeline.pipeline.AsyncOpenAI")
     async def test_execute_pipeline_plugin_not_found(
         self, mock_openai_class, sample_content_json
     ):
@@ -318,7 +318,7 @@ class TestFunctionPipelineExecution:
         mock_openai_class.return_value = mock_client
         with (
             patch(
-                "marketing_project.services.function_pipeline.get_plugin_registry"
+                "marketing_project.services.function_pipeline.pipeline.get_plugin_registry"
             ) as mock_registry_func,
             patch(
                 "marketing_project.services.job_manager.get_job_manager"
@@ -364,7 +364,7 @@ class TestFunctionPipelineExecution:
             )
 
     @pytest.mark.asyncio
-    @patch("marketing_project.services.function_pipeline.AsyncOpenAI")
+    @patch("marketing_project.services.function_pipeline.pipeline.AsyncOpenAI")
     async def test_execute_pipeline_context_validation_failure(
         self, mock_openai_class, sample_content_json
     ):
@@ -373,7 +373,7 @@ class TestFunctionPipelineExecution:
         mock_openai_class.return_value = mock_client
         with (
             patch(
-                "marketing_project.services.function_pipeline.get_plugin_registry"
+                "marketing_project.services.function_pipeline.pipeline.get_plugin_registry"
             ) as mock_registry_func,
             patch(
                 "marketing_project.services.job_manager.get_job_manager"
@@ -425,7 +425,7 @@ class TestFunctionPipelineStepExecution:
     """Test individual step execution."""
 
     @pytest.mark.asyncio
-    @patch("marketing_project.services.function_pipeline.AsyncOpenAI")
+    @patch("marketing_project.services.function_pipeline.pipeline.AsyncOpenAI")
     async def test_execute_step_with_plugin(self, mock_openai_class):
         """Test executing a single step with plugin."""
         mock_client = AsyncMock()
@@ -446,7 +446,7 @@ class TestFunctionPipelineStepExecution:
         )
 
         with patch(
-            "marketing_project.services.function_pipeline.get_plugin_registry"
+            "marketing_project.services.function_pipeline.pipeline.get_plugin_registry"
         ) as mock_registry_func:
             mock_registry = MagicMock()
             mock_registry.get_plugin = lambda name: mock_plugin
@@ -461,7 +461,7 @@ class TestFunctionPipelineStepExecution:
             mock_plugin.execute.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch("marketing_project.services.function_pipeline.AsyncOpenAI")
+    @patch("marketing_project.services.function_pipeline.pipeline.AsyncOpenAI")
     async def test_execute_step_plugin_not_found(self, mock_openai_class):
         """Test executing step when plugin is not found."""
         mock_client = AsyncMock()
@@ -470,7 +470,7 @@ class TestFunctionPipelineStepExecution:
         pipeline = FunctionPipeline()
 
         with patch(
-            "marketing_project.services.function_pipeline.get_plugin_registry"
+            "marketing_project.services.function_pipeline.pipeline.get_plugin_registry"
         ) as mock_registry_func:
             mock_registry = MagicMock()
             mock_registry.get_plugin = lambda name: None
@@ -482,7 +482,7 @@ class TestFunctionPipelineStepExecution:
                 )
 
     @pytest.mark.asyncio
-    @patch("marketing_project.services.function_pipeline.AsyncOpenAI")
+    @patch("marketing_project.services.function_pipeline.pipeline.AsyncOpenAI")
     async def test_call_function(self, mock_openai_class):
         """Test _call_function method."""
         mock_client = AsyncMock()
@@ -510,7 +510,7 @@ class TestFunctionPipelineStepExecution:
         assert result.main_keyword == "test"
 
     @pytest.mark.asyncio
-    @patch("marketing_project.services.function_pipeline.AsyncOpenAI")
+    @patch("marketing_project.services.function_pipeline.pipeline.AsyncOpenAI")
     async def test_resume_pipeline(self, mock_openai_class):
         """Test resume_pipeline method."""
         mock_client = AsyncMock()
@@ -520,7 +520,7 @@ class TestFunctionPipelineStepExecution:
 
         # Mock the plugins and registry
         with patch(
-            "marketing_project.services.function_pipeline.get_plugin_registry"
+            "marketing_project.services.function_pipeline.pipeline.get_plugin_registry"
         ) as mock_registry:
             mock_plugin = MagicMock()
             mock_plugin.step_name = "seo_keywords"
@@ -574,7 +574,7 @@ class TestFunctionPipelineStepExecution:
                 assert isinstance(result, dict)
 
     @pytest.mark.asyncio
-    @patch("marketing_project.services.function_pipeline.AsyncOpenAI")
+    @patch("marketing_project.services.function_pipeline.pipeline.AsyncOpenAI")
     async def test_execute_single_step(self, mock_openai_class):
         """Test execute_single_step method."""
         mock_client = AsyncMock()
@@ -605,7 +605,7 @@ class TestFunctionPipelineStepExecution:
             mock_execute.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch("marketing_project.services.function_pipeline.AsyncOpenAI")
+    @patch("marketing_project.services.function_pipeline.pipeline.AsyncOpenAI")
     async def test_get_user_prompt(self, mock_openai_class):
         """Test _get_user_prompt method."""
         mock_client = AsyncMock()
