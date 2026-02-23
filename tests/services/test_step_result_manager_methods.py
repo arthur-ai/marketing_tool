@@ -79,7 +79,11 @@ async def test_get_job_results(step_result_manager):
         mock_job_mgr.return_value = mock_manager_instance
 
         await step_result_manager.save_step_result(
-            "test-job-1", 1, "seo_keywords", {"main_keyword": "test"}, "0"
+            "test-job-1",
+            1,
+            "seo_keywords",
+            {"main_keyword": "test"},
+            execution_context_id="0",
         )
 
         results = await step_result_manager.get_job_results("test-job-1")
@@ -99,7 +103,11 @@ async def test_list_all_jobs(step_result_manager):
         mock_job_mgr.return_value.get_job = AsyncMock(return_value=mock_job)
 
         await step_result_manager.save_step_result(
-            "test-job-1", 1, "seo_keywords", {"main_keyword": "test"}, "0"
+            "test-job-1",
+            1,
+            "seo_keywords",
+            {"main_keyword": "test"},
+            execution_context_id="0",
         )
 
         jobs = await step_result_manager.list_all_jobs(limit=10)
@@ -121,7 +129,11 @@ async def test_list_all_jobs_with_limit(step_result_manager):
         # Create multiple jobs
         for i in range(5):
             await step_result_manager.save_step_result(
-                f"test-job-{i}", 1, "seo_keywords", {"main_keyword": "test"}, "0"
+                f"test-job-{i}",
+                1,
+                "seo_keywords",
+                {"main_keyword": "test"},
+                execution_context_id="0",
             )
 
         jobs = await step_result_manager.list_all_jobs(limit=3)

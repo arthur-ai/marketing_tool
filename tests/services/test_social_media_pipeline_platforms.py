@@ -90,17 +90,6 @@ class TestPlatformCharacterLimits:
 
         # Mock platform config to return proper limits for newsletter
         with patch.object(pipeline, "_get_platform_config") as mock_config:
-            # Add test for content approaching limit
-            # Content approaching limit (must be > warning_threshold)
-            content = "a" * 4801
-            is_valid, warning = pipeline._validate_content_length(
-                content, "email", email_type="newsletter"
-            )
-            assert is_valid is True
-            assert warning is not None
-            assert "approaching" in warning.lower()
-
-            # Content within limit
             mock_config.return_value = {
                 "character_limit": 5000,
                 "types": {
@@ -111,6 +100,16 @@ class TestPlatformCharacterLimits:
                 },
             }
 
+            # Content approaching limit (must be > warning_threshold)
+            content = "a" * 4801
+            is_valid, warning = pipeline._validate_content_length(
+                content, "email", email_type="newsletter"
+            )
+            assert is_valid is True
+            assert warning is not None
+            assert "approaching" in warning.lower()
+
+            # Content within limit
             content = "a" * 4000
             is_valid, warning = pipeline._validate_content_length(
                 content, "email", email_type="newsletter"
@@ -135,17 +134,6 @@ class TestPlatformCharacterLimits:
 
         # Mock platform config to return proper limits for promotional
         with patch.object(pipeline, "_get_platform_config") as mock_config:
-            # Add test for content approaching limit
-            # Content approaching limit (must be > warning_threshold)
-            content = "a" * 2801
-            is_valid, warning = pipeline._validate_content_length(
-                content, "email", email_type="promotional"
-            )
-            assert is_valid is True
-            assert warning is not None
-            assert "approaching" in warning.lower()
-
-            # Content within limit
             mock_config.return_value = {
                 "character_limit": 5000,
                 "types": {
@@ -156,6 +144,16 @@ class TestPlatformCharacterLimits:
                 },
             }
 
+            # Content approaching limit (must be > warning_threshold)
+            content = "a" * 2801
+            is_valid, warning = pipeline._validate_content_length(
+                content, "email", email_type="promotional"
+            )
+            assert is_valid is True
+            assert warning is not None
+            assert "approaching" in warning.lower()
+
+            # Content within limit
             content = "a" * 2500
             is_valid, warning = pipeline._validate_content_length(
                 content, "email", email_type="promotional"

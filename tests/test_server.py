@@ -15,7 +15,7 @@ def test_app_initialization():
     """Test that FastAPI app is initialized correctly."""
     assert app is not None
     assert app.title == "Marketing Project API"
-    assert app.version == "2.0.0"
+    assert app.version == "2.0.1"
     assert app.docs_url == "/docs"
     assert app.redoc_url == "/redoc"
     assert app.openapi_url == "/openapi.json"
@@ -36,7 +36,7 @@ def test_custom_openapi():
     assert schema is not None
     assert "info" in schema
     assert schema["info"]["title"] == "Marketing Project API"
-    assert schema["info"]["version"] == "2.0.0"
+    assert schema["info"]["version"] == "2.0.1"
 
 
 def test_custom_openapi_cached():
