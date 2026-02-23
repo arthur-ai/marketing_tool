@@ -952,13 +952,16 @@ Resources:
               Value: !Sub 'https://${DomainName}/api'
             - Name: NEXT_PUBLIC_BACKEND_WEBSOCKET_URL
               Value: !Sub 'wss://${DomainName}/api'
-            # Keycloak frontend configuration (optional)
-            - Name: NEXTAUTH_URL
+            # Better Auth + Keycloak frontend configuration (optional)
+            - Name: BETTER_AUTH_URL
               Value: !If [UseKeycloak, !Sub 'https://${DomainName}', !Ref 'AWS::NoValue']
             - Name: KEYCLOAK_CLIENT_ID
               Value: !If [UseKeycloak, !Ref KeycloakFrontendClientId, !Ref 'AWS::NoValue']
             - Name: KEYCLOAK_ISSUER
               Value: !If [UseKeycloak, !Sub '${KeycloakServerUrl}/realms/${KeycloakRealm}', !Ref 'AWS::NoValue']
+            # Better Auth database for session storage (shared with backend DB)
+            - Name: DATABASE_URL
+              Value: !Sub 'postgresql://postgres:${DatabasePassword}@${ExistingDatabaseEndpoint}:5432/${ExistingDatabaseName}'
             # Set Node.js memory limit to prevent OOM (leave ~256MB for system)
             # For 1024MB container (default), use 768MB heap
             # This prevents Node.js from using all available memory
@@ -976,7 +979,7 @@ Resources:
           Secrets:
             - !If
               - UseKeycloak
-              - Name: NEXTAUTH_SECRET
+              - Name: BETTER_AUTH_SECRET
                 ValueFrom: !Ref NextAuthSecretResource
               - !Ref 'AWS::NoValue'
             - !If
