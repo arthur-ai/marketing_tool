@@ -91,7 +91,7 @@ async def test_call_function_with_approval_required(function_pipeline, mock_open
 async def test_execute_step_with_plugin_missing_context(function_pipeline):
     """Test _execute_step_with_plugin with missing context."""
     with patch(
-        "marketing_project.services.function_pipeline.get_plugin_registry"
+        "marketing_project.services.function_pipeline.pipeline.get_plugin_registry"
     ) as mock_registry:
         mock_plugin = MagicMock()
         mock_plugin.get_required_context_keys.return_value = ["required_key"]

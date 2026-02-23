@@ -162,7 +162,7 @@ async def test_execute_single_step_with_pipeline_config(function_pipeline):
     )
 
     with patch(
-        "marketing_project.services.function_pipeline.get_plugin_registry"
+        "marketing_project.services.function_pipeline.pipeline.get_plugin_registry"
     ) as mock_registry:
         mock_plugin = MagicMock()
         mock_plugin.get_required_context_keys.return_value = ["input_content"]

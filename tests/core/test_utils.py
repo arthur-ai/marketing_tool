@@ -64,7 +64,7 @@ class TestConvertDictToContentContext:
         result = convert_dict_to_content_context(release_dict)
         assert isinstance(result, ReleaseNotesContext)
         assert result.id == "test-123"
-        assert result.version == "1.0.0"
+        assert result.version == "2.0.0"
 
     def test_convert_invalid_dict(self):
         """Test converting invalid dictionary."""

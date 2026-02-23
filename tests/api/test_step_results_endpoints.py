@@ -5,7 +5,7 @@ Tests for Step Results API endpoints.
 import json
 import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -46,6 +46,19 @@ def sample_step_info():
 @pytest.mark.asyncio
 class TestStepResultsAPI:
     """Test suite for Step Results API endpoints."""
+
+    @pytest.fixture(autouse=True)
+    def mock_job_ownership(self):
+        """Mock get_job_manager so verify_job_ownership finds the job."""
+        mock_job = MagicMock()
+        mock_job.user_id = "test-user-123"
+        mock_mgr = MagicMock()
+        mock_mgr.get_job = AsyncMock(return_value=mock_job)
+        with patch(
+            "marketing_project.api.step_results.get_job_manager",
+            return_value=mock_mgr,
+        ):
+            yield
 
     async def test_list_jobs_success(self, client):
         """Test successful job listing with results."""

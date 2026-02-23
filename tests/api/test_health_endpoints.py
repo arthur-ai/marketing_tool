@@ -44,7 +44,7 @@ class TestHealthCheck:
         data = response.json()
         assert data["status"] == "healthy"
         assert data["service"] == "marketing-project"
-        assert data["version"] == "1.0.0"
+        assert data["version"] == "2.0.0"
         assert data["checks"]["config_loaded"] is True
         assert data["checks"]["prompts_dir_exists"] is True
         assert data["checks"]["redis_healthy"] is True

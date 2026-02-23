@@ -6,10 +6,11 @@ to user context extraction and role-based access control.
 """
 
 import os
+import time
 from unittest.mock import MagicMock, patch
 
 import pytest
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
 from marketing_project.middleware.keycloak_auth import (
@@ -42,7 +43,7 @@ def app():
     app = FastAPI()
 
     @app.get("/protected")
-    async def protected_endpoint(user: UserContext = get_current_user):
+    async def protected_endpoint(user: UserContext = Depends(get_current_user)):
         return {"user_id": user.user_id, "roles": user.roles}
 
     @app.get("/public")
@@ -174,7 +175,7 @@ class TestKeycloakIntegration:
         app = FastAPI()
 
         @app.get("/admin-only")
-        async def admin_endpoint(user: UserContext = require_roles(["admin"])):
+        async def admin_endpoint(user: UserContext = Depends(require_roles(["admin"]))):
             return {"message": "admin access granted"}
 
         client = TestClient(app)

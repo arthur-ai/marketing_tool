@@ -135,7 +135,7 @@ async def test_execute_step_with_plugin_success(function_pipeline):
     from marketing_project.models.pipeline_steps import SEOKeywordsResult
 
     with patch(
-        "marketing_project.services.function_pipeline.get_plugin_registry"
+        "marketing_project.services.function_pipeline.pipeline.get_plugin_registry"
     ) as mock_registry:
         mock_plugin = MagicMock()
         # step_name should be a property that returns a string

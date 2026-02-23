@@ -17,7 +17,21 @@ client = TestClient(app)
 
 
 @pytest.fixture
-def mock_step_result_manager():
+def mock_job_manager_ownership():
+    """Mock get_job_manager so verify_job_ownership finds the job."""
+    mock_job = MagicMock()
+    mock_job.user_id = "test-user-123"
+    mock_mgr = MagicMock()
+    mock_mgr.get_job = AsyncMock(return_value=mock_job)
+    with patch(
+        "marketing_project.api.step_results.get_job_manager",
+        return_value=mock_mgr,
+    ):
+        yield
+
+
+@pytest.fixture
+def mock_step_result_manager(mock_job_manager_ownership):
     """Mock step result manager."""
     with patch("marketing_project.api.step_results.get_step_result_manager") as mock:
         manager = MagicMock()

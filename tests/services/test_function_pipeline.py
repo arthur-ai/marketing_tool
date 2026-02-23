@@ -161,7 +161,7 @@ class TestFunctionPipelineExecution:
         mock_formatting.validate_context = lambda ctx: True
 
         with patch(
-            "marketing_project.services.function_pipeline.get_plugin_registry"
+            "marketing_project.services.function_pipeline.pipeline.get_plugin_registry"
         ) as mock_registry_func:
             mock_registry = MagicMock()
             mock_registry.validate_dependencies = lambda: (True, [])
@@ -217,7 +217,7 @@ class TestFunctionPipelineExecution:
         mock_openai_class.return_value = mock_client
         with (
             patch(
-                "marketing_project.services.function_pipeline.get_plugin_registry"
+                "marketing_project.services.function_pipeline.pipeline.get_plugin_registry"
             ) as mock_registry_func,
             patch(
                 "marketing_project.services.job_manager.get_job_manager"
@@ -286,7 +286,7 @@ class TestFunctionPipelineExecution:
         mock_plugin.validate_context = lambda ctx: True
 
         with patch(
-            "marketing_project.services.function_pipeline.get_plugin_registry"
+            "marketing_project.services.function_pipeline.pipeline.get_plugin_registry"
         ) as mock_registry_func:
             mock_registry = MagicMock()
             mock_registry.validate_dependencies = lambda: (True, [])
@@ -318,7 +318,7 @@ class TestFunctionPipelineExecution:
         mock_openai_class.return_value = mock_client
         with (
             patch(
-                "marketing_project.services.function_pipeline.get_plugin_registry"
+                "marketing_project.services.function_pipeline.pipeline.get_plugin_registry"
             ) as mock_registry_func,
             patch(
                 "marketing_project.services.job_manager.get_job_manager"
@@ -373,7 +373,7 @@ class TestFunctionPipelineExecution:
         mock_openai_class.return_value = mock_client
         with (
             patch(
-                "marketing_project.services.function_pipeline.get_plugin_registry"
+                "marketing_project.services.function_pipeline.pipeline.get_plugin_registry"
             ) as mock_registry_func,
             patch(
                 "marketing_project.services.job_manager.get_job_manager"
@@ -446,7 +446,7 @@ class TestFunctionPipelineStepExecution:
         )
 
         with patch(
-            "marketing_project.services.function_pipeline.get_plugin_registry"
+            "marketing_project.services.function_pipeline.pipeline.get_plugin_registry"
         ) as mock_registry_func:
             mock_registry = MagicMock()
             mock_registry.get_plugin = lambda name: mock_plugin
@@ -470,7 +470,7 @@ class TestFunctionPipelineStepExecution:
         pipeline = FunctionPipeline()
 
         with patch(
-            "marketing_project.services.function_pipeline.get_plugin_registry"
+            "marketing_project.services.function_pipeline.pipeline.get_plugin_registry"
         ) as mock_registry_func:
             mock_registry = MagicMock()
             mock_registry.get_plugin = lambda name: None
@@ -520,7 +520,7 @@ class TestFunctionPipelineStepExecution:
 
         # Mock the plugins and registry
         with patch(
-            "marketing_project.services.function_pipeline.get_plugin_registry"
+            "marketing_project.services.function_pipeline.pipeline.get_plugin_registry"
         ) as mock_registry:
             mock_plugin = MagicMock()
             mock_plugin.step_name = "seo_keywords"
