@@ -187,11 +187,7 @@ async def test_execute_multi_platform_pipeline(social_media_pipeline, mock_opena
 
         # Mock Brief plugin
         mock_brief_plugin = MagicMock()
-        mock_brief_result = SocialMediaMarketingBriefResult(
-            target_audience="developers",
-            key_points=["point1"],
-            tone="professional",
-        )
+        mock_brief_result = MagicMock(spec=SocialMediaMarketingBriefResult)
         mock_brief_plugin.execute = AsyncMock(return_value=mock_brief_result)
         mock_brief_plugin_class.return_value = mock_brief_plugin
 

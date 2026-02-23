@@ -60,7 +60,7 @@ async def test_get_step_result_by_name(step_result_manager):
 
         result_data = {"main_keyword": "test"}
         await step_result_manager.save_step_result(
-            "test-job-1", 1, "seo_keywords", result_data, "0"
+            "test-job-1", 1, "seo_keywords", result_data, execution_context_id="0"
         )
 
         result = await step_result_manager.get_step_result_by_name(
@@ -83,7 +83,7 @@ async def test_get_step_file_path(step_result_manager):
 
         result_data = {"main_keyword": "test"}
         await step_result_manager.save_step_result(
-            "test-job-1", 1, "seo_keywords", result_data, "0"
+            "test-job-1", 1, "seo_keywords", result_data, execution_context_id="0"
         )
 
         file_path = await step_result_manager.get_step_file_path(
@@ -130,10 +130,18 @@ async def test_aggregate_steps_from_jobs(step_result_manager):
 
         # Save results for multiple jobs
         await step_result_manager.save_step_result(
-            "job-1", 1, "seo_keywords", {"main_keyword": "test1"}, "0"
+            "job-1",
+            1,
+            "seo_keywords",
+            {"main_keyword": "test1"},
+            execution_context_id="0",
         )
         await step_result_manager.save_step_result(
-            "job-2", 1, "seo_keywords", {"main_keyword": "test2"}, "0"
+            "job-2",
+            1,
+            "seo_keywords",
+            {"main_keyword": "test2"},
+            execution_context_id="0",
         )
 
         aggregated = await step_result_manager.aggregate_steps_from_jobs(
@@ -155,10 +163,18 @@ async def test_get_full_context_history(step_result_manager):
         mock_job_mgr.return_value.get_job = AsyncMock(return_value=mock_job)
 
         await step_result_manager.save_step_result(
-            "test-job-1", 1, "seo_keywords", {"main_keyword": "test"}, "0"
+            "test-job-1",
+            1,
+            "seo_keywords",
+            {"main_keyword": "test"},
+            execution_context_id="0",
         )
         await step_result_manager.save_step_result(
-            "test-job-1", 2, "marketing_brief", {"target_audience": "developers"}, "0"
+            "test-job-1",
+            2,
+            "marketing_brief",
+            {"target_audience": "developers"},
+            execution_context_id="0",
         )
 
         history = await step_result_manager.get_full_context_history("test-job-1")
@@ -184,7 +200,11 @@ async def test_get_pipeline_flow(step_result_manager):
         mock_job_mgr.return_value = mock_manager_instance
 
         await step_result_manager.save_step_result(
-            "test-job-1", 1, "seo_keywords", {"main_keyword": "test"}, "0"
+            "test-job-1",
+            1,
+            "seo_keywords",
+            {"main_keyword": "test"},
+            execution_context_id="0",
         )
 
         flow = await step_result_manager.get_pipeline_flow("test-job-1")
@@ -204,7 +224,11 @@ async def test_cleanup_job(step_result_manager):
         mock_job_mgr.return_value.get_job = AsyncMock(return_value=mock_job)
 
         await step_result_manager.save_step_result(
-            "test-job-1", 1, "seo_keywords", {"main_keyword": "test"}, "0"
+            "test-job-1",
+            1,
+            "seo_keywords",
+            {"main_keyword": "test"},
+            execution_context_id="0",
         )
 
         success = await step_result_manager.cleanup_job("test-job-1")

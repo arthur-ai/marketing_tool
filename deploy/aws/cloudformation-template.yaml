@@ -1433,7 +1433,6 @@ Resources:
       AutomaticFailoverEnabled: false
       # Single node Redis (no replication for cost savings)
       NumCacheClusters: 1
-      ReplicasPerNodeGroup: !Ref 'AWS::NoValue'
       SnapshotRetentionLimit: 7
       PreferredMaintenanceWindow: 'sun:05:00-sun:06:00'
       Tags:

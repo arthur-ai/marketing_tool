@@ -915,7 +915,7 @@ def setup_tracing(service_instance_id: Optional[str] = None) -> bool:
             resource_attrs["arthur.task"] = arthur_task_id
 
         _tracer_provider = trace_sdk.TracerProvider(
-            resource=Resource.create(resource_attrs)
+            resource=Resource.create(resource_attrs),
         )
         trace_api.set_tracer_provider(_tracer_provider)
 
@@ -928,9 +928,12 @@ def setup_tracing(service_instance_id: Optional[str] = None) -> bool:
             arthur_exporter = OTLPSpanExporter(
                 endpoint=endpoint,
                 headers={"Authorization": f"Bearer {arthur_api_key}"},
+                timeout=180,  # 3 minutes to handle large LLM content payloads
             )
-            # Create span processor and wrap it with enrichment to add OpenInference metadata
-            base_processor = SimpleSpanProcessor(arthur_exporter)
+            # BatchSpanProcessor exports asynchronously in a background thread,
+            # preventing export timeouts from blocking request processing.
+            # (SimpleSpanProcessor blocks the calling thread on every span end.)
+            base_processor = BatchSpanProcessor(arthur_exporter)
             enriched_processor = RedisSpanEnrichmentProcessor(base_processor)
             _tracer_provider.add_span_processor(enriched_processor)
             exporters_configured.append(f"Arthur ({endpoint})")

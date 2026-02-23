@@ -145,6 +145,9 @@ async def test_retry_step_job(mock_ctx):
 
         # Mock job manager
         mock_job_mgr = MagicMock()
+        mock_job_mgr.get_job = AsyncMock(
+            return_value=MagicMock(metadata={}, type="retry")
+        )
         mock_job_mgr.update_job_status = AsyncMock()
         mock_job_mgr.update_job_progress = AsyncMock()
         mock_get_job_mgr.return_value = mock_job_mgr

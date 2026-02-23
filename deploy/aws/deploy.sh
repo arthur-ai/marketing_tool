@@ -244,7 +244,7 @@ fi
 # Check required environment variables
 print_info "Checking required environment variables..."
 
-required_vars=("OPENAI_API_KEY" "API_KEY" "DATABASE_PASSWORD" "REDIS_PASSWORD")
+required_vars=("OPENAI_API_KEY" "API_KEY" "DATABASE_PASSWORD")
 missing_vars=()
 
 for var in "${required_vars[@]}"; do
@@ -266,12 +266,6 @@ fi
 # Validate API key length
 if [[ ${#API_KEY} -lt 32 ]]; then
     print_error "API_KEY must be at least 32 characters long"
-    exit 1
-fi
-
-# Validate Redis password length
-if [[ ${#REDIS_PASSWORD} -lt 16 ]] || [[ ${#REDIS_PASSWORD} -gt 128 ]]; then
-    print_error "REDIS_PASSWORD must be between 16 and 128 characters long"
     exit 1
 fi
 
@@ -331,6 +325,26 @@ fi
 # Set AWS region
 export AWS_DEFAULT_REGION="$REGION"
 
+# Get AWS account ID and set up S3 bucket for CloudFormation templates
+# (aws cloudformation validate-template --template-body has a 51,200 byte limit)
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+DEPLOYMENT_BUCKET="${PROJECT_NAME}-${ENVIRONMENT}-cfn-${ACCOUNT_ID}"
+
+# Ensure the deployment bucket exists
+if ! aws s3 ls "s3://$DEPLOYMENT_BUCKET" &>/dev/null; then
+    print_info "Creating CloudFormation deployment bucket: $DEPLOYMENT_BUCKET"
+    if [[ "$REGION" == "us-east-1" ]]; then
+        aws s3api create-bucket --bucket "$DEPLOYMENT_BUCKET" --region "$REGION"
+    else
+        aws s3api create-bucket --bucket "$DEPLOYMENT_BUCKET" --region "$REGION" \
+            --create-bucket-configuration LocationConstraint="$REGION"
+    fi
+    print_success "Created deployment bucket: $DEPLOYMENT_BUCKET"
+fi
+
+TEMPLATE_S3_KEY="cloudformation-template-${STACK_NAME}.yaml"
+TEMPLATE_S3_URL="https://${DEPLOYMENT_BUCKET}.s3.${REGION}.amazonaws.com/${TEMPLATE_S3_KEY}"
+
 print_info "Deployment Configuration:"
 echo "  Environment: $ENVIRONMENT"
 echo "  Project Name: $PROJECT_NAME"
@@ -363,7 +377,6 @@ PARAMETERS="$PARAMETERS ParameterKey=ProjectName,ParameterValue=$PROJECT_NAME"
 PARAMETERS="$PARAMETERS ParameterKey=OpenAIApiKey,ParameterValue=$OPENAI_API_KEY"
 PARAMETERS="$PARAMETERS ParameterKey=ApiKey,ParameterValue=$API_KEY"
 PARAMETERS="$PARAMETERS ParameterKey=DatabasePassword,ParameterValue=$DATABASE_PASSWORD"
-PARAMETERS="$PARAMETERS ParameterKey=RedisPassword,ParameterValue=$REDIS_PASSWORD"
 if [[ -n "$EXISTING_MONGODB_ENDPOINT" ]]; then
     PARAMETERS="$PARAMETERS ParameterKey=ExistingMongoDBEndpoint,ParameterValue=$EXISTING_MONGODB_ENDPOINT"
 fi
@@ -470,9 +483,17 @@ else
     print_warning "Validation script not found, skipping template validation"
 fi
 
-# Validate template with AWS CLI
+# Upload template to S3 (required: template is >51,200 bytes, exceeding --template-body limit)
+print_info "Uploading CloudFormation template to S3..."
+if ! aws s3 cp cloudformation-template.yaml "s3://$DEPLOYMENT_BUCKET/$TEMPLATE_S3_KEY" --region "$REGION"; then
+    print_error "Failed to upload template to S3"
+    exit 1
+fi
+print_success "Template uploaded to: $TEMPLATE_S3_URL"
+
+# Validate template with AWS CLI (using S3 URL to support templates >51,200 bytes)
 print_info "Validating template with AWS CloudFormation..."
-if aws cloudformation validate-template --template-body file://cloudformation-template.yaml --region "$REGION" &> /tmp/cf-validate.log; then
+if aws cloudformation validate-template --template-url "$TEMPLATE_S3_URL" --region "$REGION" &> /tmp/cf-validate.log; then
     print_success "AWS CloudFormation template validation passed"
 else
     print_error "AWS CloudFormation template validation failed:"
@@ -499,7 +520,7 @@ else
     ACTION="create"
 fi
 
-CF_COMMAND="aws cloudformation $COMMAND --stack-name $STACK_NAME --template-body file://cloudformation-template.yaml --parameters $PARAMETERS --capabilities CAPABILITY_IAM --region $REGION"
+CF_COMMAND="aws cloudformation $COMMAND --stack-name $STACK_NAME --template-url $TEMPLATE_S3_URL --parameters $PARAMETERS --capabilities CAPABILITY_IAM --region $REGION"
 
 if [[ "$DRY_RUN" == true ]]; then
     print_info "DRY RUN: Would execute the following command:"
