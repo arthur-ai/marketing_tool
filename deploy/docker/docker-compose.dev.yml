@@ -37,6 +37,9 @@ services:
       - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:password@postgres:5432/marketing_project}
       # Optional MongoDB URL (uncomment if you need it)
       # - MONGODB_URL=mongodb://mongodb:27017/marketing_project
+      # Keycloak configuration (use host.docker.internal for Mac/Windows Docker Desktop)
+      # For Linux, you may need to use the host's IP address or add extra_hosts
+      - KEYCLOAK_SERVER_URL=${KEYCLOAK_SERVER_URL:-http://host.docker.internal:8080}
     volumes:
       # Mount source code for hot-reload (changes reflect immediately)
       - ../../src:/app/src
@@ -150,6 +153,8 @@ services:
       # ARQ worker settings (from .env)
       - ARQ_MAX_JOBS=${ARQ_MAX_JOBS:-10}
       - ARQ_JOB_TIMEOUT=${ARQ_JOB_TIMEOUT:-600}
+      # Keycloak configuration (use host.docker.internal for Mac/Windows Docker Desktop)
+      - KEYCLOAK_SERVER_URL=${KEYCLOAK_SERVER_URL:-http://host.docker.internal:8080}
     volumes:
       # Mount source code for hot-reload
       - ../../src:/app/src

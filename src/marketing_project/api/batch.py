@@ -112,6 +112,8 @@ async def process_batch_blog(
                     job_type="blog_post",
                     content_id=item_request.content.id,
                     metadata=job_metadata,
+                    user_id=user.user_id,
+                    user_context=user,
                 )
 
                 # Convert to JSON and submit to ARQ
@@ -192,7 +194,7 @@ async def get_campaign_jobs(
         # Get all jobs and filter by campaign_id
         # Note: This is a simplified implementation - in production, you'd want
         # a more efficient query mechanism
-        all_jobs = await job_manager.list_jobs(limit=1000)
+        all_jobs = await job_manager.list_jobs(limit=1000, user_id=user.user_id)
         campaign_jobs = [
             job for job in all_jobs if job.metadata.get("campaign_id") == campaign_id
         ]

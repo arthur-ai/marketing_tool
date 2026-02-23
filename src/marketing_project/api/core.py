@@ -8,6 +8,7 @@ import time
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 
+from marketing_project.api.user_settings import resolve_user_settings
 from marketing_project.config.settings import PROMPTS_DIR
 from marketing_project.middleware.keycloak_auth import get_current_user
 from marketing_project.models import (
@@ -338,6 +339,9 @@ async def execute_pipeline_step(
         # Get job manager
         job_manager = get_job_manager()
 
+        # Resolve per-user settings and store in job metadata
+        resolved_settings = await resolve_user_settings(user.user_id)
+
         # Create content ID from content if available
         content_id = request.content.get("id", f"step_{step_name}_{int(time.time())}")
 
@@ -347,6 +351,7 @@ async def execute_pipeline_step(
             "step_number": plugin.step_number,
             "content": request.content,
             "context_keys": list(request.context.keys()),
+            "user_settings": resolved_settings.model_dump(),
         }
 
         # Store pipeline_config in metadata if provided
@@ -363,6 +368,8 @@ async def execute_pipeline_step(
             job_type=f"step_{step_name}",
             content_id=content_id,
             metadata=job_metadata,
+            user_id=user.user_id,
+            user_context=user,
         )
 
         # Convert content to JSON string

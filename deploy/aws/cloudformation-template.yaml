@@ -37,6 +37,17 @@ Metadata:
           - OpenAIApiKey
           - ApiKey
       - Label:
+          default: "Keycloak Authentication Configuration (Optional)"
+        Parameters:
+          - KeycloakServerUrl
+          - KeycloakRealm
+          - KeycloakBackendClientId
+          - KeycloakBackendClientSecret
+          - KeycloakFrontendClientId
+          - KeycloakFrontendClientSecret
+          - NextAuthSecret
+          - KeycloakVerifySsl
+      - Label:
           default: "Telemetry Configuration (Optional)"
         Parameters:
           - ArthurBaseUrl
@@ -53,7 +64,6 @@ Metadata:
           default: "Redis Configuration"
         Parameters:
           - RedisNodeType
-          - RedisPassword
       - Label:
           default: "ECS Configuration"
         Parameters:
@@ -67,6 +77,19 @@ Metadata:
           - ApiTaskMemory
           - ArqWorkerTaskCPU
           - ArqWorkerTaskMemory
+          - ArqWorkerDesiredCount
+      - Label:
+          default: "Frontend Configuration"
+        Parameters:
+          - FrontendContainerImage
+          - FrontendDeployVersion
+          - FrontendTaskCPU
+          - FrontendTaskMemory
+          - FrontendDesiredCount
+          - FrontendMinCapacity
+          - FrontendMaxCapacity
+          - FrontendDockerRegistryUsername
+          - FrontendDockerRegistryPassword
 
 Parameters:
   Environment:
@@ -216,13 +239,6 @@ Parameters:
     MinLength: 8
 
 
-  RedisPassword:
-    Type: String
-    NoEcho: true
-    Description: Redis authentication token (required when TransitEncryptionEnabled is true)
-    MinLength: 16
-    MaxLength: 128
-
   MinCapacity:
     Type: Number
     Default: 1
@@ -275,10 +291,62 @@ Parameters:
     AllowedValues: ['512', '1024', '2048', '3072', '4096', '5120', '6144', '7168', '8192']
     Description: Memory for ARQ worker task in MB (minimum 512, recommended 2048+ for production)
 
+  ArqWorkerDesiredCount:
+    Type: Number
+    Default: 1
+    MinValue: 1
+    MaxValue: 10
+    Description: Desired number of ARQ worker ECS tasks
+
   DeployVersion:
     Type: String
     Default: latest
     Description: Docker image version/tag to deploy (e.g., latest, v1.0.0, commit-hash)
+
+  # Keycloak Authentication Configuration (Optional)
+  KeycloakServerUrl:
+    Type: String
+    Default: ''
+    Description: Keycloak server URL (without realm path, e.g., https://keycloak.example.com). Leave empty to disable Keycloak authentication.
+
+  KeycloakRealm:
+    Type: String
+    Default: ''
+    Description: Keycloak realm name (e.g., marketing-tool). Required if KeycloakServerUrl is provided.
+
+  KeycloakBackendClientId:
+    Type: String
+    Default: ''
+    Description: Keycloak backend client ID (confidential client). Required if KeycloakServerUrl is provided.
+
+  KeycloakBackendClientSecret:
+    Type: String
+    NoEcho: true
+    Default: ''
+    Description: Keycloak backend client secret. Required if KeycloakServerUrl is provided.
+
+  KeycloakFrontendClientId:
+    Type: String
+    Default: ''
+    Description: Keycloak frontend client ID (public client). Required if KeycloakServerUrl is provided.
+
+  KeycloakFrontendClientSecret:
+    Type: String
+    NoEcho: true
+    Default: ''
+    Description: Keycloak frontend client secret. Required if KeycloakServerUrl is provided.
+
+  NextAuthSecret:
+    Type: String
+    NoEcho: true
+    Default: ''
+    Description: "NextAuth secret for JWT encryption (generate with: openssl rand -base64 32). Required if KeycloakServerUrl is provided."
+
+  KeycloakVerifySsl:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    Description: Verify SSL certificates for Keycloak (set to false only for development with self-signed certs)
 
   # Frontend Configuration
   FrontendContainerImage:
@@ -348,6 +416,7 @@ Conditions:
     - !Equals [!Ref FrontendDeployVersion, '']
     - !Equals [!Ref FrontendDeployVersion, 'latest']
   HasArthurApiKey: !Not [!Equals [!Ref ArthurApiKey, '']]
+  UseKeycloak: !Not [!Equals [!Ref KeycloakServerUrl, '']]
 
 Resources:
   # Note: Using existing VPC and subnets - no networking resources created
@@ -598,7 +667,7 @@ Resources:
                 - UseExistingMongoDB
                 - !Sub 'mongodb://${ExistingMongoDBEndpoint}:27017/marketing_project'
                 - !Ref 'AWS::NoValue'
-            - Name: POSTGRES_URL
+            - Name: DATABASE_URL
               Value: !Sub 'postgresql://postgres:${DatabasePassword}@${ExistingDatabaseEndpoint}:5432/${ExistingDatabaseName}'
             - Name: PIPELINE_CONFIG_PATH
               Value: '/app/src/marketing_project/config/pipeline.yml'
@@ -662,6 +731,27 @@ Resources:
               Value: !Ref ArthurBaseUrl
             - Name: ARTHUR_TASK_ID
               Value: !Ref ArthurTaskId
+            # Keycloak configuration (optional)
+            - !If
+              - UseKeycloak
+              - Name: KEYCLOAK_SERVER_URL
+                Value: !Ref KeycloakServerUrl
+              - !Ref 'AWS::NoValue'
+            - !If
+              - UseKeycloak
+              - Name: KEYCLOAK_REALM
+                Value: !Ref KeycloakRealm
+              - !Ref 'AWS::NoValue'
+            - !If
+              - UseKeycloak
+              - Name: KEYCLOAK_CLIENT_ID
+                Value: !Ref KeycloakBackendClientId
+              - !Ref 'AWS::NoValue'
+            - !If
+              - UseKeycloak
+              - Name: KEYCLOAK_VERIFY_SSL
+                Value: !Ref KeycloakVerifySsl
+              - !Ref 'AWS::NoValue'
           Secrets:
             # Note: REDIS_PASSWORD not needed when TransitEncryptionEnabled is false
             # (AuthToken is only supported with transit encryption)
@@ -671,6 +761,11 @@ Resources:
               ValueFrom: !Ref ApiKeySecret
             - Name: ARTHUR_API_KEY
               ValueFrom: !Ref ArthurSecret
+            - !If
+              - UseKeycloak
+              - Name: KEYCLOAK_CLIENT_SECRET
+                ValueFrom: !Ref KeycloakBackendSecret
+              - !Ref 'AWS::NoValue'
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -755,7 +850,7 @@ Resources:
               Value: '0'
             - Name: AWS_REGION
               Value: !Ref AWS::Region
-            - Name: POSTGRES_URL
+            - Name: DATABASE_URL
               Value: !Sub 'postgresql://postgres:${DatabasePassword}@${ExistingDatabaseEndpoint}:5432/${ExistingDatabaseName}'
             - Name: PIPELINE_CONFIG_PATH
               Value: '/app/src/marketing_project/config/pipeline.yml'
@@ -807,7 +902,7 @@ Resources:
       ServiceName: !Sub '${ProjectName}-${Environment}-arq-worker-service'
       Cluster: !Ref ECSCluster
       TaskDefinition: !Ref ARQWorkerTaskDefinition
-      DesiredCount: 1
+      DesiredCount: !Ref ArqWorkerDesiredCount
       LaunchType: FARGATE
       NetworkConfiguration:
         AwsvpcConfiguration:
@@ -857,6 +952,13 @@ Resources:
               Value: !Sub 'https://${DomainName}/api'
             - Name: NEXT_PUBLIC_BACKEND_WEBSOCKET_URL
               Value: !Sub 'wss://${DomainName}/api'
+            # Keycloak frontend configuration (optional)
+            - Name: NEXTAUTH_URL
+              Value: !If [UseKeycloak, !Sub 'https://${DomainName}', !Ref 'AWS::NoValue']
+            - Name: KEYCLOAK_CLIENT_ID
+              Value: !If [UseKeycloak, !Ref KeycloakFrontendClientId, !Ref 'AWS::NoValue']
+            - Name: KEYCLOAK_ISSUER
+              Value: !If [UseKeycloak, !Sub '${KeycloakServerUrl}/realms/${KeycloakRealm}', !Ref 'AWS::NoValue']
             # Set Node.js memory limit to prevent OOM (leave ~256MB for system)
             # For 1024MB container (default), use 768MB heap
             # This prevents Node.js from using all available memory
@@ -871,6 +973,17 @@ Resources:
               Value: '/bin/sh'
             - Name: SHELL
               Value: '/bin/sh'
+          Secrets:
+            - !If
+              - UseKeycloak
+              - Name: NEXTAUTH_SECRET
+                ValueFrom: !Ref NextAuthSecretResource
+              - !Ref 'AWS::NoValue'
+            - !If
+              - UseKeycloak
+              - Name: KEYCLOAK_CLIENT_SECRET
+                ValueFrom: !Ref KeycloakFrontendSecret
+              - !Ref 'AWS::NoValue'
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -1157,8 +1270,22 @@ Resources:
                 Resource:
                   - !Ref OpenAISecret
                   - !Ref ApiKeySecret
-                  - !Ref FrontendDockerRegistrySecret
+                  - !If [HasDockerRegistryCredentials, !Ref FrontendDockerRegistrySecret, !Ref 'AWS::NoValue']
                   - !Ref ArthurSecret
+        - !If
+          - UseKeycloak
+          - PolicyName: KeycloakSecretsAccess
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - secretsmanager:GetSecretValue
+                  Resource:
+                    - !Ref KeycloakBackendSecret
+                    - !Ref KeycloakFrontendSecret
+                    - !Ref NextAuthSecretResource
+          - !Ref 'AWS::NoValue'
         - PolicyName: SSMParameterAccess
           PolicyDocument:
             Version: '2012-10-17'
@@ -1236,6 +1363,7 @@ Resources:
 
   FrontendDockerRegistrySecret:
     Type: AWS::SecretsManager::Secret
+    Condition: HasDockerRegistryCredentials
     Properties:
       Name: !Sub '${ProjectName}-${Environment}-docker-registry-credentials'
       Description: Docker registry credentials for frontend image pull
@@ -1245,14 +1373,30 @@ Resources:
           "password": "${FrontendDockerRegistryPassword}"
         }
 
-  # Systems Manager Parameter for Redis Password (Option 1 - simpler than Secrets Manager)
-  RedisPasswordParameter:
-    Type: AWS::SSM::Parameter
+  # Keycloak Secrets
+  KeycloakBackendSecret:
+    Type: AWS::SecretsManager::Secret
+    Condition: UseKeycloak
     Properties:
-      Name: !Sub '/${ProjectName}/${Environment}/redis/password'
-      Type: String
-      Value: !Ref RedisPassword
-      Description: Redis authentication token for ElastiCache
+      Name: !Sub '${ProjectName}-${Environment}-keycloak-backend-secret'
+      Description: Keycloak backend client secret for API authentication
+      SecretString: !Ref KeycloakBackendClientSecret
+
+  KeycloakFrontendSecret:
+    Type: AWS::SecretsManager::Secret
+    Condition: UseKeycloak
+    Properties:
+      Name: !Sub '${ProjectName}-${Environment}-keycloak-frontend-secret'
+      Description: Keycloak frontend client secret for NextAuth
+      SecretString: !Ref KeycloakFrontendClientSecret
+
+  NextAuthSecretResource:
+    Type: AWS::SecretsManager::Secret
+    Condition: UseKeycloak
+    Properties:
+      Name: !Sub '${ProjectName}-${Environment}-nextauth-secret'
+      Description: NextAuth secret for JWT encryption
+      SecretString: !Ref NextAuthSecret
 
   # ElastiCache Redis (only create if not using existing)
   # Note: Redis should be in private subnets for security, but ECS tasks in public subnets

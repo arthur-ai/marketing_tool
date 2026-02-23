@@ -6,7 +6,7 @@ version: '3.8'
 services:
   api:
     environment:
-      - POSTGRES_URL=postgresql://postgres:password@postgres:5432/marketing_project
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/marketing_project
     depends_on:
       - postgres
 

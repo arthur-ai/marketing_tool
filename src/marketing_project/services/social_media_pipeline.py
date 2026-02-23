@@ -138,10 +138,14 @@ class SocialMediaPipeline:
             return self._platform_config
 
         try:
-            base_dir = Path(__file__).parent.parent.parent
-            config_file = (
-                base_dir / "marketing_project" / "config" / "platform_config.yml"
-            )
+            # Use importlib to find the package directory reliably
+            import importlib.util
+
+            import marketing_project
+
+            # Get the package directory
+            package_dir = Path(marketing_project.__file__).parent
+            config_file = package_dir / "config" / "platform_config.yml"
 
             if not config_file.exists():
                 logger.warning(
@@ -1844,6 +1848,10 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                 if hasattr(post_result, "model_dump")
                 else post_result.model_dump()
             )
+
+            # Ensure platform field is included in post_result_dict
+            if "platform" not in post_result_dict:
+                post_result_dict["platform"] = platform
 
             # Validate content length
             final_content = post_result_dict.get("content", "")

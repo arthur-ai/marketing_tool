@@ -62,6 +62,7 @@ class Job(BaseModel):
         default=JobStatus.PENDING, description="Current job status"
     )
     content_id: str = Field(..., description="Content ID being processed")
+    user_id: Optional[str] = Field(None, description="User ID who triggered the job")
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
@@ -164,6 +165,7 @@ class JobManager:
                     # Update existing job
                     existing_job.status = job.status.value
                     existing_job.content_id = job.content_id
+                    existing_job.user_id = job.user_id
                     existing_job.progress = job.progress
                     existing_job.current_step = job.current_step
                     existing_job.result = job.result
@@ -182,6 +184,7 @@ class JobManager:
                         job_type=job.type,
                         status=job.status.value,
                         content_id=job.content_id,
+                        user_id=job.user_id,
                         progress=job.progress,
                         current_step=job.current_step,
                         result=job.result,
@@ -247,6 +250,8 @@ class JobManager:
         content_id: str,
         metadata: Optional[Dict[str, Any]] = None,
         job_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        user_context: Optional[Any] = None,
     ) -> Job:
         """
         Create a new job and store in Redis.
@@ -256,6 +261,8 @@ class JobManager:
             content_id: ID of content being processed
             metadata: Optional metadata dictionary
             job_id: Optional job ID (if not provided, a UUID will be generated)
+            user_id: Optional user ID who triggered the job
+            user_context: Optional UserContext object for storing username/email in metadata
 
         Returns:
             Created job object
@@ -263,11 +270,24 @@ class JobManager:
         if job_id is None:
             job_id = str(uuid.uuid4())
 
+        # Prepare metadata with user information
+        job_metadata = metadata.copy() if metadata else {}
+
+        # Store user information in metadata for display purposes
+        if user_id:
+            job_metadata["triggered_by_user_id"] = user_id
+            if user_context:
+                if hasattr(user_context, "username") and user_context.username:
+                    job_metadata["triggered_by_username"] = user_context.username
+                if hasattr(user_context, "email") and user_context.email:
+                    job_metadata["triggered_by_email"] = user_context.email
+
         job = Job(
             id=job_id,
             type=job_type,
             content_id=content_id,
-            metadata=metadata or {},
+            user_id=user_id,
+            metadata=job_metadata,
         )
 
         try:
@@ -1025,6 +1045,7 @@ class JobManager:
         job_type: Optional[str] = None,
         status: Optional[JobStatus] = None,
         limit: int = 50,
+        user_id: Optional[str] = None,
     ) -> List[Job]:
         """
         List jobs from database (primary) or Redis (fallback) with optional filters.
@@ -1033,6 +1054,7 @@ class JobManager:
             job_type: Filter by job type
             status: Filter by status
             limit: Maximum number of jobs to return
+            user_id: If provided, only return jobs belonging to this user
 
         Returns:
             List of jobs
@@ -1057,6 +1079,8 @@ class JobManager:
                         stmt = stmt.where(JobModel.job_type == job_type)
                     if status:
                         stmt = stmt.where(JobModel.status == status.value)
+                    if user_id:
+                        stmt = stmt.where(JobModel.user_id == user_id)
 
                     # Order by created_at descending and limit
                     stmt = stmt.order_by(desc(JobModel.created_at)).limit(limit)
@@ -1114,6 +1138,8 @@ class JobManager:
                 jobs = [j for j in jobs if j.type == job_type]
             if status:
                 jobs = [j for j in jobs if j.status == status]
+            if user_id:
+                jobs = [j for j in jobs if j.user_id == user_id]
 
             # Sort by creation time (newest first)
             jobs.sort(key=lambda j: j.created_at, reverse=True)

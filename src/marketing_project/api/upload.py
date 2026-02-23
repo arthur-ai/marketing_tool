@@ -117,7 +117,24 @@ async def upload_file(
         with open(upload_path, "wb") as buffer:
             buffer.write(content)
 
-        logger.info(f"File uploaded: {safe_filename} ({len(content)} bytes)")
+        # Persist upload ownership metadata
+        meta_path = os.path.join(UPLOAD_DIR, f"{file_id}.meta.json")
+        with open(meta_path, "w") as mf:
+            json.dump(
+                {
+                    "file_id": file_id,
+                    "filename": file.filename,
+                    "uploaded_by": user.user_id,
+                    "uploaded_at": datetime.utcnow().isoformat(),
+                    "content_type": content_type,
+                    "size": len(content),
+                },
+                mf,
+            )
+
+        logger.info(
+            f"File uploaded: {safe_filename} ({len(content)} bytes) by user {user.user_id}"
+        )
 
         # Process file based on content type
         processed_path = await process_uploaded_file(
@@ -145,6 +162,7 @@ async def upload_file(
                 "upload_path": upload_path,
                 "processed_path": processed_path,
                 "s3_uploaded": s3_uploaded,
+                "uploaded_by": user.user_id,
             },
         )
 

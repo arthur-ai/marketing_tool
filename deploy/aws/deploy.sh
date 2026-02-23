@@ -445,6 +445,19 @@ PARAMETERS="$PARAMETERS ParameterKey=OtelServiceName,ParameterValue=$OTEL_SERVIC
 PARAMETERS="$PARAMETERS ParameterKey=OtelDeploymentEnvironment,ParameterValue=$OTEL_DEPLOYMENT_ENVIRONMENT"
 PARAMETERS="$PARAMETERS ParameterKey=OtelInstrumentationGenaiCaptureMessageContent,ParameterValue=$OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"
 
+# Keycloak parameters (optional - only passed when KEYCLOAK_SERVER_URL is set)
+if [[ -n "${KEYCLOAK_SERVER_URL:-}" ]]; then
+    PARAMETERS="$PARAMETERS ParameterKey=KeycloakServerUrl,ParameterValue=${KEYCLOAK_SERVER_URL}"
+    PARAMETERS="$PARAMETERS ParameterKey=KeycloakRealm,ParameterValue=${KEYCLOAK_REALM:-}"
+    PARAMETERS="$PARAMETERS ParameterKey=KeycloakBackendClientId,ParameterValue=${KEYCLOAK_BACKEND_CLIENT_ID:-}"
+    PARAMETERS="$PARAMETERS ParameterKey=KeycloakBackendClientSecret,ParameterValue=${KEYCLOAK_BACKEND_CLIENT_SECRET:-}"
+    PARAMETERS="$PARAMETERS ParameterKey=KeycloakFrontendClientId,ParameterValue=${KEYCLOAK_FRONTEND_CLIENT_ID:-}"
+    PARAMETERS="$PARAMETERS ParameterKey=KeycloakFrontendClientSecret,ParameterValue=${KEYCLOAK_FRONTEND_CLIENT_SECRET:-}"
+    PARAMETERS="$PARAMETERS ParameterKey=NextAuthSecret,ParameterValue=${NEXTAUTH_SECRET:-}"
+    PARAMETERS="$PARAMETERS ParameterKey=KeycloakVerifySsl,ParameterValue=${KEYCLOAK_VERIFY_SSL:-true}"
+    print_info "Keycloak authentication enabled (realm: ${KEYCLOAK_REALM:-})"
+fi
+
 # Validate CloudFormation template
 print_info "Validating CloudFormation template..."
 if [ -f "validate-template.sh" ]; then

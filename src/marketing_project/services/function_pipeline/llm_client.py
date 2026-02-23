@@ -97,8 +97,8 @@ class LLMClient:
         """
         messages = [
             {"role": "system", "content": system_instruction},
-            {"role": "user", "content": prompt},
         ]
+        _context_msg: Optional[str] = None
 
         # Add context from previous steps if available
         context_span = None
@@ -204,22 +204,29 @@ class LLMClient:
                             }
                             if essential_context:
                                 context_msg += f"\n\n### Essential Context:\n```json\n{json.dumps(essential_context, indent=2, default=_json_serializer)}\n```"
-                            messages[-1]["content"] += context_msg
+                            _context_msg = context_msg
                         else:
                             # Fallback to full context dump
-                            context_msg = f"\n\n### Context from Previous Steps:\n```json\n{json.dumps(context, indent=2, default=_json_serializer)}\n```"
-                            messages[-1]["content"] += context_msg
+                            _context_msg = f"\n\n### Context from Previous Steps:\n```json\n{json.dumps(context, indent=2, default=_json_serializer)}\n```"
                     except Exception as e:
                         logger.debug(
                             f"Failed to use context references, using direct context: {e}"
                         )
                         # Fallback to full context dump
-                        context_msg = f"\n\n### Context from Previous Steps:\n```json\n{json.dumps(context, indent=2, default=_json_serializer)}\n```"
-                        messages[-1]["content"] += context_msg
+                        _context_msg = f"\n\n### Context from Previous Steps:\n```json\n{json.dumps(context, indent=2, default=_json_serializer)}\n```"
                 else:
                     # No job_id, use direct context
-                    context_msg = f"\n\n### Context from Previous Steps:\n```json\n{json.dumps(context, indent=2, default=_json_serializer)}\n```"
-                    messages[-1]["content"] += context_msg
+                    _context_msg = f"\n\n### Context from Previous Steps:\n```json\n{json.dumps(context, indent=2, default=_json_serializer)}\n```"
+
+                # Inject context as a separate turn so the task prompt stays clean
+                if _context_msg:
+                    messages.append({"role": "user", "content": _context_msg})
+                    messages.append(
+                        {
+                            "role": "assistant",
+                            "content": "I have reviewed the context from the previous pipeline steps and am ready to proceed.",
+                        }
+                    )
 
                 # Update context span with output (built messages with context)
                 if context_span:
@@ -303,6 +310,8 @@ class LLMClient:
         finally:
             close_span(context_span)
 
+        # Always append the task prompt as the final user turn
+        messages.append({"role": "user", "content": prompt})
         return messages
 
     async def call_with_retries(

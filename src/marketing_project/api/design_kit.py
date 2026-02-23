@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
 from ..middleware.keycloak_auth import get_current_user
+from ..middleware.rbac import require_roles
 from ..models.design_kit_config import DesignKitConfig
 from ..models.user_context import UserContext
 from ..services.design_kit_manager import get_design_kit_manager
@@ -54,6 +55,8 @@ async def get_design_kit_config(
                 job_type="design_kit_refresh",
                 content_id="design_kit",
                 metadata={"operation": "refresh", "use_internal_docs": True},
+                user_id=user.user_id,
+                user_context=user,
             )
 
             # Submit job to ARQ for background processing with extended timeout
@@ -175,7 +178,7 @@ async def get_design_kit_config_by_content_type(
 @router.post("/config", response_model=DesignKitConfig)
 async def create_or_update_design_kit_config(
     request: dict = Body(..., description="Request body with config and set_active"),
-    user: UserContext = Depends(get_current_user),
+    user: UserContext = Depends(require_roles(["admin"])),
 ):
     """
     Create or update design kit configuration.
@@ -216,7 +219,7 @@ async def create_or_update_design_kit_config(
 @router.post("/generate")
 async def generate_design_kit_config(
     request: dict = Body(..., description="Request body with use_internal_docs"),
-    user: UserContext = Depends(get_current_user),
+    user: UserContext = Depends(require_roles(["admin"])),
 ):
     """
     Generate new design kit configuration using AI/LLM (runs as background job).
@@ -244,6 +247,8 @@ async def generate_design_kit_config(
             job_type="design_kit_generate",
             content_id="design_kit",
             metadata={"operation": "generate", "use_internal_docs": use_internal_docs},
+            user_id=user.user_id,
+            user_context=user,
         )
 
         # Submit job to ARQ for background processing with extended timeout
@@ -303,7 +308,7 @@ async def list_design_kit_versions(
 
 @router.post("/activate/{version}")
 async def activate_design_kit_version(
-    version: str, user: UserContext = Depends(get_current_user)
+    version: str, user: UserContext = Depends(require_roles(["admin"]))
 ):
     """
     Activate a specific design kit configuration version.

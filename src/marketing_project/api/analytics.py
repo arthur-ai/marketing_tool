@@ -9,7 +9,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from marketing_project.middleware.keycloak_auth import get_current_user
+from marketing_project.middleware.rbac import require_roles
 from marketing_project.models.analytics_models import (
     AnalyticsResponse,
     ContentStats,
@@ -31,7 +31,7 @@ router = APIRouter()
 
 @router.get("/dashboard", response_model=DashboardStats)
 async def get_dashboard_analytics(
-    user: UserContext = Depends(get_current_user),
+    user: UserContext = Depends(require_roles(["admin"])),
 ):
     """
     Get dashboard statistics.
@@ -57,7 +57,7 @@ async def get_dashboard_analytics(
 
 @router.get("/pipeline", response_model=PipelineStats)
 async def get_pipeline_analytics(
-    user: UserContext = Depends(get_current_user),
+    user: UserContext = Depends(require_roles(["admin"])),
 ):
     """
     Get pipeline-specific statistics.
@@ -83,7 +83,7 @@ async def get_pipeline_analytics(
 
 @router.get("/content", response_model=ContentStats)
 async def get_content_analytics(
-    user: UserContext = Depends(get_current_user),
+    user: UserContext = Depends(require_roles(["admin"])),
 ):
     """
     Get content statistics.
@@ -112,7 +112,7 @@ async def get_content_analytics(
 )  # Alias for test compatibility
 async def get_recent_activity(
     days: int = Query(7, ge=1, le=30, description="Number of days to look back"),
-    user: UserContext = Depends(get_current_user),
+    user: UserContext = Depends(require_roles(["admin"])),
 ):
     """
     Get recent activity/jobs.
@@ -136,7 +136,7 @@ async def get_recent_activity(
 @router.get("/trends", response_model=TrendData)
 async def get_trends(
     days: int = Query(7, ge=1, le=90, description="Number of days to include in trend"),
-    user: UserContext = Depends(get_current_user),
+    user: UserContext = Depends(require_roles(["admin"])),
 ):
     """
     Get trend data for charts.
@@ -164,7 +164,7 @@ async def get_social_media_performance(
     platform: Optional[str] = Query(
         None, description="Platform filter: linkedin, hackernews, or email"
     ),
-    user: UserContext = Depends(get_current_user),
+    user: UserContext = Depends(require_roles(["admin"])),
 ):
     """
     Get social media post performance metrics.
@@ -197,7 +197,7 @@ async def get_social_media_trends(
     platform: Optional[str] = Query(
         None, description="Platform filter: linkedin, hackernews, or email"
     ),
-    user: UserContext = Depends(get_current_user),
+    user: UserContext = Depends(require_roles(["admin"])),
 ):
     """
     Get social media performance trends over time.
@@ -229,7 +229,7 @@ async def get_social_media_trends(
 )  # Alias for test compatibility
 async def get_unified_monitoring_metrics(
     days: int = Query(30, ge=1, le=90, description="Number of days to look back"),
-    user: UserContext = Depends(get_current_user),
+    user: UserContext = Depends(require_roles(["admin"])),
 ):
     """
     Get unified monitoring dashboard metrics.
@@ -259,7 +259,7 @@ async def get_unified_monitoring_metrics(
 @router.get("/cost", response_model=CostMetrics)  # Alias for test compatibility
 async def get_cost_metrics(
     days: int = Query(30, ge=1, le=90, description="Number of days to look back"),
-    user: UserContext = Depends(get_current_user),
+    user: UserContext = Depends(require_roles(["admin"])),
 ):
     """
     Get cost tracking metrics.
@@ -290,7 +290,7 @@ async def get_cost_metrics(
 )  # Alias for test compatibility
 async def get_quality_trends(
     days: int = Query(30, ge=1, le=90, description="Number of days to look back"),
-    user: UserContext = Depends(get_current_user),
+    user: UserContext = Depends(require_roles(["admin"])),
 ):
     """
     Get quality trend analysis.

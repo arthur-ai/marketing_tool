@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from ..middleware.keycloak_auth import get_current_user
+from ..middleware.rbac import require_roles, verify_job_ownership
 from ..models.approval_models import ApprovalDecisionRequest
 from ..models.user_context import UserContext
 from ..services.approval_manager import get_approval_manager
@@ -72,7 +73,9 @@ async def list_jobs(
     """
     try:
         manager = get_job_manager()
-        jobs = await manager.list_jobs(job_type=job_type, status=status, limit=limit)
+        jobs = await manager.list_jobs(
+            job_type=job_type, status=status, limit=limit, user_id=user.user_id
+        )
 
         # Enhance jobs with subjob status if requested
         if include_subjob_status:
@@ -107,10 +110,7 @@ async def get_job(job_id: str, user: UserContext = Depends(get_current_user)):
     """
     try:
         manager = get_job_manager()
-        job = await manager.get_job(job_id)
-
-        if not job:
-            raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+        job = await verify_job_ownership(job_id, user, manager)
 
         # Enrich job metadata with subjob information if not already present
         if not job.metadata.get("subjobs_info"):
@@ -181,6 +181,7 @@ async def get_job_chain(job_id: str, user: UserContext = Depends(get_current_use
     """
     try:
         manager = get_job_manager()
+        await verify_job_ownership(job_id, user, manager)
         chain_data = await manager.get_job_chain(job_id)
 
         if not chain_data["root_job_id"]:
@@ -243,10 +244,7 @@ async def get_job_status(job_id: str, user: UserContext = Depends(get_current_us
     """
     try:
         manager = get_job_manager()
-        job = await manager.get_job(job_id)
-
-        if not job:
-            raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+        job = await verify_job_ownership(job_id, user, manager)
 
         return JobStatusResponse(
             message=f"Job {job_id} status: {job.status}",
@@ -274,10 +272,7 @@ async def get_job_result(job_id: str, user: UserContext = Depends(get_current_us
     """
     try:
         manager = get_job_manager()
-        job = await manager.get_job(job_id)
-
-        if not job:
-            raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+        job = await verify_job_ownership(job_id, user, manager)
 
         if (
             job.status == JobStatus.PENDING
@@ -395,7 +390,7 @@ async def get_job_result(job_id: str, user: UserContext = Depends(get_current_us
 
 
 @router.delete("/all", summary="Delete all jobs")
-async def delete_all_jobs(user: UserContext = Depends(get_current_user)):
+async def delete_all_jobs(user: UserContext = Depends(require_roles(["admin"]))):
     """
     Delete all jobs from the system.
 
@@ -425,7 +420,7 @@ async def delete_all_jobs(user: UserContext = Depends(get_current_user)):
 
 
 @router.delete("/clear-arq", summary="Clear all ARQ jobs")
-async def clear_all_arq_jobs(user: UserContext = Depends(get_current_user)):
+async def clear_all_arq_jobs(user: UserContext = Depends(require_roles(["admin"]))):
     """
     Clear all jobs from the ARQ queue.
 
@@ -524,6 +519,15 @@ async def cancel_job(job_id: str, user: UserContext = Depends(get_current_user))
             else:
                 raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
 
+        # Ownership check: non-admins can only cancel their own jobs
+        if not user.has_role("admin") and job.user_id != user.user_id:
+            logger.warning(
+                f"User {user.user_id} attempted to cancel job {job_id} owned by {job.user_id}"
+            )
+            raise HTTPException(
+                status_code=403, detail="Access denied: you do not own this job"
+            )
+
         success = await manager.cancel_job(job_id)
 
         if not success:
@@ -579,8 +583,8 @@ async def resume_job(job_id: str, user: UserContext = Depends(get_current_user))
         job_manager = get_job_manager()
         approval_manager = await get_approval_manager()
 
-        # Check original job exists and is in WAITING_FOR_APPROVAL status
-        original_job = await job_manager.get_job(job_id)
+        # Check original job exists, is accessible, and is in WAITING_FOR_APPROVAL status
+        original_job = await verify_job_ownership(job_id, user, job_manager)
         if not original_job:
             raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
 
@@ -647,11 +651,28 @@ async def resume_job(job_id: str, user: UserContext = Depends(get_current_user))
         if session_id:
             resume_metadata["session_id"] = session_id
 
+        # Preserve user_id from original job
+        parent_user_id = original_job.user_id or root_job.user_id if root_job else None
+        parent_user_context = None
+        if parent_user_id and root_job:
+            # Try to reconstruct user context from metadata
+            from marketing_project.models.user_context import UserContext
+
+            triggered_by = root_job.metadata.get("triggered_by_user_id")
+            if triggered_by == parent_user_id:
+                parent_user_context = UserContext(
+                    user_id=parent_user_id,
+                    username=root_job.metadata.get("triggered_by_username"),
+                    email=root_job.metadata.get("triggered_by_email"),
+                )
+
         resume_job = await job_manager.create_job(
             job_id=resume_job_id,
             job_type="resume_pipeline",
             content_id=original_job.content_id,
             metadata=resume_metadata,
+            user_id=parent_user_id,
+            user_context=parent_user_context,
         )
 
         # Update chain metadata for all jobs in chain

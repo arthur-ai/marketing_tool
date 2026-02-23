@@ -459,6 +459,98 @@ class RedisSpanEnrichmentProcessor:
 
         return correlation
 
+    def _should_filter_span(self, command, attrs, span):
+        """
+        Determine if a Redis span should be filtered out from telemetry.
+
+        Filters out frequent operations that create noise in telemetry:
+        - ARQ polling operations (ZRANGEBYSCORE for job queue)
+        - Frequent cache operations (PSETEX/SETEX from libraries)
+
+        Args:
+            command: Redis command name
+            attrs: Span attributes dictionary
+            span: The span object (for accessing span name)
+
+        Returns: True if span should be filtered (not logged), False otherwise
+        """
+        # Get command from parameter or extract from span name as fallback
+        command_to_check = command
+        if not command_to_check:
+            try:
+                span_name = getattr(span, "name", "")
+                if span_name:
+                    command_to_check = str(span_name).upper()
+            except Exception:
+                pass
+
+        if not command_to_check:
+            return False
+
+        command_upper = command_to_check.upper()
+
+        # Filter out ARQ job queue polling operations
+        # ARQ uses ZRANGEBYSCORE to poll for ready jobs, which happens very frequently
+        if command_upper == "ZRANGEBYSCORE":
+            # Get db.statement from attributes (try multiple ways)
+            db_statement = str(attrs.get("db.statement", "")).lower()
+            if not db_statement:
+                # Try to get from span directly if not in attrs
+                try:
+                    if hasattr(span, "attributes") and isinstance(
+                        span.attributes, dict
+                    ):
+                        db_statement = str(
+                            span.attributes.get("db.statement", "")
+                        ).lower()
+                    elif hasattr(span, "_attributes") and isinstance(
+                        span._attributes, dict
+                    ):
+                        db_statement = str(
+                            span._attributes.get("db.statement", "")
+                        ).lower()
+                except Exception:
+                    pass
+
+            # If statement is parameterized (contains "?"), filter it
+            # ARQ uses parameterized queries like "ZRANGEBYSCORE ? ? ? ? ? ?"
+            # In this codebase, all parameterized ZRANGEBYSCORE operations are from ARQ
+            if db_statement and "?" in db_statement:
+                return True
+
+            # Check for ARQ patterns in statement
+            arq_patterns = ["arq:", "arq:queue", "arq:job"]
+            if db_statement and any(
+                keyword in db_statement for keyword in arq_patterns
+            ):
+                return True
+
+            # As a fallback, filter ALL ZRANGEBYSCORE operations since they're
+            # almost certainly from ARQ polling in this codebase
+            # This is the most aggressive filter - if you have other uses of
+            # ZRANGEBYSCORE, you can make this conditional
+            return True
+
+        # Filter out frequent cache operations from libraries
+        # PSETEX/SETEX are used for caching, and libraries (like LangChain) may
+        # call them very frequently for internal caching, creating telemetry noise
+        if command_upper in {"PSETEX", "SETEX"}:
+            db_statement = str(attrs.get("db.statement", "")).lower()
+            # Check if this is a library-internal cache operation
+            # Common patterns: langchain cache, openai cache, or other library caches
+            library_cache_patterns = [
+                "langchain",
+                "openai",
+                "cache:",
+                ":cache",
+                "llm_cache",
+                "prompt_cache",
+            ]
+            if any(pattern in db_statement for pattern in library_cache_patterns):
+                return True
+
+        return False
+
     def _extract_performance_indicators(self, duration_ms, command):
         """Calculate performance indicators."""
         indicators = {}
@@ -546,8 +638,45 @@ class RedisSpanEnrichmentProcessor:
             self.wrapped_processor.on_end(span)
             return
 
-        # Extract Redis command
+        # Extract Redis command - do this early for filtering
         command = self._get_redis_command(span, attrs)
+
+        # Also check span name directly as fallback (in case command extraction fails)
+        # Try multiple ways to get the span name
+        span_name = ""
+        try:
+            span_name = str(getattr(span, "name", "")).upper()
+        except Exception:
+            pass
+        if not span_name:
+            try:
+                # Try accessing via readable_span if available
+                if hasattr(span, "_readable_span"):
+                    span_name = str(getattr(span._readable_span, "name", "")).upper()
+            except Exception:
+                pass
+
+        # Filter out frequent ARQ polling operations to reduce telemetry noise
+        # This must happen BEFORE any enrichment to prevent export
+        # Check both the command and span name to ensure we catch all ZRANGEBYSCORE operations
+        should_filter = False
+
+        # Direct check: if command is ZRANGEBYSCORE, filter it
+        if command and str(command).upper() == "ZRANGEBYSCORE":
+            should_filter = True
+
+        # Direct check: if span name is ZRANGEBYSCORE, filter it
+        if span_name == "ZRANGEBYSCORE":
+            should_filter = True
+
+        # Also check via the filter method
+        if not should_filter and self._should_filter_span(command, attrs, span):
+            should_filter = True
+
+        if should_filter:
+            # Skip this span - don't forward to wrapped processor
+            # This prevents the span from being exported
+            return
 
         # Determine OpenInference span kind
         span_kind = self._determine_span_kind(command)

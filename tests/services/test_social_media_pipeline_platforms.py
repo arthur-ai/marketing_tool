@@ -19,6 +19,8 @@ class TestPlatformCharacterLimits:
     def test_linkedin_character_limit(self, mock_openai):
         """Test LinkedIn character limit (3000 characters)."""
         pipeline = SocialMediaPipeline()
+        # Clear cached config to ensure mock works
+        pipeline._platform_config = None
 
         # Mock platform config to return proper limits
         with patch.object(pipeline, "_get_platform_config") as mock_config:
@@ -51,6 +53,8 @@ class TestPlatformCharacterLimits:
     def test_hackernews_character_limit(self, mock_openai):
         """Test HackerNews character limit (2000 characters)."""
         pipeline = SocialMediaPipeline()
+        # Clear cached config to ensure mock works
+        pipeline._platform_config = None
 
         # Mock platform config to return proper limits
         with patch.object(pipeline, "_get_platform_config") as mock_config:
@@ -81,9 +85,22 @@ class TestPlatformCharacterLimits:
     def test_email_character_limit_newsletter(self, mock_openai):
         """Test email newsletter character limit (5000 characters)."""
         pipeline = SocialMediaPipeline()
+        # Clear cached config to ensure mock works
+        pipeline._platform_config = None
 
         # Mock platform config to return proper limits for newsletter
         with patch.object(pipeline, "_get_platform_config") as mock_config:
+            # Add test for content approaching limit
+            # Content approaching limit (must be > warning_threshold)
+            content = "a" * 4801
+            is_valid, warning = pipeline._validate_content_length(
+                content, "email", email_type="newsletter"
+            )
+            assert is_valid is True
+            assert warning is not None
+            assert "approaching" in warning.lower()
+
+            # Content within limit
             mock_config.return_value = {
                 "character_limit": 5000,
                 "types": {
@@ -94,7 +111,6 @@ class TestPlatformCharacterLimits:
                 },
             }
 
-            # Content within limit
             content = "a" * 4000
             is_valid, warning = pipeline._validate_content_length(
                 content, "email", email_type="newsletter"
@@ -114,9 +130,22 @@ class TestPlatformCharacterLimits:
     def test_email_character_limit_promotional(self, mock_openai):
         """Test email promotional character limit (3000 characters)."""
         pipeline = SocialMediaPipeline()
+        # Clear cached config to ensure mock works
+        pipeline._platform_config = None
 
         # Mock platform config to return proper limits for promotional
         with patch.object(pipeline, "_get_platform_config") as mock_config:
+            # Add test for content approaching limit
+            # Content approaching limit (must be > warning_threshold)
+            content = "a" * 2801
+            is_valid, warning = pipeline._validate_content_length(
+                content, "email", email_type="promotional"
+            )
+            assert is_valid is True
+            assert warning is not None
+            assert "approaching" in warning.lower()
+
+            # Content within limit
             mock_config.return_value = {
                 "character_limit": 5000,
                 "types": {
@@ -127,7 +156,6 @@ class TestPlatformCharacterLimits:
                 },
             }
 
-            # Content within limit
             content = "a" * 2500
             is_valid, warning = pipeline._validate_content_length(
                 content, "email", email_type="promotional"

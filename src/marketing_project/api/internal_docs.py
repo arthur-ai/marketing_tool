@@ -22,6 +22,7 @@ from fastapi import (
 from pydantic import BaseModel, Field
 
 from ..middleware.keycloak_auth import get_current_user
+from ..middleware.rbac import require_roles
 from ..models.internal_docs_config import InternalDocsConfig, ScannedDocument
 from ..models.scanned_document_db import ScannedDocumentDB
 from ..models.user_context import UserContext
@@ -143,7 +144,7 @@ async def get_internal_docs_config_by_version(
 @router.post("/config", response_model=InternalDocsConfig)
 async def create_or_update_internal_docs_config(
     request: dict = Body(..., description="Request body with config and set_active"),
-    user: UserContext = Depends(get_current_user),
+    user: UserContext = Depends(require_roles(["admin"])),
 ):
     """
     Create or update internal docs configuration.
@@ -211,7 +212,7 @@ async def list_internal_docs_versions(
 
 @router.post("/activate/{version}")
 async def activate_internal_docs_version(
-    version: str, user: UserContext = Depends(get_current_user)
+    version: str, user: UserContext = Depends(require_roles(["admin"]))
 ):
     """
     Activate a specific internal docs configuration version.
@@ -245,7 +246,7 @@ async def activate_internal_docs_version(
 
 @router.post("/scan/url")
 async def scan_from_url(
-    request: ScanFromUrlRequest, user: UserContext = Depends(get_current_user)
+    request: ScanFromUrlRequest, user: UserContext = Depends(require_roles(["admin"]))
 ):
     """
     Scan internal documentation from a base URL with crawling (runs as background ARQ job).
@@ -274,6 +275,8 @@ async def scan_from_url(
                 "merge_with_existing": request.merge_with_existing,
             },
             job_id=job_id,
+            user_id=user.user_id,
+            user_context=user,
         )
 
         # Submit to ARQ
@@ -303,7 +306,7 @@ async def scan_from_url(
 
 @router.post("/scan/list")
 async def scan_from_list(
-    request: ScanFromListRequest, user: UserContext = Depends(get_current_user)
+    request: ScanFromListRequest, user: UserContext = Depends(require_roles(["admin"]))
 ):
     """
     Scan internal documentation from a list of URLs (runs as background ARQ job).
@@ -329,6 +332,8 @@ async def scan_from_list(
                 "merge_with_existing": request.merge_with_existing,
             },
             job_id=job_id,
+            user_id=user.user_id,
+            user_context=user,
         )
 
         # Submit to ARQ
@@ -355,7 +360,8 @@ async def scan_from_list(
 
 @router.post("/scan/merge")
 async def merge_scan_results(
-    request: MergeScanResultsRequest, user: UserContext = Depends(get_current_user)
+    request: MergeScanResultsRequest,
+    user: UserContext = Depends(require_roles(["admin"])),
 ):
     """
     Merge scan results with existing configuration.
@@ -398,7 +404,7 @@ async def add_document(
     request: dict = Body(
         ..., description="Request body with document and optionally version"
     ),
-    user: UserContext = Depends(get_current_user),
+    user: UserContext = Depends(require_roles(["admin"])),
 ):
     """
     Add a single document to the configuration.
@@ -440,7 +446,9 @@ async def add_document(
 
 
 @router.delete("/documents/{doc_url:path}", response_model=InternalDocsConfig)
-async def remove_document(doc_url: str, user: UserContext = Depends(get_current_user)):
+async def remove_document(
+    doc_url: str, user: UserContext = Depends(require_roles(["admin"]))
+):
     """
     Remove a document from the configuration by URL.
 
@@ -836,6 +844,8 @@ async def bulk_rescan_documents(request: BulkOperationRequest):
             content_id="internal_docs",
             metadata={"urls": request.urls, "urls_count": len(request.urls)},
             job_id=job_id,
+            user_id=user.user_id,
+            user_context=user,
         )
 
         # Submit to ARQ
@@ -861,7 +871,7 @@ async def bulk_rescan_documents(request: BulkOperationRequest):
 
 @router.post("/documents/bulk/delete")
 async def bulk_delete_documents(
-    request: BulkOperationRequest, user: UserContext = Depends(get_current_user)
+    request: BulkOperationRequest, user: UserContext = Depends(require_roles(["admin"]))
 ):
     """
     Bulk delete documents (hard delete).
@@ -890,7 +900,8 @@ async def bulk_delete_documents(
 
 @router.post("/documents/bulk/update-categories")
 async def bulk_update_categories(
-    request: BulkCategoryUpdateRequest, user: UserContext = Depends(get_current_user)
+    request: BulkCategoryUpdateRequest,
+    user: UserContext = Depends(require_roles(["admin"])),
 ):
     """
     Bulk update categories for documents (adds to existing, doesn't replace).
@@ -921,7 +932,7 @@ async def bulk_update_categories(
 async def bulk_upload_documents(
     file: UploadFile = File(...),
     format: str = Form("json"),
-    user: UserContext = Depends(get_current_user),
+    user: UserContext = Depends(require_roles(["admin"])),
 ):
     """
     Bulk upload documents from JSON or CSV file.
