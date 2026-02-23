@@ -929,8 +929,10 @@ def setup_tracing(service_instance_id: Optional[str] = None) -> bool:
                 endpoint=endpoint,
                 headers={"Authorization": f"Bearer {arthur_api_key}"},
             )
-            # Create span processor and wrap it with enrichment to add OpenInference metadata
-            base_processor = SimpleSpanProcessor(arthur_exporter)
+            # BatchSpanProcessor exports asynchronously in a background thread,
+            # preventing export timeouts from blocking request processing.
+            # (SimpleSpanProcessor blocks the calling thread on every span end.)
+            base_processor = BatchSpanProcessor(arthur_exporter)
             enriched_processor = RedisSpanEnrichmentProcessor(base_processor)
             _tracer_provider.add_span_processor(enriched_processor)
             exporters_configured.append(f"Arthur ({endpoint})")
