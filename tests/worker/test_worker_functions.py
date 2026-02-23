@@ -87,7 +87,9 @@ async def test_resume_pipeline_job(mock_ctx):
         "marketing_project.services.function_pipeline.FunctionPipeline"
     ) as mock_pipeline_class:
         with patch("marketing_project.worker.get_job_manager") as mock_job_mgr:
-            with patch("marketing_project.services.function_pipeline.AsyncOpenAI"):
+            with patch(
+                "marketing_project.services.function_pipeline.pipeline.AsyncOpenAI"
+            ):
                 mock_pipeline = MagicMock()
                 mock_pipeline.resume_pipeline = AsyncMock(
                     return_value={"pipeline_status": "completed"}
