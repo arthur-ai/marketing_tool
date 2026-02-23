@@ -8,6 +8,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from marketing_project.api.content import router
+from marketing_project.middleware.keycloak_auth import get_current_user
+from tests.utils.keycloak_test_helpers import create_user_context
 
 
 @pytest.fixture
@@ -17,6 +19,8 @@ def client():
 
     app = FastAPI()
     app.include_router(router)
+    mock_user = create_user_context(roles=["admin"])
+    app.dependency_overrides[get_current_user] = lambda: mock_user
     return TestClient(app)
 
 
