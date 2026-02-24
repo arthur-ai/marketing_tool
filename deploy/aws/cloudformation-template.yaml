@@ -1131,7 +1131,7 @@ Resources:
       VpcId: !Ref ExistingVpcId
       TargetType: ip
       HealthCheckEnabled: true
-      HealthCheckPath: /
+      HealthCheckPath: /healthz
       HealthCheckProtocol: HTTP
       HealthCheckIntervalSeconds: 30
       HealthCheckTimeoutSeconds: 10
