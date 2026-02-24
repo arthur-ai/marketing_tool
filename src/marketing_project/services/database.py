@@ -149,6 +149,27 @@ class DatabaseManager:
             logger.error(f"Failed to create database tables: {e}", exc_info=True)
             raise
 
+        await self._run_migrations()
+
+    async def _run_migrations(self):
+        """
+        Apply incremental schema migrations for columns added after initial table creation.
+        Uses IF NOT EXISTS / DO NOTHING patterns so re-runs are safe.
+        """
+        migrations = [
+            # Added user_id to jobs table
+            "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS user_id VARCHAR",
+            "CREATE INDEX IF NOT EXISTS idx_jobs_user_id ON jobs (user_id)",
+        ]
+        try:
+            async with self._engine.begin() as conn:
+                for statement in migrations:
+                    await conn.execute(text(statement))
+            logger.info("Database migrations applied successfully")
+        except Exception as e:
+            logger.error(f"Failed to apply database migrations: {e}", exc_info=True)
+            raise
+
     @asynccontextmanager
     async def get_session(self):
         """
