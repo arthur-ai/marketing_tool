@@ -1163,20 +1163,6 @@ Resources:
       Port: 80
       Protocol: HTTP
 
-  # Listener Rule for Better Auth routes (must be higher priority than /api/* → backend)
-  ALBListenerRuleAuth:
-    Type: AWS::ElasticLoadBalancingV2::ListenerRule
-    Properties:
-      ListenerArn: !Ref ALBListener
-      Priority: 50
-      Conditions:
-        - Field: path-pattern
-          Values:
-            - '/api/auth/*'
-      Actions:
-        - Type: forward
-          TargetGroupArn: !Ref FrontendALBTargetGroup
-
   # Listener Rule for API routes (path-based routing)
   ALBListenerRuleAPI:
     Type: AWS::ElasticLoadBalancingV2::ListenerRule
@@ -1205,21 +1191,6 @@ Resources:
       Certificates:
         - CertificateArn: !Ref CertificateArn
       SslPolicy: ELBSecurityPolicy-TLS13-1-2-2021-06
-
-  # HTTPS Listener Rule for Better Auth routes (must be higher priority than /api/* → backend)
-  ALBHTTPSListenerRuleAuth:
-    Type: AWS::ElasticLoadBalancingV2::ListenerRule
-    Condition: HasCertificate
-    Properties:
-      ListenerArn: !Ref ALBHTTPSListener
-      Priority: 50
-      Conditions:
-        - Field: path-pattern
-          Values:
-            - '/api/auth/*'
-      Actions:
-        - Type: forward
-          TargetGroupArn: !Ref FrontendALBTargetGroup
 
   # HTTPS Listener Rule for API routes (path-based routing)
   ALBHTTPSListenerRuleAPI:
