@@ -618,7 +618,7 @@ async def process_multi_platform_social_media_job(
         close_span(job_span)
 
 
-async def analyze_design_kit_batch_job(
+async def analyze_brand_kit_batch_job(
     ctx,
     content_batch: List[Dict[str, Any]],
     batch_index: int,
@@ -627,7 +627,7 @@ async def analyze_design_kit_batch_job(
     **kwargs,
 ) -> Dict:
     """
-    Analyze a batch of content pieces for design kit patterns.
+    Analyze a batch of content pieces for brand kit patterns.
 
     Args:
         ctx: ARQ context
@@ -641,7 +641,7 @@ async def analyze_design_kit_batch_job(
     """
     try:
         logger.info(
-            f"ARQ Worker: Analyzing design kit batch {batch_index + 1} (job {batch_job_id}, parent {parent_job_id})"
+            f"ARQ Worker: Analyzing brand kit batch {batch_index + 1} (job {batch_job_id}, parent {parent_job_id})"
         )
 
         job_manager = get_job_manager()
@@ -653,14 +653,14 @@ async def analyze_design_kit_batch_job(
 
         import os
 
-        from marketing_project.plugins.design_kit.tasks import DesignKitPlugin
+        from marketing_project.plugins.brand_kit.tasks import BrandKitPlugin
         from marketing_project.services.function_pipeline import FunctionPipeline
 
         pipeline = FunctionPipeline(
             model=os.getenv("OPENAI_MODEL", "gpt-5.1"), temperature=0.7
         )
 
-        plugin = DesignKitPlugin()
+        plugin = BrandKitPlugin()
         analyses = []
 
         for idx, content_doc in enumerate(content_batch):
@@ -698,7 +698,7 @@ async def analyze_design_kit_batch_job(
         raise
 
 
-async def synthesize_design_kit_job(
+async def synthesize_brand_kit_job(
     ctx,
     all_analyses: List[Dict[str, Any]],
     parent_job_id: str,
@@ -706,7 +706,7 @@ async def synthesize_design_kit_job(
     **kwargs,
 ) -> Dict:
     """
-    Synthesize all content analyses into a final design kit config.
+    Synthesize all content analyses into a final brand kit config.
 
     Args:
         ctx: ARQ context
@@ -715,11 +715,11 @@ async def synthesize_design_kit_job(
         synthesis_job_id: This synthesis job's ID
 
     Returns:
-        Dictionary with synthesized design kit config
+        Dictionary with synthesized brand kit config
     """
     try:
         logger.info(
-            f"ARQ Worker: Synthesizing design kit config (job {synthesis_job_id}, parent {parent_job_id})"
+            f"ARQ Worker: Synthesizing brand kit config (job {synthesis_job_id}, parent {parent_job_id})"
         )
 
         job_manager = get_job_manager()
@@ -729,14 +729,14 @@ async def synthesize_design_kit_job(
 
         import os
 
-        from marketing_project.plugins.design_kit.tasks import DesignKitPlugin
+        from marketing_project.plugins.brand_kit.tasks import BrandKitPlugin
         from marketing_project.services.function_pipeline import FunctionPipeline
 
         pipeline = FunctionPipeline(
             model=os.getenv("OPENAI_MODEL", "gpt-5.1"), temperature=0.7
         )
 
-        plugin = DesignKitPlugin()
+        plugin = BrandKitPlugin()
 
         # Use the plugin's synthesis logic
         await job_manager.update_job_progress(
@@ -776,11 +776,11 @@ async def synthesize_design_kit_job(
         raise
 
 
-async def refresh_design_kit_job(
+async def refresh_brand_kit_job(
     ctx, use_internal_docs: bool, job_id: str, **kwargs
 ) -> Dict:
     """
-    Background job for refreshing design kit configuration using AI.
+    Background job for refreshing brand kit configuration using AI.
 
     This job orchestrates the process:
     1. Fetches all content from internal_docs
@@ -799,24 +799,24 @@ async def refresh_design_kit_job(
         Dictionary with the generated config
     """
     try:
-        logger.info(f"ARQ Worker: Refreshing design kit configuration (job {job_id})")
+        logger.info(f"ARQ Worker: Refreshing brand kit configuration (job {job_id})")
 
         # Update job manager
         job_manager = get_job_manager()
         await job_manager.update_job_progress(
-            job_id, 5, "Starting design kit generation"
+            job_id, 5, "Starting brand kit generation"
         )
 
         # Import here to avoid circular imports
         import uuid
 
-        from marketing_project.plugins.design_kit.tasks import DesignKitPlugin
-        from marketing_project.services.design_kit_manager import get_design_kit_manager
+        from marketing_project.plugins.brand_kit.tasks import BrandKitPlugin
+        from marketing_project.services.brand_kit_manager import get_brand_kit_manager
         from marketing_project.services.scanned_document_db import (
             get_scanned_document_db,
         )
 
-        manager = await get_design_kit_manager()
+        manager = await get_brand_kit_manager()
 
         content_batches = []
         batch_job_ids = []
@@ -975,7 +975,7 @@ async def refresh_design_kit_job(
 
                 # Create job for this batch
                 batch_job = await job_manager.create_job(
-                    job_type="design_kit_batch_analysis",
+                    job_type="brand_kit_batch_analysis",
                     content_id=f"batch_{batch_idx}",
                     metadata={
                         "parent_job_id": job_id,
@@ -988,7 +988,7 @@ async def refresh_design_kit_job(
                 # Submit batch analysis job via JobManager to properly track arq_job_id
                 arq_batch_job_id = await job_manager.submit_to_arq(
                     batch_job_id,
-                    "analyze_design_kit_batch_job",
+                    "analyze_brand_kit_batch_job",
                     batch,
                     batch_idx,
                     job_id,
@@ -1064,7 +1064,7 @@ async def refresh_design_kit_job(
             synthesis_job_id = str(uuid.uuid4())
 
             synthesis_job = await job_manager.create_job(
-                job_type="design_kit_synthesis",
+                job_type="brand_kit_synthesis",
                 content_id="synthesis",
                 metadata={"parent_job_id": job_id, "analysis_count": len(all_analyses)},
                 job_id=synthesis_job_id,
@@ -1073,7 +1073,7 @@ async def refresh_design_kit_job(
             # Submit synthesis job via JobManager to properly track arq_job_id
             arq_synthesis_job_id = await job_manager.submit_to_arq(
                 synthesis_job_id,
-                "synthesize_design_kit_job",
+                "synthesize_brand_kit_job",
                 all_analyses,
                 job_id,
                 synthesis_job_id,
@@ -1107,11 +1107,11 @@ async def refresh_design_kit_job(
                         ):
                             generated_config_dict = synth_job.result.get("config")
                             if generated_config_dict:
-                                from marketing_project.models.design_kit_config import (
-                                    DesignKitConfig,
+                                from marketing_project.models.brand_kit_config import (
+                                    BrandKitConfig,
                                 )
 
-                                generated_config = DesignKitConfig(
+                                generated_config = BrandKitConfig(
                                     **generated_config_dict
                                 )
                                 synthesis_complete = True
@@ -1155,7 +1155,7 @@ async def refresh_design_kit_job(
         success = await manager.save_config(generated_config, set_active=True)
 
         if not success:
-            raise Exception("Failed to save generated design kit configuration")
+            raise Exception("Failed to save generated brand kit configuration")
 
         await job_manager.update_job_progress(job_id, 100, "Completed")
 
@@ -1167,13 +1167,13 @@ async def refresh_design_kit_job(
         }
 
         logger.info(
-            f"ARQ Worker: Design kit refresh job {job_id} completed successfully"
+            f"ARQ Worker: Brand kit refresh job {job_id} completed successfully"
         )
         return result
 
     except Exception as e:
         logger.error(
-            f"ARQ Worker: Design kit refresh job {job_id} failed: {e}", exc_info=True
+            f"ARQ Worker: Brand kit refresh job {job_id} failed: {e}", exc_info=True
         )
         raise
 
@@ -2050,15 +2050,15 @@ class WorkerSettings:
         bulk_rescan_documents_job,
         scan_from_url_job,
         scan_from_list_job,
-        refresh_design_kit_job,
-        analyze_design_kit_batch_job,
-        synthesize_design_kit_job,
+        refresh_brand_kit_job,
+        analyze_brand_kit_batch_job,
+        synthesize_brand_kit_job,
     ]
 
     # Worker settings
     max_jobs = int(os.getenv("ARQ_MAX_JOBS", "10"))  # Max concurrent jobs
-    # Default timeout: 30 minutes (1800s) to support long-running design kit jobs
-    # Design kit jobs can take 20-30 minutes due to multiple batch analysis jobs + synthesis
+    # Default timeout: 30 minutes (1800s) to support long-running brand kit jobs
+    # Brand kit jobs can take 20-30 minutes due to multiple batch analysis jobs + synthesis
     job_timeout = int(os.getenv("ARQ_JOB_TIMEOUT", "1800"))  # 30 minutes default
     keep_result = 3600  # Keep results for 1 hour
     keep_result_forever = False

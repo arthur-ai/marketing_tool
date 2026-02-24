@@ -11,9 +11,9 @@ from marketing_project.api.admin_users import router as admin_users_router
 from marketing_project.api.analytics import router as analytics_router
 from marketing_project.api.approvals import router as approvals_router
 from marketing_project.api.batch import router as batch_router
+from marketing_project.api.brand_kit import router as brand_kit_router
 from marketing_project.api.content import router as content_router
 from marketing_project.api.core import router as core_router
-from marketing_project.api.design_kit import router as design_kit_router
 from marketing_project.api.feedback import router as feedback_router
 from marketing_project.api.health import router as health_router
 from marketing_project.api.internal_docs import router as internal_docs_router
@@ -130,18 +130,16 @@ def register_routes() -> APIRouter:
     )
 
     # ========================================
-    # DESIGN KIT CONFIGURATION ROUTES
+    # BRAND KIT CONFIGURATION ROUTES
     # ========================================
-    # GET /api/v1/design-kit/config - Get active config
-    # GET /api/v1/design-kit/config/{version} - Get config by version
-    # GET /api/v1/design-kit/config/{content_type}/type - Get content-type-specific config
-    # POST /api/v1/design-kit/config - Create/update config (manual)
-    # POST /api/v1/design-kit/generate - Generate config from analysis
-    # GET /api/v1/design-kit/versions - List versions
-    # POST /api/v1/design-kit/activate/{version} - Activate version
-    api_router.include_router(
-        design_kit_router, prefix="/design-kit", tags=["Design Kit"]
-    )
+    # GET /api/v1/brand-kit/config - Get active config
+    # GET /api/v1/brand-kit/config/{version} - Get config by version
+    # GET /api/v1/brand-kit/config/{content_type}/type - Get content-type-specific config
+    # POST /api/v1/brand-kit/config - Create/update config (manual)
+    # POST /api/v1/brand-kit/generate - Generate config from analysis
+    # GET /api/v1/brand-kit/versions - List versions
+    # POST /api/v1/brand-kit/activate/{version} - Activate version
+    api_router.include_router(brand_kit_router, prefix="/brand-kit", tags=["Brand Kit"])
 
     # ========================================
     # SOCIAL MEDIA ROUTES

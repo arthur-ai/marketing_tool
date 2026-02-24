@@ -1,0 +1,95 @@
+{
+  "id": "tutorial_step_by_step",
+  "name": "Step-by-Step Tutorial",
+  "type": "tutorial",
+  "description": "Structured layout for tutorials and guides with clear progression",
+  "version": "1.0.0",
+  "features": [
+    "progress_indicator",
+    "step_blocks",
+    "code_highlights",
+    "navigation",
+    "prerequisites",
+    "completion_checklist"
+  ],
+  "responsive": true,
+  "brand_compatible": true,
+  "layout": {
+    "max_width": "1000px",
+    "content_width": "800px",
+    "sidebar_width": "200px",
+    "breakpoints": {
+      "mobile": "768px",
+      "tablet": "1024px",
+      "desktop": "1200px"
+    }
+  },
+  "typography": {
+    "heading_font": "Inter, -apple-system, BlinkMacSystemFont, sans-serif",
+    "body_font": "Inter, -apple-system, BlinkMacSystemFont, sans-serif",
+    "code_font": "JetBrains Mono, Consolas, monospace",
+    "heading_sizes": {
+      "h1": "2.5rem",
+      "h2": "2rem",
+      "h3": "1.5rem",
+      "h4": "1.25rem",
+      "h5": "1.125rem",
+      "h6": "1rem"
+    },
+    "body_size": "1rem",
+    "line_height": 1.6
+  },
+  "colors": {
+    "primary": "#059669",
+    "secondary": "#64748b",
+    "accent": "#f59e0b",
+    "success": "#10b981",
+    "warning": "#f59e0b",
+    "background": "#ffffff",
+    "text": "#1e293b",
+    "text_light": "#64748b",
+    "border": "#e2e8f0",
+    "code_background": "#f8fafc"
+  },
+  "spacing": {
+    "section_padding": "2rem",
+    "content_padding": "1.5rem",
+    "element_margin": "1rem",
+    "step_spacing": "2rem"
+  },
+  "components": {
+    "progress_indicator": {
+      "enabled": true,
+      "template": "progress_modern",
+      "elements": ["progress_bar", "step_numbers", "step_titles"]
+    },
+    "step_blocks": {
+      "enabled": true,
+      "template": "step_modern",
+      "elements": ["step_number", "step_title", "step_content", "step_image"]
+    },
+    "code_highlights": {
+      "enabled": true,
+      "template": "code_modern",
+      "elements": ["syntax_highlighting", "copy_button", "language_indicator"]
+    },
+    "navigation": {
+      "enabled": true,
+      "template": "nav_modern",
+      "elements": ["prev_step", "next_step", "step_list", "completion_status"]
+    },
+    "prerequisites": {
+      "enabled": true,
+      "template": "prereq_modern",
+      "elements": ["required_knowledge", "tools_needed", "time_estimate"]
+    }
+  },
+  "css_classes": {
+    "container": "max-w-4xl mx-auto px-4",
+    "content": "prose prose-lg max-w-none",
+    "step": "bg-white border-l-4 border-green-500 p-6 mb-6 rounded-r-lg shadow-sm",
+    "code_block": "bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto",
+    "progress_bar": "w-full bg-gray-200 rounded-full h-2.5",
+    "navigation": "flex justify-between items-center py-4 border-t border-gray-200"
+  }
+}

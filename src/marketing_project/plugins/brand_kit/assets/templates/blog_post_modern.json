@@ -1,0 +1,85 @@
+{
+  "id": "blog_post_modern",
+  "name": "Modern Blog Post",
+  "type": "blog_post",
+  "description": "Clean, modern design for blog posts with excellent readability",
+  "version": "1.0.0",
+  "features": [
+    "hero_section",
+    "content_blocks",
+    "sidebar",
+    "footer",
+    "social_sharing",
+    "related_posts"
+  ],
+  "responsive": true,
+  "brand_compatible": true,
+  "layout": {
+    "max_width": "1200px",
+    "content_width": "800px",
+    "sidebar_width": "300px",
+    "breakpoints": {
+      "mobile": "768px",
+      "tablet": "1024px",
+      "desktop": "1200px"
+    }
+  },
+  "typography": {
+    "heading_font": "Inter, -apple-system, BlinkMacSystemFont, sans-serif",
+    "body_font": "Inter, -apple-system, BlinkMacSystemFont, sans-serif",
+    "heading_sizes": {
+      "h1": "2.5rem",
+      "h2": "2rem",
+      "h3": "1.5rem",
+      "h4": "1.25rem",
+      "h5": "1.125rem",
+      "h6": "1rem"
+    },
+    "body_size": "1rem",
+    "line_height": 1.6
+  },
+  "colors": {
+    "primary": "#2563eb",
+    "secondary": "#64748b",
+    "accent": "#f59e0b",
+    "background": "#ffffff",
+    "text": "#1e293b",
+    "text_light": "#64748b",
+    "border": "#e2e8f0"
+  },
+  "spacing": {
+    "section_padding": "3rem",
+    "content_padding": "1.5rem",
+    "element_margin": "1rem",
+    "paragraph_spacing": "1.5rem"
+  },
+  "components": {
+    "hero_section": {
+      "enabled": true,
+      "template": "hero_modern",
+      "elements": ["title", "subtitle", "meta", "featured_image"]
+    },
+    "content_blocks": {
+      "enabled": true,
+      "template": "content_modern",
+      "elements": ["headings", "paragraphs", "lists", "quotes", "code"]
+    },
+    "sidebar": {
+      "enabled": true,
+      "template": "sidebar_modern",
+      "elements": ["toc", "related_posts", "social_links", "newsletter"]
+    },
+    "footer": {
+      "enabled": true,
+      "template": "footer_modern",
+      "elements": ["author_bio", "related_posts", "social_links", "copyright"]
+    }
+  },
+  "css_classes": {
+    "container": "max-w-6xl mx-auto px-4",
+    "content": "prose prose-lg max-w-none",
+    "hero": "text-center py-12 bg-gradient-to-r from-blue-50 to-indigo-50",
+    "sidebar": "bg-gray-50 p-6 rounded-lg",
+    "card": "bg-white shadow-lg rounded-lg p-6"
+  }
+}

@@ -10,7 +10,7 @@ Provides endpoints to:
 
 import logging
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 from marketing_project.middleware.keycloak_auth import get_current_user
 from marketing_project.middleware.rbac import verify_job_ownership
 from marketing_project.models.user_context import UserContext
+from marketing_project.services.approval_manager import get_approval_manager
 from marketing_project.services.job_manager import get_job_manager
 from marketing_project.services.step_result_manager import get_step_result_manager
 
@@ -28,6 +29,21 @@ router = APIRouter(prefix="/results", tags=["Step Results"])
 
 
 # Response Models
+class PendingApprovalSummary(BaseModel):
+    """Pending approval embedded in job results — contains all data the review panel needs."""
+
+    id: str
+    job_id: str
+    pipeline_step: str
+    step_name: str
+    status: str
+    input_data: Dict[str, Any] = Field(default_factory=dict)
+    output_data: Dict[str, Any] = Field(default_factory=dict)
+    confidence_score: Optional[float] = None
+    suggestions: Optional[List[str]] = None
+    created_at: str
+
+
 class StepInfo(BaseModel):
     """Information about a single pipeline step result."""
 
@@ -75,6 +91,10 @@ class JobResultsSummary(BaseModel):
     quality_warnings: Optional[List[str]] = Field(
         None, description="Quality warnings from pipeline execution"
     )
+    pending_approvals: Optional[List[PendingApprovalSummary]] = Field(
+        None,
+        description="Pending approvals for this job, embedded to avoid extra round-trips",
+    )
 
 
 class JobListItem(BaseModel):
@@ -89,6 +109,10 @@ class JobListItem(BaseModel):
     created_at: Optional[str] = Field(None, description="Result creation timestamp")
     status: Optional[str] = Field(
         None, description="Job status (completed/failed/processing/etc.)"
+    )
+    pending_approval_count: Optional[int] = Field(
+        None,
+        description="Number of pending approvals (set when status is waiting_for_approval)",
     )
 
 
@@ -139,7 +163,19 @@ async def list_jobs(
                 j.id: (j.status.value if hasattr(j.status, "value") else str(j.status))
                 for j in user_jobs
             }
-            jobs = [j for j in jobs if j.get("job_id") in user_job_ids]
+            if user_job_ids:
+                # Primary path: filter to jobs tracked in DB/Redis for this user
+                jobs = [j for j in jobs if j.get("job_id") in user_job_ids]
+            else:
+                # Fallback: no DB/Redis records for this user (pre-migration jobs or
+                # transient DB unavailability). Try filtering by user_id stored in
+                # filesystem metadata.json (written by newer deployments). If none have
+                # it, show all filesystem jobs — content access is still gated by
+                # verify_job_ownership so no data is exposed.
+                fs_user_jobs = [j for j in jobs if j.get("user_id") == user.user_id]
+                if fs_user_jobs:
+                    jobs = fs_user_jobs
+                # else: keep all filesystem jobs as last-resort fallback
         else:
             # Admin sees all jobs; fetch status for all of them
             all_jobs = await job_manager.list_jobs(limit=100000)
@@ -231,6 +267,27 @@ async def list_jobs(
         # Apply limit after filtering
         if limit:
             jobs = jobs[:limit]
+
+        # Enrich waiting_for_approval jobs with pending approval counts
+        waiting_job_ids = [
+            j.get("job_id") for j in jobs if j.get("status") == "waiting_for_approval"
+        ]
+        if waiting_job_ids:
+            try:
+                approval_manager = await get_approval_manager()
+                pending_approvals = await approval_manager.list_approvals(
+                    status="pending"
+                )
+                pending_counts: dict = {}
+                for a in pending_approvals:
+                    if a.job_id in waiting_job_ids:
+                        pending_counts[a.job_id] = pending_counts.get(a.job_id, 0) + 1
+                for job in jobs:
+                    job_id_val = job.get("job_id")
+                    if job_id_val in pending_counts:
+                        job["pending_approval_count"] = pending_counts[job_id_val]
+            except Exception as e:
+                logger.warning(f"Failed to enrich job list with approval counts: {e}")
 
         return JobListResponse(jobs=jobs, total=len(jobs))
 
@@ -346,6 +403,31 @@ async def get_job_results(
             formatted_steps.append(StepInfo(**formatted_step))
 
         results["steps"] = formatted_steps
+
+        # Embed pending approvals so the frontend can render the review panel immediately
+        try:
+            approval_manager = await get_approval_manager()
+            raw_pending = await approval_manager.list_approvals(
+                job_id=job_id, status="pending"
+            )
+            if raw_pending:
+                results["pending_approvals"] = [
+                    PendingApprovalSummary(
+                        id=a.id,
+                        job_id=a.job_id,
+                        pipeline_step=a.pipeline_step,
+                        step_name=a.step_name,
+                        status=a.status,
+                        input_data=a.input_data,
+                        output_data=a.output_data,
+                        confidence_score=a.confidence_score,
+                        suggestions=a.suggestions,
+                        created_at=a.created_at.isoformat(),
+                    )
+                    for a in raw_pending
+                ]
+        except Exception as e:
+            logger.warning(f"Failed to embed pending approvals for job {job_id}: {e}")
 
         return JobResultsSummary(**results)
 

@@ -461,8 +461,8 @@ class ContentFormattingResult(BaseModel):
     )
 
 
-class DesignKitResult(BaseModel):
-    """Result from Design Kit application step."""
+class BrandKitResult(BaseModel):
+    """Result from Brand Kit application step."""
 
     visual_components: Optional[List[Dict[str, str]]] = Field(
         description="Visual elements to add (images, charts, infographics)",
@@ -497,6 +497,10 @@ class DesignKitResult(BaseModel):
     brand_consistency_score: Optional[float] = Field(
         None, ge=0.0, le=100.0, description="Brand consistency score (0-100)"
     )
+
+
+# Backward-compatibility alias
+DesignKitResult = BrandKitResult
 
 
 class PipelineResult(BaseModel):

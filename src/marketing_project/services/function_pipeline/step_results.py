@@ -90,6 +90,30 @@ async def save_step_result(
             context_keys_used=context_keys_used,
             relative_step_number=relative_step_number,
         )
+
+        # Write metadata.json the first time a step result is saved for this job.
+        # This persists user_id to the filesystem so the job list endpoint can
+        # filter by owner even if DB/Redis records have expired.
+        try:
+            metadata_path = step_manager.base_dir / job_id / "metadata.json"
+            if not metadata_path.exists():
+                from marketing_project.services.job_manager import get_job_manager
+
+                jm = get_job_manager()
+                job = await jm.get_job(job_id)
+                if job:
+                    await step_manager.save_job_metadata(
+                        job_id=job_id,
+                        content_type=job.type,
+                        content_id=job.content_id,
+                        started_at=job.started_at,
+                        additional_metadata=(
+                            {"user_id": job.user_id} if job.user_id else {}
+                        ),
+                    )
+        except Exception as meta_e:
+            logger.warning(f"Failed to write job metadata.json for {job_id}: {meta_e}")
+
     except Exception as e:
         logger.warning(
             f"Failed to save step result to disk for step {step_number}: {e}"

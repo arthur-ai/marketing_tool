@@ -36,10 +36,10 @@ class MarketingBriefPlugin(PipelineStepPlugin):
         Build prompt context for marketing brief step.
 
         Converts seo_keywords to model and prepares context for template.
-        Optionally includes design_kit_config if available.
+        Optionally includes brand_kit_config if available.
         For transcripts, includes all transcript-specific metadata.
         """
-        from marketing_project.models.design_kit_config import DesignKitConfig
+        from marketing_project.models.brand_kit_config import BrandKitConfig
         from marketing_project.models.pipeline_steps import SEOKeywordsResult
 
         # Get and convert seo_keywords to model
@@ -47,25 +47,48 @@ class MarketingBriefPlugin(PipelineStepPlugin):
         content_type = context.get("content_type", "blog_post")
         output_content_type = context.get("output_content_type", content_type)
 
-        # Get design kit config if available (optional)
-        design_kit_config = None
-        design_kit_dict = context.get("design_kit_config")
-        if design_kit_dict:
+        # Get brand kit config if available (optional)
+        brand_kit_config = None
+        brand_kit_full = None
+        brand_kit_dict = context.get("brand_kit_config")
+        if brand_kit_dict:
             try:
-                design_kit_config = DesignKitConfig(**design_kit_dict)
+                brand_kit_full = BrandKitConfig(**brand_kit_dict)
                 # Get content-type-specific config
-                design_kit_config = design_kit_config.get_content_type_config(
+                brand_kit_config = brand_kit_full.get_content_type_config(
                     output_content_type
                 )
             except Exception as e:
-                logger.warning(f"Failed to parse design_kit_config: {e}")
+                logger.warning(f"Failed to parse brand_kit_config: {e}")
 
         # Build prompt context
         prompt_context = {
             "content_type": content_type,
             "output_content_type": output_content_type,
             "seo_result": seo_result,
-            "design_kit_config": design_kit_config,
+            "brand_kit_config": brand_kit_config,
+            "design_kit_config": brand_kit_config,  # backward compat alias
+            # New brand intelligence fields (top-level for easy template access)
+            "brand_about": brand_kit_full.about_the_brand if brand_kit_full else None,
+            "brand_pov": brand_kit_full.brand_point_of_view if brand_kit_full else None,
+            "brand_competitors": brand_kit_full.competitors if brand_kit_full else None,
+            "brand_differentiation": (
+                brand_kit_full.competitive_differentiation_angle
+                if brand_kit_full
+                else None
+            ),
+            "brand_icp": (
+                brand_kit_full.ideal_customer_profile if brand_kit_full else None
+            ),
+            "brand_author_persona": (
+                brand_kit_full.author_persona if brand_kit_full else None
+            ),
+            "brand_success_metrics": (
+                brand_kit_full.success_metrics if brand_kit_full else None
+            ),
+            "brand_writing_samples": (
+                brand_kit_full.writing_samples if brand_kit_full else None
+            ),
         }
 
         # For transcripts, include all transcript-specific metadata

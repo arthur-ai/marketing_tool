@@ -23,7 +23,7 @@ ARTHUR_PROMPT_NAMES: dict[str, str] = {
     "seo_optimization": "seo_optimization_prompt",
     "suggested_links": "suggested_links_prompt",
     "content_formatting": "content_formatting_prompt",
-    "design_kit": "design_kit_prompt",
+    "brand_kit": "brand_kit_prompt",
 }
 
 

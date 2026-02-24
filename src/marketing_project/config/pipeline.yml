@@ -83,13 +83,13 @@ sub_pipelines:
     - OptimizeReadability
     - AddVisualElements
     - FinalizeContent
-  design_kit:
-    - SelectDesignTemplate
+  brand_kit:
+    - SelectBrandTemplate
     - ApplyBrandGuidelines
     - GenerateVisualComponents
     - OptimizeResponsiveLayout
     - CreateVisualAssets
-    - ValidateDesignCompliance
+    - ValidateBrandCompliance
 
 branching:
   AnalyzeContent:
