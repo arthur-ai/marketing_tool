@@ -87,6 +87,9 @@ class JobListItem(BaseModel):
     completed_at: Optional[str] = Field(None, description="Job completion timestamp")
     step_count: int = Field(..., description="Number of step results")
     created_at: Optional[str] = Field(None, description="Result creation timestamp")
+    status: Optional[str] = Field(
+        None, description="Job status (completed/failed/processing/etc.)"
+    )
 
 
 class JobListResponse(BaseModel):
@@ -127,12 +130,29 @@ async def list_jobs(
             limit=None
         )  # Get all jobs first for filtering
 
-        # Scope to current user's jobs unless admin
+        # Scope to current user's jobs unless admin; enrich with status either way
+        job_manager = get_job_manager()
         if not user.has_role("admin"):
-            job_manager = get_job_manager()
             user_jobs = await job_manager.list_jobs(user_id=user.user_id, limit=10000)
             user_job_ids = {j.id for j in user_jobs}
+            job_status_lookup = {
+                j.id: (j.status.value if hasattr(j.status, "value") else str(j.status))
+                for j in user_jobs
+            }
             jobs = [j for j in jobs if j.get("job_id") in user_job_ids]
+        else:
+            # Admin sees all jobs; fetch status for all of them
+            all_jobs = await job_manager.list_jobs(limit=100000)
+            job_status_lookup = {
+                j.id: (j.status.value if hasattr(j.status, "value") else str(j.status))
+                for j in all_jobs
+            }
+
+        # Enrich filesystem jobs with status from job_manager
+        for job in jobs:
+            job_id_val = job.get("job_id")
+            if job_id_val and job_id_val in job_status_lookup:
+                job["status"] = job_status_lookup[job_id_val]
 
         # Apply date filtering if provided
         if date_from or date_to:

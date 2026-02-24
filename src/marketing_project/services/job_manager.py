@@ -175,7 +175,6 @@ class JobManager:
                         existing_job.started_at = job.started_at
                     if job.completed_at:
                         existing_job.completed_at = job.completed_at
-                    await session.commit()
                     logger.debug(f"Updated job {job.id} in database")
                 else:
                     # Create new job
@@ -195,7 +194,6 @@ class JobManager:
                         completed_at=job.completed_at,
                     )
                     session.add(db_job)
-                    await session.commit()
                     logger.debug(f"Saved job {job.id} to database")
 
         except Exception as e:

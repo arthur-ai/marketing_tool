@@ -284,6 +284,12 @@ async def get_job_result(job_id: str, user: UserContext = Depends(get_current_us
                 detail=f"Job {job_id} is still {job.status}. Progress: {job.progress}%",
             )
 
+        if job.status == JobStatus.WAITING_FOR_APPROVAL:
+            raise HTTPException(
+                status_code=202,
+                detail=f"Job {job_id} is waiting for approval before proceeding",
+            )
+
         if job.status == JobStatus.FAILED:
             raise HTTPException(
                 status_code=500, detail=f"Job {job_id} failed: {job.error}"
