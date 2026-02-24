@@ -159,10 +159,35 @@ async def verify_job_ownership(
     """
     job = await job_manager.get_job(job_id)
     if not job:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Job {job_id} not found",
-        )
+        # For admins, fall back to filesystem metadata so old jobs (pre-migration,
+        # whose DB/Redis records are gone) remain accessible.
+        if user.has_role("admin"):
+            try:
+                from marketing_project.services.job_manager import Job, JobStatus
+                from marketing_project.services.step_result_manager import (
+                    get_step_result_manager,
+                )
+
+                step_manager = get_step_result_manager()
+                results = await step_manager.get_job_results(job_id)
+                if results:
+                    meta = results.get("metadata", {})
+                    job = Job(
+                        id=job_id,
+                        type=meta.get("content_type", "unknown"),
+                        content_id=meta.get("content_id") or job_id,
+                        status=JobStatus.COMPLETED,
+                        user_id=None,
+                    )
+            except Exception:
+                pass
+
+        if not job:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Job {job_id} not found",
+            )
+
     if not user.has_role("admin") and job.user_id != user.user_id:
         logger.warning(
             f"User {user.user_id} attempted to access job {job_id} owned by {job.user_id}"
