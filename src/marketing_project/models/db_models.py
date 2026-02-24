@@ -8,7 +8,16 @@ import json
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-from sqlalchemy import Boolean, Column, DateTime, Index, Integer, String, Text
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql import func
 
@@ -294,7 +303,7 @@ class JobModel(Base):
         Index("idx_jobs_user_id", "user_id"),
     )
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> Dict[str, Any]:  # type: ignore[override]
         """Convert model to dictionary matching Job Pydantic model."""
         # Parse status string to JobStatus enum value
         from marketing_project.services.job_manager import JobStatus
@@ -336,3 +345,35 @@ class JobModel(Base):
                 )
             ),
         }
+
+
+class StepResultModel(Base):
+    """Database model for pipeline step results."""
+
+    __tablename__ = "step_results"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    job_id = Column(String, nullable=False)  # Job that executed this step
+    root_job_id = Column(String, nullable=False)  # Root job in the chain
+    execution_context_id = Column(String, nullable=True)  # Resume cycle (0, 1, 2…)
+    step_number = Column(Integer, nullable=False)
+    relative_step_number = Column(Integer, nullable=True)  # Within context (1-indexed)
+    step_name = Column(String, nullable=False)
+    status = Column(
+        String, nullable=False, default="success"
+    )  # success / failed / skipped
+    result = Column(JSONB, nullable=True)  # Full LLM output
+    input_snapshot = Column(JSONB, nullable=True)
+    context_keys_used = Column(JSONB, nullable=True)
+    execution_time = Column(String, nullable=True)  # float stored as string
+    tokens_used = Column(Integer, nullable=True)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("job_id", "step_name", name="uq_step_results_job_step"),
+        Index("idx_step_results_job_id", "job_id"),
+        Index("idx_step_results_root_job_id", "root_job_id"),
+    )

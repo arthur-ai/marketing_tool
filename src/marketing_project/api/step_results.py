@@ -176,6 +176,7 @@ async def list_jobs(
                 if fs_user_jobs:
                     jobs = fs_user_jobs
                 # else: keep all filesystem jobs as last-resort fallback
+
         else:
             # Admin sees all jobs; fetch status for all of them
             all_jobs = await job_manager.list_jobs(limit=100000)
@@ -184,7 +185,8 @@ async def list_jobs(
                 for j in all_jobs
             }
 
-        # Enrich filesystem jobs with status from job_manager
+        # Enrich jobs with status from job_manager (DB already provides status,
+        # but this covers jobs from the filesystem fallback path)
         for job in jobs:
             job_id_val = job.get("job_id")
             if job_id_val and job_id_val in job_status_lookup:
