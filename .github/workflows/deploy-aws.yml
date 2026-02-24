@@ -277,62 +277,6 @@ jobs:
           # Execute deployment
           eval $DEPLOY_CMD
 
-      - name: Run Better Auth database migration
-        run: |
-          CLUSTER_NAME="${{ env.PROJECT_NAME }}-${{ env.ENVIRONMENT }}-cluster"
-          STACK_NAME="${{ env.PROJECT_NAME }}-${{ env.ENVIRONMENT }}"
-
-          # Get task definition and network config from the frontend service
-          TASK_DEF=$(aws ecs describe-services \
-            --cluster $CLUSTER_NAME \
-            --services "${STACK_NAME}-frontend-service" \
-            --query 'services[0].taskDefinition' \
-            --output text \
-            --region ${{ env.AWS_REGION }} 2>/dev/null || echo "")
-
-          if [ -z "$TASK_DEF" ] || [ "$TASK_DEF" = "None" ]; then
-            echo "⚠️  Frontend service not found, skipping migration"
-            exit 0
-          fi
-
-          NETWORK_CONFIG=$(aws ecs describe-services \
-            --cluster $CLUSTER_NAME \
-            --services "${STACK_NAME}-frontend-service" \
-            --query 'services[0].networkConfiguration' \
-            --output json \
-            --region ${{ env.AWS_REGION }})
-
-          echo "Running Better Auth migration as one-off ECS task..."
-          TASK_ARN=$(aws ecs run-task \
-            --cluster $CLUSTER_NAME \
-            --task-definition "$TASK_DEF" \
-            --launch-type FARGATE \
-            --network-configuration "$NETWORK_CONFIG" \
-            --overrides '{"containerOverrides":[{"name":"marketing-frontend","command":["npx","--yes","@better-auth/cli","migrate","--yes"]}]}' \
-            --query 'tasks[0].taskArn' \
-            --output text \
-            --region ${{ env.AWS_REGION }})
-
-          echo "Migration task: $TASK_ARN"
-
-          aws ecs wait tasks-stopped \
-            --cluster $CLUSTER_NAME \
-            --tasks "$TASK_ARN" \
-            --region ${{ env.AWS_REGION }}
-
-          EXIT_CODE=$(aws ecs describe-tasks \
-            --cluster $CLUSTER_NAME \
-            --tasks "$TASK_ARN" \
-            --query 'tasks[0].containers[0].exitCode' \
-            --output text \
-            --region ${{ env.AWS_REGION }})
-
-          if [ "$EXIT_CODE" = "0" ]; then
-            echo "✅ Better Auth migration completed"
-          else
-            echo "⚠️  Migration exited with code $EXIT_CODE (tables may already exist — continuing)"
-          fi
-
       - name: Wait for ECS services to stabilize
         run: |
           # CloudFormation already updates ECS services when task definitions change
@@ -360,3 +304,73 @@ jobs:
           echo "Check the logs above for details."
           echo "Stack: ${{ env.PROJECT_NAME }}-${{ env.ENVIRONMENT }}"
           echo "Region: ${{ env.AWS_REGION }}"
+
+  migrate:
+    name: Run Better Auth DB Migration
+    runs-on: ubuntu-latest
+    needs: deploy
+    permissions:
+      id-token: write
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Run Better Auth database migration
+        run: |
+          CLUSTER_NAME="${{ env.PROJECT_NAME }}-${{ env.ENVIRONMENT }}-cluster"
+          STACK_NAME="${{ env.PROJECT_NAME }}-${{ env.ENVIRONMENT }}"
+
+          TASK_DEF=$(aws ecs describe-services \
+            --cluster $CLUSTER_NAME \
+            --services "${STACK_NAME}-frontend-service" \
+            --query 'services[0].taskDefinition' \
+            --output text \
+            --region ${{ env.AWS_REGION }} 2>/dev/null || echo "")
+
+          if [ -z "$TASK_DEF" ] || [ "$TASK_DEF" = "None" ]; then
+            echo "⚠️  Frontend service not found, skipping migration"
+            exit 0
+          fi
+
+          NETWORK_CONFIG=$(aws ecs describe-services \
+            --cluster $CLUSTER_NAME \
+            --services "${STACK_NAME}-frontend-service" \
+            --query 'services[0].networkConfiguration' \
+            --output json \
+            --region ${{ env.AWS_REGION }})
+
+          echo "Running Better Auth migration as one-off ECS task..."
+          TASK_ARN=$(aws ecs run-task \
+            --cluster $CLUSTER_NAME \
+            --task-definition "$TASK_DEF" \
+            --launch-type FARGATE \
+            --network-configuration "$NETWORK_CONFIG" \
+            --overrides '{"containerOverrides":[{"name":"marketing-frontend","command":["npx","--yes","@better-auth/cli","migrate","--yes"],"environment":[{"name":"NODE_TLS_REJECT_UNAUTHORIZED","value":"0"}]}]}' \
+            --query 'tasks[0].taskArn' \
+            --output text \
+            --region ${{ env.AWS_REGION }})
+
+          echo "Migration task: $TASK_ARN"
+
+          aws ecs wait tasks-stopped \
+            --cluster $CLUSTER_NAME \
+            --tasks "$TASK_ARN" \
+            --region ${{ env.AWS_REGION }}
+
+          EXIT_CODE=$(aws ecs describe-tasks \
+            --cluster $CLUSTER_NAME \
+            --tasks "$TASK_ARN" \
+            --query 'tasks[0].containers[0].exitCode' \
+            --output text \
+            --region ${{ env.AWS_REGION }})
+
+          if [ "$EXIT_CODE" = "0" ]; then
+            echo "✅ Better Auth migration completed"
+          else
+            echo "⚠️  Migration exited with code $EXIT_CODE (tables may already exist — continuing)"
+          fi

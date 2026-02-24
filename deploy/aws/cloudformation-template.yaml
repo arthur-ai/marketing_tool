@@ -967,7 +967,7 @@ Resources:
               Value: !If [UseKeycloak, !Sub '${KeycloakServerUrl}/realms/${KeycloakRealm}', !Ref 'AWS::NoValue']
             # Better Auth database for session storage (shared with backend DB)
             - Name: DATABASE_URL
-              Value: !Sub 'postgresql://postgres:${DatabasePassword}@${ExistingDatabaseEndpoint}:5432/${ExistingDatabaseName}?sslmode=require'
+              Value: !Sub 'postgresql://postgres:${DatabasePassword}@${ExistingDatabaseEndpoint}:5432/${ExistingDatabaseName}'
             # Set Node.js memory limit to prevent OOM (leave ~256MB for system)
             # For 1024MB container (default), use 768MB heap
             # This prevents Node.js from using all available memory
