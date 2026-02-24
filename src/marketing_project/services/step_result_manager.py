@@ -34,6 +34,28 @@ def _json_serializer(obj: Any) -> Any:
     raise TypeError(f"Type {type(obj)} not serializable")
 
 
+def _step_model_to_step_dict(s: Any) -> Dict[str, Any]:
+    """Convert a StepResultModel ORM row to the step-dict format used by get_job_results()."""
+    result_json = s.result if isinstance(s.result, (dict, list)) else {}
+    file_size = len(json.dumps(result_json))
+    filename = f"{s.step_number:02d}_{s.step_name.lower().replace(' ', '_')}.json"
+    return {
+        "job_id": s.job_id,
+        "root_job_id": s.root_job_id,
+        "execution_context_id": s.execution_context_id,
+        "filename": filename,
+        "step_number": s.step_number,
+        "step_name": s.step_name,
+        "timestamp": s.created_at.isoformat() if s.created_at else None,
+        "has_result": s.result is not None,
+        "file_size": file_size,
+        "execution_time": float(s.execution_time) if s.execution_time else None,
+        "tokens_used": s.tokens_used,
+        "status": s.status,
+        "error_message": s.error_message,
+    }
+
+
 class StepResultManager:
     """
     Manages storage and retrieval of pipeline step results.
@@ -286,6 +308,67 @@ class StepResultManager:
                 # Log but don't fail if context registry registration fails
                 logger.warning(f"Failed to register in context registry: {e}")
 
+            # DB write (upsert — handles retries gracefully)
+            try:
+                from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+                from marketing_project.models.db_models import StepResultModel
+                from marketing_project.services.database import get_database_manager
+
+                db_manager = get_database_manager()
+                if db_manager.is_initialized:
+                    result_for_db = result_data
+                    if isinstance(result_data, BaseModel):
+                        try:
+                            result_for_db = result_data.model_dump(mode="json")
+                        except Exception:
+                            result_for_db = result_data.model_dump()
+                    elif not isinstance(result_data, (dict, list, type(None))):
+                        result_for_db = None
+
+                    _meta = metadata or {}
+                    _exec_time = _meta.get("execution_time")
+                    values = dict(
+                        job_id=job_id,
+                        root_job_id=target_job_id,
+                        execution_context_id=(
+                            str(execution_context_id)
+                            if execution_context_id is not None
+                            else None
+                        ),
+                        step_number=step_number,
+                        relative_step_number=relative_step_number,
+                        step_name=step_name,
+                        status=_meta.get("status", "success"),
+                        result=result_for_db,
+                        input_snapshot=input_snapshot,
+                        context_keys_used=context_keys_used,
+                        execution_time=(
+                            str(_exec_time) if _exec_time is not None else None
+                        ),
+                        tokens_used=_meta.get("tokens_used"),
+                        error_message=_meta.get("error_message"),
+                    )
+                    stmt = (
+                        pg_insert(StepResultModel)
+                        .values(**values)
+                        .on_conflict_do_update(
+                            constraint="uq_step_results_job_step",
+                            set_={
+                                k: v
+                                for k, v in values.items()
+                                if k not in ("job_id", "step_name")
+                            },
+                        )
+                    )
+                    async with db_manager.get_session() as session:
+                        await session.execute(stmt)
+                    logger.debug(
+                        f"Wrote step result to DB: {step_name} for job {job_id}"
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to write step result to DB (non-fatal): {e}")
+
             logger.info(
                 f"Saved step result: {filename} for job {job_id} (context: {execution_context_id}, root: {target_job_id})"
             )
@@ -410,8 +493,33 @@ class StepResultManager:
             steps = []
             metadata = {}
 
-            # Try S3 first if enabled
-            if self._use_s3 and self.s3_storage:
+            # DB-first: load steps from step_results table
+            try:
+                from sqlalchemy import select as sa_select
+
+                from marketing_project.models.db_models import StepResultModel
+                from marketing_project.services.database import get_database_manager
+
+                _db_manager = get_database_manager()
+                if _db_manager.is_initialized:
+                    async with _db_manager.get_session() as _session:
+                        _q = (
+                            sa_select(StepResultModel)
+                            .where(StepResultModel.root_job_id == root_job_id)
+                            .order_by(StepResultModel.step_number)
+                        )
+                        _result = await _session.execute(_q)
+                        _db_steps = _result.scalars().all()
+                    if _db_steps:
+                        steps = [_step_model_to_step_dict(s) for s in _db_steps]
+                        logger.info(
+                            f"Loaded {len(steps)} steps from DB for root job {root_job_id}"
+                        )
+            except Exception as _e:
+                logger.warning(f"DB step load failed, falling back to filesystem: {_e}")
+
+            # Try S3 first if enabled (skipped when DB already populated steps)
+            if not steps and self._use_s3 and self.s3_storage:
                 try:
                     # Load metadata from S3
                     metadata_s3_key = self._get_metadata_s3_key(root_job_id)
@@ -1036,6 +1144,58 @@ class StepResultManager:
             # Normalize step name for matching
             normalized_step_name = step_name.lower().replace(" ", "_").replace("-", "_")
 
+            # DB-first: look up by job_id + step_name
+            try:
+                from sqlalchemy import select as sa_select
+
+                from marketing_project.models.db_models import StepResultModel
+                from marketing_project.services.database import get_database_manager
+
+                _db_manager = get_database_manager()
+                if _db_manager.is_initialized:
+                    # Try exact match on job_id first, then root_job_id
+                    for _lookup_job_id in (job_id, root_job_id):
+                        async with _db_manager.get_session() as _session:
+                            _q = sa_select(StepResultModel).where(
+                                StepResultModel.job_id == _lookup_job_id,
+                                StepResultModel.step_name == normalized_step_name,
+                            )
+                            _result = await _session.execute(_q)
+                            _row = _result.scalar_one_or_none()
+                        if _row is not None:
+                            logger.debug(
+                                f"Loaded step '{step_name}' from DB for job {_lookup_job_id}"
+                            )
+                            return {
+                                "job_id": _row.job_id,
+                                "root_job_id": _row.root_job_id,
+                                "execution_context_id": _row.execution_context_id,
+                                "step_number": _row.step_number,
+                                "step_name": _row.step_name,
+                                "timestamp": (
+                                    _row.created_at.isoformat()
+                                    if _row.created_at
+                                    else None
+                                ),
+                                "result": _row.result,
+                                "input_snapshot": _row.input_snapshot,
+                                "context_keys_used": _row.context_keys_used,
+                                "metadata": {
+                                    "status": _row.status,
+                                    "execution_time": (
+                                        float(_row.execution_time)
+                                        if _row.execution_time
+                                        else None
+                                    ),
+                                    "tokens_used": _row.tokens_used,
+                                    "error_message": _row.error_message,
+                                },
+                            }
+            except Exception as _e:
+                logger.warning(
+                    f"DB get_step_result_by_name failed, falling back to filesystem: {_e}"
+                )
+
             # Try S3 first if enabled
             if self._use_s3 and self.s3_storage:
                 try:
@@ -1260,6 +1420,65 @@ class StepResultManager:
         Returns:
             List of job summaries
         """
+        # DB-first: query the jobs table (always populated) and enrich with step counts
+        try:
+            from sqlalchemy import func as sqla_func
+            from sqlalchemy import select
+
+            from marketing_project.models.db_models import JobModel, StepResultModel
+            from marketing_project.services.database import get_database_manager
+
+            db_manager = get_database_manager()
+            if db_manager.is_initialized:
+                async with db_manager.get_session() as session:
+                    # Step counts per root_job_id in one GROUP BY query
+                    counts_q = select(
+                        StepResultModel.root_job_id,
+                        sqla_func.count(StepResultModel.id).label("cnt"),
+                    ).group_by(StepResultModel.root_job_id)
+                    counts_result = await session.execute(counts_q)
+                    step_counts = {row.root_job_id: row.cnt for row in counts_result}
+
+                    # Only show root jobs — exclude resume_pipeline subjobs which
+                    # are internal and should be viewed via their parent job
+                    q = (
+                        select(JobModel)
+                        .where(JobModel.job_type != "resume_pipeline")
+                        .order_by(JobModel.created_at.desc())
+                    )
+                    if limit:
+                        q = q.limit(limit)
+                    jobs_result = await session.execute(q)
+                    db_jobs = jobs_result.scalars().all()
+
+                return [
+                    {
+                        "job_id": j.job_id,
+                        "content_type": j.job_type,
+                        "content_id": j.content_id,
+                        "status": (
+                            j.status.value
+                            if hasattr(j.status, "value")
+                            else str(j.status)
+                        ),
+                        "step_count": step_counts.get(j.job_id, 0),
+                        "created_at": (
+                            j.created_at.isoformat() if j.created_at else None
+                        ),
+                        "started_at": (
+                            j.started_at.isoformat() if j.started_at else None
+                        ),
+                        "completed_at": (
+                            j.completed_at.isoformat() if j.completed_at else None
+                        ),
+                        "user_id": j.user_id,
+                    }
+                    for j in db_jobs
+                ]
+        except Exception as e:
+            logger.warning(f"DB list_all_jobs failed, falling back to filesystem: {e}")
+
+        # Filesystem / S3 fallback (original implementation below)
         try:
             jobs = []
             job_ids_seen = set()
