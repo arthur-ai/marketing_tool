@@ -345,12 +345,19 @@ jobs:
             --region ${{ env.AWS_REGION }})
 
           echo "Running Better Auth migration as one-off ECS task..."
+
+          # Run migration via Node.js directly — the CLI cannot find auth.ts in the
+          # production standalone image (no source files). pg is bundled in node_modules.
+          MIGRATION_SCRIPT='const {Pool}=require("pg");const p=new Pool({connectionString:process.env.DATABASE_URL,ssl:{rejectUnauthorized:false}});const stmts=[`CREATE TABLE IF NOT EXISTS "user"(id TEXT PRIMARY KEY NOT NULL,name TEXT NOT NULL,email TEXT NOT NULL UNIQUE,"emailVerified" BOOLEAN NOT NULL DEFAULT FALSE,image TEXT,"createdAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,"updatedAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP)`,`CREATE TABLE IF NOT EXISTS session(id TEXT PRIMARY KEY NOT NULL,"expiresAt" TIMESTAMPTZ NOT NULL,token TEXT NOT NULL UNIQUE,"createdAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,"updatedAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,"ipAddress" TEXT,"userAgent" TEXT,"userId" TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE)`,`CREATE INDEX IF NOT EXISTS session_userId_idx ON session("userId")`,`CREATE TABLE IF NOT EXISTS account(id TEXT PRIMARY KEY NOT NULL,"accountId" TEXT NOT NULL,"providerId" TEXT NOT NULL,"userId" TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,"accessToken" TEXT,"refreshToken" TEXT,"idToken" TEXT,"accessTokenExpiresAt" TIMESTAMPTZ,"refreshTokenExpiresAt" TIMESTAMPTZ,scope TEXT,password TEXT,"createdAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,"updatedAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP)`,`CREATE INDEX IF NOT EXISTS account_userId_idx ON account("userId")`,`CREATE TABLE IF NOT EXISTS verification(id TEXT PRIMARY KEY NOT NULL,identifier TEXT NOT NULL,value TEXT NOT NULL,"expiresAt" TIMESTAMPTZ NOT NULL,"createdAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,"updatedAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP)`,`CREATE INDEX IF NOT EXISTS verification_identifier_idx ON verification(identifier)`];(async()=>{const c=await p.connect();try{await c.query("BEGIN");for(const s of stmts){await c.query(s);}await c.query("COMMIT");console.log("Migration done");}catch(e){try{await c.query("ROLLBACK");}catch{}console.error(e.message);process.exit(1);}finally{c.release();await p.end();}})();'
+
+          OVERRIDES=$(jq -n --arg script "$MIGRATION_SCRIPT" '{"containerOverrides":[{"name":"marketing-frontend","command":["node","-e",$script],"environment":[{"name":"NODE_TLS_REJECT_UNAUTHORIZED","value":"0"}]}]}')
+
           TASK_ARN=$(aws ecs run-task \
             --cluster $CLUSTER_NAME \
             --task-definition "$TASK_DEF" \
             --launch-type FARGATE \
             --network-configuration "$NETWORK_CONFIG" \
-            --overrides '{"containerOverrides":[{"name":"marketing-frontend","command":["npx","--yes","@better-auth/cli","migrate","--yes"],"environment":[{"name":"NODE_TLS_REJECT_UNAUTHORIZED","value":"0"}]}]}' \
+            --overrides "$OVERRIDES" \
             --query 'tasks[0].taskArn' \
             --output text \
             --region ${{ env.AWS_REGION }})
