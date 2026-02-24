@@ -41,7 +41,6 @@ class ContentFormattingPlugin(PipelineStepPlugin):
         Converts context values to models for template rendering.
         Optionally includes design_kit_config and internal_docs_config if available.
         """
-        from marketing_project.models.design_kit_config import DesignKitConfig
         from marketing_project.models.internal_docs_config import InternalDocsConfig
         from marketing_project.models.pipeline_steps import (
             ArticleGenerationResult,
@@ -74,18 +73,21 @@ class ContentFormattingPlugin(PipelineStepPlugin):
             except Exception as e:
                 logger.warning(f"Failed to parse suggested_links result: {e}")
 
-        # Get design kit config if available (optional)
-        design_kit_config = None
-        design_kit_dict = context.get("design_kit_config")
-        if design_kit_dict:
+        # Get brand kit config if available (optional)
+        brand_kit_config = None
+        brand_kit_full = None
+        brand_kit_dict = context.get("brand_kit_config")
+        if brand_kit_dict:
             try:
-                design_kit_config = DesignKitConfig(**design_kit_dict)
+                from marketing_project.models.brand_kit_config import BrandKitConfig
+
+                brand_kit_full = BrandKitConfig(**brand_kit_dict)
                 # Get content-type-specific config
-                design_kit_config = design_kit_config.get_content_type_config(
+                brand_kit_config = brand_kit_full.get_content_type_config(
                     output_content_type
                 )
             except Exception as e:
-                logger.warning(f"Failed to parse design_kit_config: {e}")
+                logger.warning(f"Failed to parse brand_kit_config: {e}")
 
         # Get internal docs config if available (optional - contains general interlinking rules)
         internal_docs_config = None
@@ -102,8 +104,30 @@ class ContentFormattingPlugin(PipelineStepPlugin):
             "article_result": article_result,
             "output_content_type": output_content_type,
             "suggested_links_result": suggested_links_result,
-            "design_kit_config": design_kit_config,
+            "brand_kit_config": brand_kit_config,
+            "design_kit_config": brand_kit_config,  # backward compat alias
             "internal_docs_config": internal_docs_config,
+            # New brand intelligence fields (top-level for easy template access)
+            "brand_about": brand_kit_full.about_the_brand if brand_kit_full else None,
+            "brand_pov": brand_kit_full.brand_point_of_view if brand_kit_full else None,
+            "brand_competitors": brand_kit_full.competitors if brand_kit_full else None,
+            "brand_differentiation": (
+                brand_kit_full.competitive_differentiation_angle
+                if brand_kit_full
+                else None
+            ),
+            "brand_icp": (
+                brand_kit_full.ideal_customer_profile if brand_kit_full else None
+            ),
+            "brand_author_persona": (
+                brand_kit_full.author_persona if brand_kit_full else None
+            ),
+            "brand_success_metrics": (
+                brand_kit_full.success_metrics if brand_kit_full else None
+            ),
+            "brand_writing_samples": (
+                brand_kit_full.writing_samples if brand_kit_full else None
+            ),
         }
 
         return prompt_context

@@ -59,10 +59,10 @@ class ApprovalSettingsModel(Base):
         }
 
 
-class DesignKitConfigModel(Base):
-    """Database model for design kit configuration."""
+class BrandKitConfigModel(Base):
+    """Database model for brand kit configuration."""
 
-    __tablename__ = "design_kit_config"
+    __tablename__ = "design_kit_config"  # Table name kept for backward compatibility
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     version = Column(String, nullable=False, unique=True, index=True)
@@ -96,6 +96,10 @@ class DesignKitConfigModel(Base):
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
+
+
+# Backward-compatibility alias
+DesignKitConfigModel = BrandKitConfigModel
 
 
 class InternalDocsConfigModel(Base):

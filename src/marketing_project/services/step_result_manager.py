@@ -1330,6 +1330,7 @@ class StepResultManager:
                                 "completed_at": metadata.get("completed_at"),
                                 "step_count": step_count,
                                 "created_at": metadata.get("created_at"),
+                                "user_id": metadata.get("user_id"),
                             }
                         )
 
@@ -1382,6 +1383,7 @@ class StepResultManager:
                             "completed_at": metadata.get("completed_at"),
                             "step_count": step_count,
                             "created_at": metadata.get("created_at"),
+                            "user_id": metadata.get("user_id"),
                         }
                     )
 

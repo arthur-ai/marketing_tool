@@ -28,14 +28,14 @@ except ImportError:
 
 async def load_pipeline_configs() -> Dict[str, Any]:
     """
-    Load internal docs and design kit configurations.
+    Load internal docs and brand kit configurations.
 
     Returns:
-        Dictionary with 'internal_docs_config' and 'design_kit_config' keys
+        Dictionary with 'internal_docs_config' and 'brand_kit_config' keys
     """
     configs = {
         "internal_docs_config": None,
-        "design_kit_config": None,
+        "brand_kit_config": None,
     }
 
     # Load internal docs configuration (if available)
@@ -58,22 +58,22 @@ async def load_pipeline_configs() -> Dict[str, Any]:
             f"Failed to load internal docs configuration: {e} - pipeline will run without it"
         )
 
-    # Load design kit configuration (if available)
+    # Load brand kit configuration (if available)
     try:
-        from marketing_project.services.design_kit_manager import get_design_kit_manager
+        from marketing_project.services.brand_kit_manager import get_brand_kit_manager
 
-        design_kit_manager = await get_design_kit_manager()
-        design_kit_config = await design_kit_manager.get_active_config()
-        if design_kit_config:
-            logger.info("Loaded design kit configuration")
-            configs["design_kit_config"] = design_kit_config
+        brand_kit_manager = await get_brand_kit_manager()
+        brand_kit_config = await brand_kit_manager.get_active_config()
+        if brand_kit_config:
+            logger.info("Loaded brand kit configuration")
+            configs["brand_kit_config"] = brand_kit_config
         else:
             logger.warning(
-                "No design kit configuration found - pipeline will run without it (allowing pipeline to continue)"
+                "No brand kit configuration found - pipeline will run without it (allowing pipeline to continue)"
             )
     except Exception as e:
         logger.warning(
-            f"Failed to load design kit configuration: {e} - pipeline will run without it (allowing pipeline to continue)"
+            f"Failed to load brand kit configuration: {e} - pipeline will run without it (allowing pipeline to continue)"
         )
 
     return configs
@@ -84,7 +84,7 @@ def build_initial_context(
     content_type: str,
     output_content_type: str,
     internal_docs_config: Optional[Any] = None,
-    design_kit_config: Optional[Any] = None,
+    brand_kit_config: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """
     Build initial pipeline context.
@@ -94,7 +94,7 @@ def build_initial_context(
         content_type: Content type
         output_content_type: Output content type
         internal_docs_config: Optional internal docs config
-        design_kit_config: Optional design kit config
+        brand_kit_config: Optional brand kit config
 
     Returns:
         Initial pipeline context dictionary
@@ -108,8 +108,8 @@ def build_initial_context(
             if internal_docs_config
             else None
         ),
-        "design_kit_config": (
-            design_kit_config.model_dump(mode="json") if design_kit_config else None
+        "brand_kit_config": (
+            brand_kit_config.model_dump(mode="json") if brand_kit_config else None
         ),
     }
 

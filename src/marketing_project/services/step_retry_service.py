@@ -40,8 +40,8 @@ from marketing_project.models.pipeline_steps import (
     AngleHookResult,
     ArticleGenerationResult,
     BlogPostPreprocessingApprovalResult,
+    BrandKitResult,
     ContentFormattingResult,
-    DesignKitResult,
     MarketingBriefResult,
     SEOKeywordsResult,
     SEOOptimizationResult,
@@ -64,7 +64,7 @@ STEP_MODEL_MAP = {
     "seo_optimization": SEOOptimizationResult,
     "suggested_links": SuggestedLinksResult,
     "content_formatting": ContentFormattingResult,
-    "design_kit": DesignKitResult,
+    "brand_kit": BrandKitResult,
     "social_media_marketing_brief": SocialMediaMarketingBriefResult,
     "social_media_angle_hook": AngleHookResult,
     "social_media_post_generation": SocialMediaPostResult,
@@ -80,7 +80,7 @@ STEP_NUMBER_MAP = {
     "seo_optimization": 4,
     "suggested_links": 5,
     "content_formatting": 6,
-    "design_kit": 7,
+    "brand_kit": 7,
     "social_media_marketing_brief": 2,
     "social_media_angle_hook": 3,
     "social_media_post_generation": 4,
@@ -835,7 +835,7 @@ CRITICAL: Do NOT break SEO optimizations during formatting. All SEO work from St
 
             return prompt
 
-        elif step_name == "design_kit":
+        elif step_name == "brand_kit":
             article = context.get("article_generation", {})
             brief = context.get("marketing_brief", {})
             seo_keywords = context.get("seo_keywords", {})

@@ -50,8 +50,8 @@ def _json_serializer(obj: Any) -> Any:
 from marketing_project.models.pipeline_steps import (
     ArticleGenerationResult,
     BlogPostPreprocessingApprovalResult,
+    BrandKitResult,
     ContentFormattingResult,
-    DesignKitResult,
     MarketingBriefResult,
     PipelineConfig,
     PipelineResult,
@@ -154,7 +154,7 @@ class FunctionPipeline:
         # These are typically enhancement steps that aren't critical for core functionality
         self.optional_steps = {
             "suggested_links",  # Internal links are nice-to-have
-            "design_kit",  # Design kit is enhancement
+            "brand_kit",  # Brand kit is enhancement
         }
 
         # Initialize helpers
@@ -1034,7 +1034,7 @@ class FunctionPipeline:
         # Load configurations
         configs = await load_pipeline_configs()
         internal_docs_config = configs["internal_docs_config"]
-        design_kit_config = configs["design_kit_config"]
+        brand_kit_config = configs["brand_kit_config"]
 
         # Use output_content_type if provided, otherwise default to content_type
         final_output_content_type = output_content_type or content_type
@@ -1053,7 +1053,7 @@ class FunctionPipeline:
             content_type=content_type,
             output_content_type=final_output_content_type,
             internal_docs_config=internal_docs_config,
-            design_kit_config=design_kit_config,
+            brand_kit_config=brand_kit_config,
         )
 
         results = {}
@@ -1664,7 +1664,7 @@ class FunctionPipeline:
         # Load configurations
         configs = await load_pipeline_configs()
         internal_docs_config = configs["internal_docs_config"]
-        design_kit_config = configs["design_kit_config"]
+        brand_kit_config = configs["brand_kit_config"]
 
         # Reset step info
         self.step_info = []
@@ -1765,8 +1765,8 @@ class FunctionPipeline:
                 "internal_docs_config": (
                     internal_docs_config.model_dump() if internal_docs_config else None
                 ),
-                "design_kit_config": (
-                    design_kit_config.model_dump() if design_kit_config else None
+                "brand_kit_config": (
+                    brand_kit_config.model_dump() if brand_kit_config else None
                 ),
             }
             # Add all saved step results to context
@@ -2117,24 +2117,24 @@ class FunctionPipeline:
                 mode="json"
             )
 
-        # Load design kit configuration if available
-        design_kit_config = None
+        # Load brand kit configuration if available
+        brand_kit_config = None
         try:
-            from marketing_project.services.design_kit_manager import (
-                get_design_kit_manager,
+            from marketing_project.services.brand_kit_manager import (
+                get_brand_kit_manager,
             )
 
-            design_kit_manager = await get_design_kit_manager()
-            design_kit_config = await design_kit_manager.get_active_config()
-            if design_kit_config:
-                logger.info("Loaded design kit configuration")
+            brand_kit_manager = await get_brand_kit_manager()
+            brand_kit_config = await brand_kit_manager.get_active_config()
+            if brand_kit_config:
+                logger.info("Loaded brand kit configuration")
         except Exception as e:
             logger.warning(
-                f"Failed to load design kit configuration: {e} - continuing without it"
+                f"Failed to load brand kit configuration: {e} - continuing without it"
             )
 
-        if design_kit_config:
-            pipeline_context["design_kit_config"] = design_kit_config.model_dump(
+        if brand_kit_config:
+            pipeline_context["brand_kit_config"] = brand_kit_config.model_dump(
                 mode="json"
             )
 
