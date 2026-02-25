@@ -61,9 +61,11 @@ bertopic>=0.15.0
 boto3>=1.34.0
 
 # Telemetry dependencies
+# Arthur Observability SDK (install separately from local repo):
+#   pip install -e /Users/ibrahim/Documents/Github/arthur-observability-sdk[openai,langchain]
+# It brings in openinference-instrumentation-openai/langchain + opentelemetry-exporter-otlp-proto-http.
 openinference-instrumentation-openai>=0.1.0
 openinference-instrumentation-langchain>=0.1.12
-opentelemetry-instrumentation-redis>=0.45b0
 opentelemetry-exporter-otlp>=1.25.0
 
 # Keycloak authentication dependencies

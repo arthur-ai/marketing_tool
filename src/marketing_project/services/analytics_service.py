@@ -82,14 +82,20 @@ class AnalyticsService:
                 f"Failed to cache analytics for key '{key}': {e}", exc_info=False
             )
 
-    async def get_dashboard_stats(self) -> DashboardStats:
+    async def get_dashboard_stats(
+        self, user_id: Optional[str] = None
+    ) -> DashboardStats:
         """
         Get dashboard statistics.
 
         Returns overall system statistics including job counts, success rate, etc.
+
+        Args:
+            user_id: If provided, limit stats to this user's jobs only.
         """
         # Try cache first
-        cached = await self._get_cached("dashboard")
+        cache_key = f"dashboard:{user_id or 'all'}"
+        cached = await self._get_cached(cache_key)
         if cached:
             return DashboardStats(**cached)
 
@@ -98,7 +104,7 @@ class AnalyticsService:
         content_manager = get_content_manager()
 
         # Get all jobs (no limit for accurate stats)
-        all_jobs = await job_manager.list_jobs(limit=1000)
+        all_jobs = await job_manager.list_jobs(limit=1000, user_id=user_id)
 
         # Count by status
         total_jobs = len(all_jobs)
@@ -133,24 +139,28 @@ class AnalyticsService:
         )
 
         # Cache the result
-        await self._set_cached("dashboard", stats.model_dump())
+        await self._set_cached(cache_key, stats.model_dump())
 
         return stats
 
-    async def get_pipeline_stats(self) -> PipelineStats:
+    async def get_pipeline_stats(self, user_id: Optional[str] = None) -> PipelineStats:
         """
         Get pipeline-specific statistics.
 
         Returns statistics about pipeline runs and performance.
+
+        Args:
+            user_id: If provided, limit stats to this user's jobs only.
         """
         # Try cache first
-        cached = await self._get_cached("pipeline")
+        cache_key = f"pipeline:{user_id or 'all'}"
+        cached = await self._get_cached(cache_key)
         if cached:
             return PipelineStats(**cached)
 
         # Compute stats
         job_manager = get_job_manager()
-        all_jobs = await job_manager.list_jobs(limit=1000)
+        all_jobs = await job_manager.list_jobs(limit=1000, user_id=user_id)
 
         # Filter for pipeline jobs (job types that are actual pipeline runs)
         pipeline_jobs = [
@@ -197,7 +207,7 @@ class AnalyticsService:
         )
 
         # Cache the result
-        await self._set_cached("pipeline", stats.model_dump())
+        await self._set_cached(cache_key, stats.model_dump())
 
         return stats
 
@@ -247,25 +257,28 @@ class AnalyticsService:
 
         return stats
 
-    async def get_recent_activity(self, days: int = 7) -> RecentActivity:
+    async def get_recent_activity(
+        self, days: int = 7, user_id: Optional[str] = None
+    ) -> RecentActivity:
         """
         Get recent activity/jobs.
 
         Args:
             days: Number of days to look back (default: 7)
+            user_id: If provided, limit activity to this user's jobs only.
 
         Returns:
             Recent activity items within the specified time window
         """
         # Try cache first
-        cache_key = f"recent_activity_{days}"
+        cache_key = f"recent_activity_{days}:{user_id or 'all'}"
         cached = await self._get_cached(cache_key)
         if cached:
             return RecentActivity(**cached)
 
         # Compute recent activity
         job_manager = get_job_manager()
-        all_jobs = await job_manager.list_jobs(limit=1000)
+        all_jobs = await job_manager.list_jobs(limit=1000, user_id=user_id)
 
         # Filter jobs from the last N days
         cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
@@ -305,25 +318,28 @@ class AnalyticsService:
 
         return result
 
-    async def get_trends(self, days: int = 7) -> TrendData:
+    async def get_trends(
+        self, days: int = 7, user_id: Optional[str] = None
+    ) -> TrendData:
         """
         Get trend data for charts.
 
         Args:
             days: Number of days to include in trend (default: 7)
+            user_id: If provided, limit trends to this user's jobs only.
 
         Returns:
             Daily aggregated statistics for the specified period
         """
         # Try cache first
-        cache_key = f"trends_{days}"
+        cache_key = f"trends_{days}:{user_id or 'all'}"
         cached = await self._get_cached(cache_key)
         if cached:
             return TrendData(**cached)
 
         # Compute trends
         job_manager = get_job_manager()
-        all_jobs = await job_manager.list_jobs(limit=1000)
+        all_jobs = await job_manager.list_jobs(limit=1000, user_id=user_id)
 
         # Create date range
         end_date = datetime.now(timezone.utc).date()

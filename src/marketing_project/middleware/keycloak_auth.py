@@ -550,6 +550,21 @@ async def get_current_user(request: Request) -> UserContext:
     Raises:
         HTTPException: If user is not authenticated
     """
+    # Dev bypass: skip Keycloak entirely when DEV_AUTH_BYPASS=true
+    if os.getenv("DEV_AUTH_BYPASS", "").lower() == "true":
+        logger.warning(
+            "[AUTH] DEV_AUTH_BYPASS is enabled — returning mock dev user. "
+            "Never use this in production!"
+        )
+        return UserContext(
+            user_id="dev-user-id",
+            email="dev@localhost",
+            username="dev",
+            roles=["admin", "user", "content_editor", "approver"],
+            realm_roles=["admin", "user", "content_editor", "approver"],
+            client_roles=[],
+        )
+
     logger.info(
         f"[AUTH] get_current_user called for {request.method} {request.url.path}"
     )

@@ -531,10 +531,23 @@ class JobManager:
         # If job has a result in the database but status is not COMPLETED,
         # update status and return (result was saved but status wasn't updated)
         if job.result is not None and job.result != {}:
+            # Don't upgrade waiting_for_approval to completed — the result dict
+            # may be the approval sentinel ({"status": "waiting_for_approval"})
+            # or a partial result, neither of which means the pipeline finished.
+            if (
+                isinstance(job.result, dict)
+                and job.result.get("status") == "waiting_for_approval"
+            ):
+                # Ensure status is correctly set to WAITING_FOR_APPROVAL
+                if job.status != JobStatus.WAITING_FOR_APPROVAL:
+                    job.status = JobStatus.WAITING_FOR_APPROVAL
+                    await self._save_job(job)
+                return job
             if job.status not in [
                 JobStatus.COMPLETED,
                 JobStatus.FAILED,
                 JobStatus.CANCELLED,
+                JobStatus.WAITING_FOR_APPROVAL,
             ]:
                 logger.info(
                     f"Job {job_id} has result in database but status is {job.status}, "
@@ -587,12 +600,28 @@ class JobManager:
                         # Job completed - get result
                         try:
                             result = await arq_job.result()
-                            job.status = JobStatus.COMPLETED
-                            job.completed_at = datetime.now(timezone.utc)
-                            job.progress = 100
-                            job.result = result
-                            job.current_step = "Completed"
-                            logger.info(f"Job {job_id} completed with result from ARQ")
+                            # Check if the pipeline stopped for an approval checkpoint
+                            # (result dict contains {"status": "waiting_for_approval"})
+                            if (
+                                isinstance(result, dict)
+                                and result.get("status") == "waiting_for_approval"
+                            ):
+                                job.status = JobStatus.WAITING_FOR_APPROVAL
+                                if not job.completed_at:
+                                    job.completed_at = datetime.now(timezone.utc)
+                                job.result = result
+                                logger.info(
+                                    f"Job {job_id} ARQ task complete but pipeline is waiting_for_approval"
+                                )
+                            else:
+                                job.status = JobStatus.COMPLETED
+                                job.completed_at = datetime.now(timezone.utc)
+                                job.progress = 100
+                                job.result = result
+                                job.current_step = "Completed"
+                                logger.info(
+                                    f"Job {job_id} completed with result from ARQ"
+                                )
                             # Save updated status to Redis and database
                             await self._save_job(job)
 
@@ -1215,6 +1244,68 @@ class JobManager:
         except Exception as e:
             logger.error(f"Failed to clear ARQ jobs: {e}", exc_info=True)
             raise
+
+    async def delete_job(self, job_id: str) -> bool:
+        """
+        Hard-delete a single job from all storage layers.
+
+        Removes the job from PostgreSQL, Redis, and in-memory storage.
+        Unlike cancel_job, this works on jobs in any status including completed/failed.
+
+        Args:
+            job_id: ID of the job to delete
+
+        Returns:
+            True if the job was found and deleted, False if not found
+        """
+        found = False
+
+        # Delete from PostgreSQL
+        try:
+            from marketing_project.models.db_models import JobModel
+            from marketing_project.services.database import get_database_manager
+
+            db_manager = get_database_manager()
+            if db_manager.is_initialized:
+                async with db_manager.get_session() as session:
+                    from sqlalchemy import delete, select
+
+                    result = await session.execute(
+                        select(JobModel).where(JobModel.job_id == job_id)
+                    )
+                    db_job = result.scalar_one_or_none()
+                    if db_job:
+                        await session.execute(
+                            delete(JobModel).where(JobModel.job_id == job_id)
+                        )
+                        await session.commit()
+                        found = True
+                        logger.info(f"Deleted job {job_id} from PostgreSQL")
+        except Exception as e:
+            logger.warning(f"Failed to delete job {job_id} from PostgreSQL: {e}")
+
+        # Delete from Redis
+        try:
+            job_key = f"{JOB_KEY_PREFIX}{job_id}"
+
+            async def delete_key_operation(redis_client: redis.Redis):
+                deleted = await redis_client.delete(job_key)
+                await redis_client.srem(JOB_INDEX_KEY, job_id)
+                return deleted
+
+            redis_deleted = await self._redis_manager.execute(delete_key_operation)
+            if redis_deleted:
+                found = True
+                logger.info(f"Deleted job {job_id} from Redis")
+        except Exception as e:
+            logger.warning(f"Failed to delete job {job_id} from Redis: {e}")
+
+        # Remove from in-memory cache
+        if job_id in self._jobs:
+            del self._jobs[job_id]
+            found = True
+
+        return found
 
     async def delete_all_jobs(self) -> int:
         """

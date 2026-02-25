@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional
 
 from arq import create_pool
 from arq.connections import RedisSettings
+from arq.cron import cron
 
 from marketing_project.processors import (
     process_blog_post,
@@ -103,8 +104,11 @@ async def process_blog_job(ctx, content_json: str, job_id: str, **kwargs) -> Dic
         if result_dict.get("status") == "error":
             raise Exception(result_dict.get("message", "Processing failed"))
 
-        await job_manager.update_job_progress(job_id, 100, "Completed")
-        logger.info(f"ARQ Worker: Blog job {job_id} completed successfully")
+        if result_dict.get("status") != "waiting_for_approval":
+            await job_manager.update_job_progress(job_id, 100, "Completed")
+            logger.info(f"ARQ Worker: Blog job {job_id} completed successfully")
+        else:
+            logger.info(f"ARQ Worker: Blog job {job_id} is waiting for approval")
 
         if job_span:
             # Refresh job to get updated metadata
@@ -182,8 +186,15 @@ async def process_release_notes_job(
         if result_dict.get("status") == "error":
             raise Exception(result_dict.get("message", "Processing failed"))
 
-        await job_manager.update_job_progress(job_id, 100, "Completed")
-        logger.info(f"ARQ Worker: Release notes job {job_id} completed successfully")
+        if result_dict.get("status") != "waiting_for_approval":
+            await job_manager.update_job_progress(job_id, 100, "Completed")
+            logger.info(
+                f"ARQ Worker: Release notes job {job_id} completed successfully"
+            )
+        else:
+            logger.info(
+                f"ARQ Worker: Release notes job {job_id} is waiting for approval"
+            )
 
         if job_span:
             # Refresh job to get updated metadata
@@ -285,8 +296,11 @@ async def process_transcript_job(ctx, content_json: str, job_id: str, **kwargs) 
         if result_dict.get("status") == "error":
             raise Exception(result_dict.get("message", "Processing failed"))
 
-        await job_manager.update_job_progress(job_id, 100, "Completed")
-        logger.info(f"ARQ Worker: Transcript job {job_id} completed successfully")
+        if result_dict.get("status") != "waiting_for_approval":
+            await job_manager.update_job_progress(job_id, 100, "Completed")
+            logger.info(f"ARQ Worker: Transcript job {job_id} completed successfully")
+        else:
+            logger.info(f"ARQ Worker: Transcript job {job_id} is waiting for approval")
 
         if job_span:
             # Refresh job to get updated metadata
@@ -2008,6 +2022,31 @@ async def shutdown(ctx):
         logger.warning(f"Error cleaning up database connection: {e}")
 
 
+async def expire_stale_approvals(ctx):
+    """Auto-cancel waiting_for_approval jobs older than 7 days."""
+    from datetime import timedelta, timezone
+
+    from sqlalchemy import update
+
+    from marketing_project.models.db_models import JobModel
+    from marketing_project.services.database import get_database_manager
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+    db_manager = get_database_manager()
+    if not db_manager.is_initialized:
+        logger.warning("expire_stale_approvals: database not initialized, skipping")
+        return
+    async with db_manager.get_session() as session:
+        stmt = (
+            update(JobModel)
+            .where(JobModel.status == "waiting_for_approval")
+            .where(JobModel.created_at < cutoff)
+            .values(status="cancelled", completed_at=datetime.now(timezone.utc))
+        )
+        result = await session.execute(stmt)
+    logger.info(f"Auto-cancelled {result.rowcount} stale waiting_for_approval jobs")
+
+
 # ARQ Worker Settings
 class WorkerSettings:
     """
@@ -2062,6 +2101,11 @@ class WorkerSettings:
     job_timeout = int(os.getenv("ARQ_JOB_TIMEOUT", "1800"))  # 30 minutes default
     keep_result = 3600  # Keep results for 1 hour
     keep_result_forever = False
+
+    # Cron jobs
+    cron_jobs = [
+        cron(expire_stale_approvals, hour={0}, minute={0}),  # daily at midnight UTC
+    ]
 
     # Startup and shutdown hooks
     on_startup = startup

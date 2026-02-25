@@ -31,6 +31,9 @@ router = APIRouter()
 
 @router.get("/dashboard", response_model=DashboardStats)
 async def get_dashboard_analytics(
+    user_id: Optional[str] = Query(
+        None, description="Filter stats by user ID (admin only)"
+    ),
     user: UserContext = Depends(require_roles(["admin"])),
 ):
     """
@@ -46,7 +49,7 @@ async def get_dashboard_analytics(
     """
     try:
         analytics_service = get_analytics_service()
-        stats = await analytics_service.get_dashboard_stats()
+        stats = await analytics_service.get_dashboard_stats(user_id=user_id)
         return stats
     except Exception as e:
         logger.error(f"Failed to get dashboard analytics: {e}")
@@ -57,6 +60,9 @@ async def get_dashboard_analytics(
 
 @router.get("/pipeline", response_model=PipelineStats)
 async def get_pipeline_analytics(
+    user_id: Optional[str] = Query(
+        None, description="Filter stats by user ID (admin only)"
+    ),
     user: UserContext = Depends(require_roles(["admin"])),
 ):
     """
@@ -72,7 +78,7 @@ async def get_pipeline_analytics(
     """
     try:
         analytics_service = get_analytics_service()
-        stats = await analytics_service.get_pipeline_stats()
+        stats = await analytics_service.get_pipeline_stats(user_id=user_id)
         return stats
     except Exception as e:
         logger.error(f"Failed to get pipeline analytics: {e}")
@@ -112,6 +118,9 @@ async def get_content_analytics(
 )  # Alias for test compatibility
 async def get_recent_activity(
     days: int = Query(7, ge=1, le=30, description="Number of days to look back"),
+    user_id: Optional[str] = Query(
+        None, description="Filter activity by user ID (admin only)"
+    ),
     user: UserContext = Depends(require_roles(["admin"])),
 ):
     """
@@ -124,7 +133,9 @@ async def get_recent_activity(
     """
     try:
         analytics_service = get_analytics_service()
-        activity = await analytics_service.get_recent_activity(days=days)
+        activity = await analytics_service.get_recent_activity(
+            days=days, user_id=user_id
+        )
         return activity
     except Exception as e:
         logger.error(f"Failed to get recent activity: {e}")
@@ -136,6 +147,9 @@ async def get_recent_activity(
 @router.get("/trends", response_model=TrendData)
 async def get_trends(
     days: int = Query(7, ge=1, le=90, description="Number of days to include in trend"),
+    user_id: Optional[str] = Query(
+        None, description="Filter trends by user ID (admin only)"
+    ),
     user: UserContext = Depends(require_roles(["admin"])),
 ):
     """
@@ -149,7 +163,7 @@ async def get_trends(
     """
     try:
         analytics_service = get_analytics_service()
-        trends = await analytics_service.get_trends(days=days)
+        trends = await analytics_service.get_trends(days=days, user_id=user_id)
         return trends
     except Exception as e:
         logger.error(f"Failed to get trend data: {e}")
