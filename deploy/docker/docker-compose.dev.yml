@@ -40,6 +40,8 @@ services:
       # Keycloak configuration (use host.docker.internal for Mac/Windows Docker Desktop)
       # For Linux, you may need to use the host's IP address or add extra_hosts
       - KEYCLOAK_SERVER_URL=${KEYCLOAK_SERVER_URL:-http://host.docker.internal:8080}
+      # Dev auth bypass — skip Keycloak entirely for local development
+      - DEV_AUTH_BYPASS=true
     volumes:
       # Mount source code for hot-reload (changes reflect immediately)
       - ../../src:/app/src
@@ -50,13 +52,16 @@ services:
       # Mount data directories (no logs - they go to Docker logs)
       - ./uploads:/app/uploads
       - ../../content:/app/content
+      # Arthur Observability SDK (local editable install)
+      - /Users/ibrahim/Documents/Github/arthur-observability-sdk:/arthur-sdk
     command: >
+      sh -c "pip install -q -e '/arthur-sdk[openai,langchain]' &&
       uvicorn src.marketing_project.server:app
       --host 0.0.0.0
       --port 8000
       --reload
       --reload-dir /app/src
-      --log-level debug
+      --log-level debug"
     restart: unless-stopped
     depends_on:
       redis:
@@ -145,7 +150,7 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_DATABASE=${REDIS_DATABASE:-0}
-      - OTEL_EXPORT_CONSOLE=true
+      # - OTEL_EXPORT_CONSOLE=true
       # Optional: SSL not needed for local Redis
       # - REDIS_SSL=false
       # Database connection (uses DATABASE_URL from .env if provided, otherwise uses postgres service)
@@ -161,8 +166,11 @@ services:
       - ../../requirements.txt:/app/requirements.txt
       - ./uploads:/app/uploads
       - ../../content:/app/content
+      # Arthur Observability SDK (local editable install)
+      - /Users/ibrahim/Documents/Github/arthur-observability-sdk:/arthur-sdk
     command: >
-      arq marketing_project.worker.WorkerSettings
+      sh -c "pip install -q -e '/arthur-sdk[openai,langchain]' &&
+      arq marketing_project.worker.WorkerSettings"
     restart: unless-stopped
     depends_on:
       redis:

@@ -1472,6 +1472,9 @@ class StepResultManager:
                             j.completed_at.isoformat() if j.completed_at else None
                         ),
                         "user_id": j.user_id,
+                        "metadata": (
+                            j.job_metadata if isinstance(j.job_metadata, dict) else {}
+                        ),
                     }
                     for j in db_jobs
                 ]

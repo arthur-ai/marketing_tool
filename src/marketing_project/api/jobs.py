@@ -63,18 +63,30 @@ async def list_jobs(
     include_subjob_status: bool = Query(
         False, description="Include subjob status for parent jobs"
     ),
+    filter_user_id: Optional[str] = Query(
+        None, description="Admin only: filter jobs by a specific user ID"
+    ),
     user: UserContext = Depends(get_current_user),
 ):
     """
     List all jobs with optional filters.
 
     Returns a list of jobs with their current status and metadata.
+    Admins see all users' jobs; non-admins only see their own.
     If include_subjob_status is True, parent jobs will include subjob status counts.
     """
     try:
         manager = get_job_manager()
+
+        # Admins can see all jobs or filter by a specific user;
+        # non-admins always see only their own jobs.
+        if user.has_role("admin"):
+            effective_user_id = filter_user_id  # None means all users
+        else:
+            effective_user_id = user.user_id
+
         jobs = await manager.list_jobs(
-            job_type=job_type, status=status, limit=limit, user_id=user.user_id
+            job_type=job_type, status=status, limit=limit, user_id=effective_user_id
         )
 
         # Enhance jobs with subjob status if requested
@@ -393,6 +405,38 @@ async def get_job_result(job_id: str, user: UserContext = Depends(get_current_us
     except Exception as e:
         logger.error(f"Failed to get job result {job_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/{job_id}/force", summary="Force-delete a job (admin only)")
+async def force_delete_job(
+    job_id: str, user: UserContext = Depends(require_roles(["admin"]))
+):
+    """
+    Permanently delete a single job from all storage layers.
+
+    Unlike cancellation, this hard-deletes the job record from PostgreSQL and Redis
+    regardless of its current status (completed, failed, cancelled, etc.).
+
+    Admin-only operation. Cannot be undone.
+    """
+    try:
+        manager = get_job_manager()
+        deleted = await manager.delete_job(job_id)
+
+        if not deleted:
+            raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+
+        return {
+            "success": True,
+            "message": f"Job {job_id} permanently deleted",
+            "job_id": job_id,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to force-delete job {job_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete job: {str(e)}")
 
 
 @router.delete("/all", summary="Delete all jobs")

@@ -114,6 +114,10 @@ class JobListItem(BaseModel):
         None,
         description="Number of pending approvals (set when status is waiting_for_approval)",
     )
+    user_id: Optional[str] = Field(None, description="User who triggered the job")
+    metadata: Optional[Dict[str, Any]] = Field(
+        None, description="Job metadata (title, triggered_by_username, etc.)"
+    )
 
 
 class JobListResponse(BaseModel):
@@ -135,6 +139,9 @@ async def list_jobs(
         None,
         description="Filter jobs until this date (ISO format: YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)",
     ),
+    filter_user_id: Optional[str] = Query(
+        None, description="Admin only: filter jobs belonging to a specific user ID"
+    ),
     user: UserContext = Depends(get_current_user),
 ):
     """
@@ -144,6 +151,7 @@ async def list_jobs(
         limit: Maximum number of jobs to return (default: 50)
         date_from: Filter jobs created/started from this date onwards (ISO format)
         date_to: Filter jobs created/started until this date (ISO format)
+        filter_user_id: Admin only — show only jobs belonging to this user
 
     Returns:
         List of jobs with their summaries (filtered by date if provided)
@@ -178,12 +186,17 @@ async def list_jobs(
                 # else: keep all filesystem jobs as last-resort fallback
 
         else:
-            # Admin sees all jobs; fetch status for all of them
-            all_jobs = await job_manager.list_jobs(limit=100000)
+            # Admin sees all jobs (or optionally filtered by a specific user);
+            # fetch status for all of them
+            all_jobs = await job_manager.list_jobs(user_id=filter_user_id, limit=100000)
             job_status_lookup = {
                 j.id: (j.status.value if hasattr(j.status, "value") else str(j.status))
                 for j in all_jobs
             }
+            # If filtering by user, restrict the filesystem job list too
+            if filter_user_id:
+                admin_job_ids = {j.id for j in all_jobs}
+                jobs = [j for j in jobs if j.get("job_id") in admin_job_ids]
 
         # Enrich jobs with status from job_manager (DB already provides status,
         # but this covers jobs from the filesystem fallback path)
