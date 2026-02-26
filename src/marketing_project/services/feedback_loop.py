@@ -6,7 +6,7 @@ and learns from high-performing posts.
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger("marketing_project.services.feedback_loop")

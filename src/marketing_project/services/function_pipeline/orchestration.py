@@ -269,7 +269,7 @@ def compile_pipeline_result(
     Returns:
         Compiled result dictionary
     """
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     # Get final content from formatting result if available
     final_content = None

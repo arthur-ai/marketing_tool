@@ -11,7 +11,7 @@ This service handles:
 import json
 import logging
 import os
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 

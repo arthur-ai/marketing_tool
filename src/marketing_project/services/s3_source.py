@@ -7,7 +7,7 @@ This module provides a content source that reads content from AWS S3.
 import fnmatch
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
