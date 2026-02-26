@@ -9,14 +9,14 @@ import json
 import logging
 import os
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import redis.asyncio as redis
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import delete, func, select, update
 
-from marketing_project.models.db_models import ApprovalSettingsModel
+from marketing_project.models.db_models import ApprovalModel, ApprovalSettingsModel
 from marketing_project.services.database import get_database_manager
 from marketing_project.services.redis_manager import get_redis_manager
 
@@ -66,9 +66,6 @@ class ApprovalManager:
 
     def __init__(self, settings: Optional[ApprovalSettings] = None):
         self.settings = settings or ApprovalSettings()
-        self._approvals: Dict[str, ApprovalRequest] = {}
-        self._job_approvals: Dict[str, List[str]] = {}  # job_id -> [approval_ids]
-        self._pending_futures: Dict[str, asyncio.Future] = {}
         self._redis_manager = get_redis_manager()
 
     async def get_redis(self) -> Optional[redis.Redis]:
@@ -258,7 +255,7 @@ class ApprovalManager:
                 "output_content_type": context.get(
                     "output_content_type"
                 ),  # Save output_content_type
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "job_id": job_id,
             }
 
@@ -321,6 +318,8 @@ class ApprovalManager:
         """
         Create a new approval request.
 
+        Writes to PostgreSQL (source of truth) and caches in Redis.
+
         Args:
             job_id: ID of the parent processing job
             agent_name: Name of the agent that generated the output
@@ -336,7 +335,6 @@ class ApprovalManager:
         """
         approval_id = str(uuid.uuid4())
 
-        # Default pipeline_step to agent_name if not provided
         if pipeline_step is None:
             pipeline_step = agent_name
 
@@ -362,22 +360,39 @@ class ApprovalManager:
                 f"Auto-approving {approval_id} (confidence: {confidence_score:.2f} >= {self.settings.auto_approve_threshold})"
             )
             approval.status = "approved"
-            approval.reviewed_at = datetime.utcnow()
+            approval.reviewed_at = datetime.now(timezone.utc)
             approval.user_comment = "Auto-approved based on confidence threshold"
 
-        # Store approval in memory
-        self._approvals[approval_id] = approval
+        # Persist to PostgreSQL (source of truth)
+        try:
+            db_manager = get_database_manager()
+            if db_manager.is_initialized:
+                async with db_manager.get_session() as session:
+                    db_approval = ApprovalModel(
+                        approval_id=approval_id,
+                        job_id=job_id,
+                        agent_name=agent_name,
+                        step_name=step_name,
+                        pipeline_step=pipeline_step,
+                        status=approval.status,
+                        input_data=input_data,
+                        output_data=output_data,
+                        confidence_score=(
+                            str(confidence_score)
+                            if confidence_score is not None
+                            else None
+                        ),
+                        user_comment=approval.user_comment,
+                        reviewed_at=approval.reviewed_at,
+                    )
+                    session.add(db_approval)
+                    await session.flush()
+                logger.debug(f"Saved approval {approval_id} to PostgreSQL")
+        except Exception as e:
+            logger.warning(f"Failed to save approval {approval_id} to PostgreSQL: {e}")
 
-        # Persist to Redis
-        await self._save_approval_to_redis(approval)
-
-        # Track by job
-        if job_id not in self._job_approvals:
-            self._job_approvals[job_id] = []
-        self._job_approvals[job_id].append(approval_id)
-
-        # Save job approval mapping to Redis
-        await self._save_job_approval_mapping(job_id, approval_id)
+        # Cache in Redis (write-through, 7-day TTL)
+        await self._cache_approval_in_redis(approval)
 
         logger.info(
             f"Created approval request {approval_id} for job {job_id}, agent {agent_name}"
@@ -385,353 +400,77 @@ class ApprovalManager:
 
         return approval
 
-    async def _save_approval_to_redis(self, approval: ApprovalRequest):
-        """Save approval to Redis for persistence."""
+    async def _cache_approval_in_redis(self, approval: ApprovalRequest):
+        """Write-through cache: store approval in Redis with 7-day TTL."""
         try:
             approval_key = f"{APPROVAL_KEY_PREFIX}{approval.id}"
             approval_json = approval.model_dump_json()
 
-            # Use pipeline for batch operations (SETEX + SADD)
             async def save_operation(redis_client: redis.Redis):
-                async with redis_client.pipeline() as pipe:
-                    # Store with 7 day TTL
-                    pipe.setex(approval_key, 604800, approval_json)
-                    # Also add to approval list set
-                    pipe.sadd(APPROVAL_LIST_KEY, approval.id)
-                    await pipe.execute()
+                await redis_client.setex(approval_key, 604800, approval_json)
 
             await self._redis_manager.execute(save_operation)
-            logger.debug(f"Saved approval {approval.id} to Redis")
+            logger.debug(f"Cached approval {approval.id} in Redis")
         except Exception as e:
-            logger.warning(
-                f"Failed to save approval {approval.id} to Redis (key: {approval_key}): {type(e).__name__}: {e}",
-                extra={
-                    "approval_id": approval.id,
-                    "job_id": approval.job_id,
-                    "redis_key": approval_key,
-                    "error_type": type(e).__name__,
-                },
-            )
+            logger.warning(f"Failed to cache approval {approval.id} in Redis: {e}")
 
-    async def _load_approval_from_redis(
+    async def _load_approval_from_redis_cache(
         self, approval_id: str
     ) -> Optional[ApprovalRequest]:
-        """
-        Load approval from Redis.
-
-        Returns None if key doesn't exist (expected after TTL expiration).
-        Logs warnings only for actual errors (parsing, deserialization).
-        """
+        """Load approval from Redis cache. Returns None on miss or error."""
         approval_key = f"{APPROVAL_KEY_PREFIX}{approval_id}"
-
         try:
 
             async def get_operation(redis_client: redis.Redis):
                 return await redis_client.get(approval_key)
 
             approval_json = await self._redis_manager.execute(get_operation)
-
-            # Key doesn't exist - this is expected after TTL expiration, return None silently
             if not approval_json:
                 return None
-
-            # Key exists, try to parse it
-            try:
-                approval_dict = json.loads(approval_json)
-            except json.JSONDecodeError as e:
-                # JSON parsing error - unexpected, log warning
-                logger.warning(
-                    f"Failed to parse JSON for approval {approval_id} from Redis (key: {approval_key}): {e}",
-                    extra={
-                        "approval_id": approval_id,
-                        "redis_key": approval_key,
-                        "error_type": type(e).__name__,
-                    },
-                )
-                return None
-
-            # Handle datetime strings - convert to datetime objects if needed
-            # Pydantic v2 can handle ISO format strings, but let's ensure compatibility
-            try:
-                return ApprovalRequest.model_validate(approval_dict)
-            except Exception as e:
-                # Fallback: try manual datetime parsing
-                if "created_at" in approval_dict and isinstance(
-                    approval_dict["created_at"], str
-                ):
-                    from datetime import datetime
-
-                    try:
-                        approval_dict["created_at"] = datetime.fromisoformat(
-                            approval_dict["created_at"].replace("Z", "+00:00")
-                        )
-                    except (ValueError, AttributeError):
-                        pass
-                if (
-                    "reviewed_at" in approval_dict
-                    and isinstance(approval_dict["reviewed_at"], str)
-                    and approval_dict["reviewed_at"]
-                ):
-                    from datetime import datetime
-
-                    try:
-                        approval_dict["reviewed_at"] = datetime.fromisoformat(
-                            approval_dict["reviewed_at"].replace("Z", "+00:00")
-                        )
-                    except (ValueError, AttributeError):
-                        pass
-                try:
-                    return ApprovalRequest(**approval_dict)
-                except Exception as validation_error:
-                    # Validation error - unexpected, log warning
-                    logger.warning(
-                        f"Failed to validate approval {approval_id} from Redis (key: {approval_key}): {type(validation_error).__name__}: {validation_error}",
-                        extra={
-                            "approval_id": approval_id,
-                            "redis_key": approval_key,
-                            "error_type": type(validation_error).__name__,
-                        },
-                    )
-                    return None
+            return ApprovalRequest.model_validate_json(approval_json)
         except Exception as e:
-            # Unexpected error during Redis operation - log warning
-            logger.warning(
-                f"Failed to load approval {approval_id} from Redis (key: {approval_key}): {type(e).__name__}: {e}",
-                extra={
-                    "approval_id": approval_id,
-                    "redis_key": approval_key,
-                    "error_type": type(e).__name__,
-                },
-            )
+            logger.debug(f"Redis cache miss for approval {approval_id}: {e}")
             return None
 
+    async def _load_approval_from_db(
+        self, approval_id: str
+    ) -> Optional[ApprovalRequest]:
+        """Load approval from PostgreSQL. Returns None if not found."""
+        try:
+            db_manager = get_database_manager()
+            if not db_manager.is_initialized:
+                return None
+            async with db_manager.get_session() as session:
+                result = await session.execute(
+                    select(ApprovalModel).where(
+                        ApprovalModel.approval_id == approval_id
+                    )
+                )
+                db_approval = result.scalar_one_or_none()
+                if db_approval:
+                    return db_approval.to_approval_request()
+        except Exception as e:
+            logger.warning(
+                f"Failed to load approval {approval_id} from PostgreSQL: {e}"
+            )
+        return None
+
     async def _load_all_approvals_from_redis(self):
-        """
-        Load all approvals from Redis into memory.
-
-        Automatically cleans up stale approval IDs (where keys have expired) from the set.
-        """
-        try:
-            # Get all approval IDs from the set
-            async def smembers_operation(redis_client: redis.Redis):
-                return await redis_client.smembers(APPROVAL_LIST_KEY)
-
-            approval_ids = await self._redis_manager.execute(smembers_operation)
-            logger.debug(f"Found {len(approval_ids)} approval ID(s) in Redis set")
-
-            loaded_count = 0
-            skipped_count = 0
-            stale_ids = []
-
-            for approval_id in approval_ids:
-                if approval_id not in self._approvals:
-                    approval = await self._load_approval_from_redis(approval_id)
-                    if approval:
-                        self._approvals[approval_id] = approval
-                        # Restore job mapping
-                        if approval.job_id not in self._job_approvals:
-                            self._job_approvals[approval.job_id] = []
-                        if approval_id not in self._job_approvals[approval.job_id]:
-                            self._job_approvals[approval.job_id].append(approval_id)
-                        loaded_count += 1
-                    else:
-                        # Approval key doesn't exist (expired) - track for cleanup
-                        stale_ids.append(approval_id)
-                        skipped_count += 1
-                else:
-                    skipped_count += 1
-
-            # Clean up stale IDs from the set in batches
-            if stale_ids:
-                batch_size = 100
-                removed_count = 0
-
-                for i in range(0, len(stale_ids), batch_size):
-                    batch = stale_ids[i : i + batch_size]
-
-                    async def remove_batch_operation(redis_client: redis.Redis):
-                        return await redis_client.srem(APPROVAL_LIST_KEY, *batch)
-
-                    try:
-                        removed = await self._redis_manager.execute(
-                            remove_batch_operation
-                        )
-                        removed_count += removed if removed else 0
-                    except Exception as e:
-                        logger.warning(
-                            f"Failed to remove stale approval IDs from set: {e}",
-                            extra={
-                                "batch_size": len(batch),
-                                "error_type": type(e).__name__,
-                            },
-                        )
-
-                if removed_count > 0:
-                    logger.info(
-                        f"Cleaned up {removed_count} stale approval ID(s) from Redis set "
-                        f"(loaded {loaded_count}, skipped {skipped_count - removed_count} already in memory)"
-                    )
-                else:
-                    logger.debug(
-                        f"Found {len(stale_ids)} stale approval ID(s) but failed to remove them "
-                        f"(loaded {loaded_count}, skipped {skipped_count} already in memory)"
-                    )
-            elif loaded_count > 0:
-                logger.info(
-                    f"Loaded {loaded_count} approval(s) from Redis (skipped {skipped_count} already in memory)"
-                )
-            elif len(approval_ids) > 0:
-                logger.debug(
-                    f"No new approvals loaded from Redis ({skipped_count} already in memory)"
-                )
-        except Exception as e:
-            logger.warning(f"Failed to load approvals from Redis: {e}")
-
-    async def cleanup_stale_approvals(self, dry_run: bool = False) -> Dict[str, int]:
-        """
-        Clean up stale approval IDs from Redis set.
-
-        Scans all approval IDs in the set and removes those whose keys no longer exist.
-        This is useful for maintenance and can be called explicitly or scheduled periodically.
-
-        Args:
-            dry_run: If True, only report what would be removed without actually removing
-
-        Returns:
-            Dictionary with cleanup statistics:
-            - total_ids: Total IDs in set
-            - existing_keys: Number of keys that exist
-            - stale_ids: Number of stale IDs found
-            - removed: Number actually removed (0 if dry_run)
-        """
-        stats = {
-            "total_ids": 0,
-            "existing_keys": 0,
-            "stale_ids": 0,
-            "removed": 0,
-        }
-
-        try:
-            # Get all approval IDs from the set
-            async def smembers_operation(redis_client: redis.Redis):
-                return await redis_client.smembers(APPROVAL_LIST_KEY)
-
-            approval_ids = await self._redis_manager.execute(smembers_operation)
-            stats["total_ids"] = len(approval_ids) if approval_ids else 0
-
-            if stats["total_ids"] == 0:
-                logger.debug("No approval IDs found in Redis set to clean up")
-                return stats
-
-            stale_ids = []
-
-            # Check each approval ID to see if the key exists
-            for approval_id in approval_ids:
-                approval_key = f"{APPROVAL_KEY_PREFIX}{approval_id}"
-
-                async def exists_operation(redis_client: redis.Redis):
-                    return await redis_client.exists(approval_key)
-
-                try:
-                    exists = await self._redis_manager.execute(exists_operation)
-                    if exists:
-                        stats["existing_keys"] += 1
-                    else:
-                        stale_ids.append(approval_id)
-                        stats["stale_ids"] += 1
-                except Exception as e:
-                    logger.warning(
-                        f"Failed to check existence of approval {approval_id}: {e}",
-                        extra={
-                            "approval_id": approval_id,
-                            "error_type": type(e).__name__,
-                        },
-                    )
-                    # Treat as stale if we can't check
-                    stale_ids.append(approval_id)
-                    stats["stale_ids"] += 1
-
-            # Remove stale IDs if not dry run
-            if stale_ids and not dry_run:
-                batch_size = 100
-                removed_count = 0
-
-                for i in range(0, len(stale_ids), batch_size):
-                    batch = stale_ids[i : i + batch_size]
-
-                    async def remove_batch_operation(redis_client: redis.Redis):
-                        return await redis_client.srem(APPROVAL_LIST_KEY, *batch)
-
-                    try:
-                        removed = await self._redis_manager.execute(
-                            remove_batch_operation
-                        )
-                        removed_count += removed if removed else 0
-                    except Exception as e:
-                        logger.warning(
-                            f"Failed to remove stale approval IDs from set: {e}",
-                            extra={
-                                "batch_size": len(batch),
-                                "error_type": type(e).__name__,
-                            },
-                        )
-
-                stats["removed"] = removed_count
-
-                if removed_count > 0:
-                    logger.info(
-                        f"Cleaned up {removed_count} stale approval ID(s) from Redis set "
-                        f"(total: {stats['total_ids']}, existing: {stats['existing_keys']}, stale: {stats['stale_ids']})"
-                    )
-                elif stats["stale_ids"] > 0:
-                    logger.warning(
-                        f"Found {stats['stale_ids']} stale approval ID(s) but failed to remove them"
-                    )
-            elif stale_ids and dry_run:
-                logger.info(
-                    f"DRY RUN: Would remove {len(stale_ids)} stale approval ID(s) from Redis set "
-                    f"(total: {stats['total_ids']}, existing: {stats['existing_keys']}, stale: {stats['stale_ids']})"
-                )
-            elif stats["stale_ids"] == 0:
-                logger.debug(
-                    f"No stale approval IDs found (total: {stats['total_ids']}, all keys exist)"
-                )
-
-        except Exception as e:
-            logger.error(f"Failed to cleanup stale approvals: {e}", exc_info=True)
-
-        return stats
-
-    async def _save_job_approval_mapping(self, job_id: str, approval_id: str):
-        """Save job-to-approval mapping to Redis."""
-        try:
-            job_approval_key = f"{JOB_APPROVAL_KEY_PREFIX}{job_id}"
-
-            # Use pipeline for batch operations (SADD + EXPIRE)
-            async def save_mapping_operation(redis_client: redis.Redis):
-                async with redis_client.pipeline() as pipe:
-                    pipe.sadd(job_approval_key, approval_id)
-                    # Set TTL to match approval TTL
-                    pipe.expire(job_approval_key, 604800)
-                    await pipe.execute()
-
-            await self._redis_manager.execute(save_mapping_operation)
-        except Exception as e:
-            logger.warning(f"Failed to save job approval mapping for job {job_id}: {e}")
+        """Deprecated: kept for backward compatibility. Use list_approvals() instead."""
+        pass  # No-op — approvals now live in PostgreSQL
 
     async def get_approval(self, approval_id: str) -> Optional[ApprovalRequest]:
-        """Get an approval request by ID."""
-        # Check memory first
-        if approval_id in self._approvals:
-            return self._approvals[approval_id]
-
-        # Try loading from Redis
-        approval = await self._load_approval_from_redis(approval_id)
+        """Get an approval request by ID. Checks Redis cache first, then PostgreSQL."""
+        # Fast path: Redis cache
+        approval = await self._load_approval_from_redis_cache(approval_id)
         if approval:
-            self._approvals[approval_id] = approval
             return approval
 
-        return None
+        # Cache miss: load from PostgreSQL and backfill cache
+        approval = await self._load_approval_from_db(approval_id)
+        if approval:
+            await self._cache_approval_in_redis(approval)
+        return approval
 
     async def list_approvals(
         self,
@@ -739,31 +478,32 @@ class ApprovalManager:
         status: Optional[str] = None,
     ) -> List[ApprovalRequest]:
         """
-        List approval requests with optional filters.
+        List approval requests with optional filters. Reads from PostgreSQL.
 
         Args:
             job_id: Filter by job ID
             status: Filter by status (pending, approved, rejected, modified)
 
         Returns:
-            List of approval requests
+            List of approval requests, sorted newest first
         """
-        # Always try to load from Redis to ensure we have latest data
-        # (in case approvals were created in another process/worker)
-        await self._load_all_approvals_from_redis()
+        try:
+            db_manager = get_database_manager()
+            if not db_manager.is_initialized:
+                return []
 
-        approvals = list(self._approvals.values())
-
-        if job_id:
-            approvals = [a for a in approvals if a.job_id == job_id]
-
-        if status:
-            approvals = [a for a in approvals if a.status == status]
-
-        # Sort by creation time (newest first)
-        approvals.sort(key=lambda a: a.created_at, reverse=True)
-
-        return approvals
+            async with db_manager.get_session() as session:
+                stmt = select(ApprovalModel).order_by(ApprovalModel.created_at.desc())
+                if job_id:
+                    stmt = stmt.where(ApprovalModel.job_id == job_id)
+                if status:
+                    stmt = stmt.where(ApprovalModel.status == status)
+                result = await session.execute(stmt)
+                rows = result.scalars().all()
+                return [row.to_approval_request() for row in rows]
+        except Exception as e:
+            logger.error(f"Failed to list approvals from PostgreSQL: {e}")
+            return []
 
     async def decide_approval(
         self,
@@ -772,6 +512,9 @@ class ApprovalManager:
     ) -> ApprovalRequest:
         """
         Make a decision on an approval request.
+
+        Updates PostgreSQL (source of truth), refreshes Redis cache, and publishes
+        a pub/sub notification so any waiting `wait_for_approval` calls unblock.
 
         Args:
             approval_id: ID of approval request
@@ -783,7 +526,7 @@ class ApprovalManager:
         Raises:
             ValueError: If approval not found or invalid decision
         """
-        approval = self._approvals.get(approval_id)
+        approval = await self.get_approval(approval_id)
         if not approval:
             raise ValueError(f"Approval {approval_id} not found")
 
@@ -850,22 +593,176 @@ class ApprovalManager:
                 approval.status = "rerun"
                 # Store comment as user_guidance for the rerun (will be used in API handler)
 
-        approval.reviewed_at = datetime.utcnow()
+        approval.reviewed_at = datetime.now(timezone.utc)
         approval.user_comment = decision.comment
         approval.reviewed_by = decision.reviewed_by
 
-        # Update in Redis
-        await self._save_approval_to_redis(approval)
+        # Persist decision to PostgreSQL (source of truth)
+        try:
+            db_manager = get_database_manager()
+            if db_manager.is_initialized:
+                async with db_manager.get_session() as session:
+                    await session.execute(
+                        update(ApprovalModel)
+                        .where(ApprovalModel.approval_id == approval_id)
+                        .values(
+                            status=approval.status,
+                            modified_output=approval.modified_output,
+                            user_comment=approval.user_comment,
+                            reviewed_by=approval.reviewed_by,
+                            reviewed_at=approval.reviewed_at,
+                            retry_job_id=approval.retry_job_id,
+                            retry_count=approval.retry_count,
+                        )
+                    )
+        except Exception as e:
+            logger.error(
+                f"Failed to persist decision for approval {approval_id} to PostgreSQL: {e}"
+            )
+            raise
+
+        # Update Redis cache
+        await self._cache_approval_in_redis(approval)
+
+        # Notify any waiting cross-process listeners via pub/sub
+        try:
+
+            async def publish_operation(redis_client: redis.Redis):
+                await redis_client.publish(
+                    f"approval:decided:{approval_id}", approval.status
+                )
+
+            await self._redis_manager.execute(publish_operation)
+        except Exception as e:
+            logger.warning(f"Failed to publish approval decision notification: {e}")
 
         logger.info(f"Approval {approval_id} decided: {decision.decision}")
-
-        # Resolve any waiting futures
-        if approval_id in self._pending_futures:
-            future = self._pending_futures.pop(approval_id)
-            if not future.done():
-                future.set_result(approval)
-
         return approval
+
+    async def execute_rejection_with_retry(
+        self,
+        approval: "ApprovalRequest",
+        job_manager,
+        user_comment: str = "",
+        reviewed_by: str = "system",
+    ) -> Optional[str]:
+        """
+        Create a retry job for a rejected or expired approval.
+
+        Extracted from the API layer so that both the decide_approval endpoint and
+        the expire_stale_approvals cron produce identical outcomes on rejection.
+
+        Args:
+            approval: The ApprovalRequest being rejected
+            job_manager: JobManager instance for job creation/queuing
+            user_comment: User or system comment to pass as guidance to the retry worker
+            reviewed_by: Who/what made the decision (username or "system")
+
+        Returns:
+            retry_job_id if a retry job was created, None otherwise
+        """
+        from marketing_project.models.user_context import UserContext
+
+        pipeline_step = approval.pipeline_step
+        input_data = approval.input_data
+
+        # Get accumulated context from Redis so the retry can pick up where it left off
+        context_data = await self.load_pipeline_context(approval.job_id)
+        context = context_data.get("context", {}) if context_data else {}
+
+        # Load the waiting job to inherit user_id, session_id, and content_id
+        approval_job = await job_manager.get_job(approval.job_id)
+        session_id = None
+        if approval_job and approval_job.metadata:
+            session_id = approval_job.metadata.get("session_id")
+            if not session_id:
+                original_job_id = approval_job.metadata.get("original_job_id")
+                if original_job_id:
+                    root_job = await job_manager.get_job(original_job_id)
+                    if root_job and root_job.metadata:
+                        session_id = root_job.metadata.get("session_id")
+
+        parent_user_id = approval_job.user_id if approval_job else None
+        if not parent_user_id and approval_job and approval_job.metadata:
+            original_job_id = approval_job.metadata.get("original_job_id")
+            if original_job_id:
+                root_job = await job_manager.get_job(original_job_id)
+                parent_user_id = root_job.user_id if root_job else None
+
+        parent_user_context = None
+        source_job = approval_job
+        if source_job and source_job.metadata and parent_user_id:
+            triggered_by = source_job.metadata.get("triggered_by_user_id")
+            if triggered_by == parent_user_id:
+                parent_user_context = UserContext(
+                    user_id=parent_user_id,
+                    username=source_job.metadata.get("triggered_by_username"),
+                    email=source_job.metadata.get("triggered_by_email"),
+                )
+
+        retry_job_id = str(uuid.uuid4())
+        retry_content_id = approval_job.content_id if approval_job else approval.job_id
+        retry_metadata = {
+            "original_job_id": approval.job_id,
+            "approval_id": approval.id,
+            "step_name": pipeline_step,
+            "retry_attempt": approval.retry_count + 1,
+        }
+        if session_id:
+            retry_metadata["session_id"] = session_id
+
+        await job_manager.create_job(
+            job_id=retry_job_id,
+            job_type=f"retry_step_{pipeline_step}",
+            content_id=retry_content_id,
+            metadata=retry_metadata,
+            user_id=parent_user_id,
+            user_context=parent_user_context,
+        )
+
+        # Link the retry job onto the waiting job so get_job_chain can find it
+        if approval_job:
+            approval_job.metadata["retry_job_id"] = retry_job_id
+            await job_manager._save_job(approval_job)
+
+        await job_manager.submit_to_arq(
+            retry_job_id,
+            "retry_step_job",
+            pipeline_step,
+            input_data,
+            context,
+            retry_job_id,
+            approval.id,
+            user_guidance=user_comment,
+        )
+
+        # Update approval with retry linkage
+        approval.retry_job_id = retry_job_id
+        approval.retry_count += 1
+        # Persist retry linkage to PostgreSQL
+        try:
+            db_manager = get_database_manager()
+            if db_manager.is_initialized:
+                async with db_manager.get_session() as session:
+                    await session.execute(
+                        update(ApprovalModel)
+                        .where(ApprovalModel.approval_id == approval.id)
+                        .values(
+                            retry_job_id=retry_job_id,
+                            retry_count=approval.retry_count,
+                        )
+                    )
+        except Exception as e:
+            logger.warning(
+                f"Failed to update retry linkage for approval {approval.id}: {e}"
+            )
+        await self._cache_approval_in_redis(approval)
+
+        logger.info(
+            f"Created retry job {retry_job_id} for approval {approval.id} "
+            f"(step: {pipeline_step}, attempt: {approval.retry_count}, by: {reviewed_by})"
+        )
+        return retry_job_id
 
     def filter_selected_keywords(
         self,
@@ -1178,213 +1075,208 @@ class ApprovalManager:
         """
         Wait for an approval to be decided.
 
+        Uses Redis pub/sub so this works correctly across multiple API processes.
+
         Args:
             approval_id: ID of approval request
-            timeout: Optional timeout in seconds
+            timeout: Optional timeout in seconds (auto-rejects on expiry)
 
         Returns:
             Approved/rejected/modified approval request
 
         Raises:
-            asyncio.TimeoutError: If timeout reached
             ValueError: If approval not found
         """
-        approval = self._approvals.get(approval_id)
+        approval = await self.get_approval(approval_id)
         if not approval:
             raise ValueError(f"Approval {approval_id} not found")
 
-        # If already decided, return immediately
+        # Already decided — return immediately
         if approval.status != "pending":
             return approval
 
-        # Create future for this approval
-        if approval_id not in self._pending_futures:
-            self._pending_futures[approval_id] = asyncio.Future()
+        # Subscribe to the decision channel and block until notified
+        channel = f"approval:decided:{approval_id}"
+        deadline = asyncio.get_event_loop().time() + (timeout or 86400)
 
-        future = self._pending_futures[approval_id]
-
-        # Wait with optional timeout
-        if timeout:
-            try:
-                await asyncio.wait_for(future, timeout=timeout)
-            except asyncio.TimeoutError:
-                # Auto-reject on timeout
-                logger.warning(f"Approval {approval_id} timed out, auto-rejecting")
-                decision = ApprovalDecisionRequest(
-                    decision="reject", comment=f"Auto-rejected after {timeout}s timeout"
-                )
-                return await self.decide_approval(approval_id, decision)
+        redis_client = await self.get_redis()
+        if redis_client is None:
+            # No Redis — fall back to DB polling every second
+            while asyncio.get_event_loop().time() < deadline:
+                await asyncio.sleep(1.0)
+                approval = await self.get_approval(approval_id)
+                if approval and approval.status != "pending":
+                    return approval
         else:
-            await future
+            pubsub = redis_client.pubsub()
+            try:
+                await pubsub.subscribe(channel)
+                while True:
+                    remaining = deadline - asyncio.get_event_loop().time()
+                    if remaining <= 0:
+                        break
+                    try:
+                        msg = await asyncio.wait_for(
+                            pubsub.get_message(ignore_subscribe_messages=True),
+                            timeout=min(remaining, 1.0),
+                        )
+                    except asyncio.TimeoutError:
+                        msg = None
+                    if msg:
+                        # Decision was made — reload from DB for fresh state
+                        approval = await self.get_approval(approval_id)
+                        if approval:
+                            return approval
+            finally:
+                try:
+                    await pubsub.unsubscribe(channel)
+                    await pubsub.close()
+                except Exception:
+                    pass
 
-        return self._approvals[approval_id]
+        # Timeout reached — auto-reject
+        logger.warning(
+            f"Approval {approval_id} timed out after {timeout}s, auto-rejecting"
+        )
+        decision = ApprovalDecisionRequest(
+            decision="reject",
+            comment=f"Auto-rejected after {timeout}s timeout",
+        )
+        return await self.decide_approval(approval_id, decision)
 
     async def get_stats(self) -> ApprovalStats:
-        """Get approval statistics."""
-        approvals = list(self._approvals.values())
+        """Get approval statistics from PostgreSQL (always accurate, no stale data)."""
+        try:
+            db_manager = get_database_manager()
+            if db_manager.is_initialized:
+                async with db_manager.get_session() as session:
+                    # Single aggregate query for counts
+                    count_result = await session.execute(
+                        select(
+                            ApprovalModel.status, func.count(ApprovalModel.id)
+                        ).group_by(ApprovalModel.status)
+                    )
+                    counts = {row[0]: row[1] for row in count_result.fetchall()}
 
-        total = len(approvals)
-        pending = len([a for a in approvals if a.status == "pending"])
-        approved = len([a for a in approvals if a.status == "approved"])
-        rejected = len([a for a in approvals if a.status == "rejected"])
-        modified = len([a for a in approvals if a.status == "modified"])
-        rerun = len([a for a in approvals if a.status == "rerun"])
+                    # Average review time for decided approvals
+                    reviewed_result = await session.execute(
+                        select(
+                            ApprovalModel.created_at, ApprovalModel.reviewed_at
+                        ).where(ApprovalModel.reviewed_at.isnot(None))
+                    )
+                    reviewed_rows = reviewed_result.fetchall()
+                    avg_review_time = None
+                    if reviewed_rows:
+                        times = [
+                            (r.reviewed_at - r.created_at).total_seconds()
+                            for r in reviewed_rows
+                            if r.reviewed_at and r.created_at
+                        ]
+                        if times:
+                            avg_review_time = sum(times) / len(times)
 
-        # Calculate average review time
-        reviewed = [a for a in approvals if a.reviewed_at]
-        if reviewed:
-            review_times = [
-                (a.reviewed_at - a.created_at).total_seconds() for a in reviewed
-            ]
-            avg_review_time = sum(review_times) / len(review_times)
-        else:
-            avg_review_time = None
+                    total = sum(counts.values())
+                    pending = counts.get("pending", 0)
+                    approved = counts.get("approved", 0)
+                    rejected = counts.get("rejected", 0)
+                    modified = counts.get("modified", 0)
+                    rerun = counts.get("rerun", 0)
+                    decided = approved + rejected + modified + rerun
+                    approval_rate = (
+                        (approved + modified) / decided if decided > 0 else 0.0
+                    )
 
-        # Calculate approval rate
-        decided = approved + rejected + modified + rerun
-        approval_rate = (approved + modified) / decided if decided > 0 else 0.0
+                    return ApprovalStats(
+                        total_requests=total,
+                        pending=pending,
+                        approved=approved,
+                        rejected=rejected,
+                        modified=modified,
+                        rerun=rerun,
+                        avg_review_time_seconds=avg_review_time,
+                        approval_rate=approval_rate,
+                    )
+        except Exception as e:
+            logger.error(f"Failed to compute approval stats from PostgreSQL: {e}")
 
         return ApprovalStats(
-            total_requests=total,
-            pending=pending,
-            approved=approved,
-            rejected=rejected,
-            modified=modified,
-            rerun=rerun,
-            avg_review_time_seconds=avg_review_time,
-            approval_rate=approval_rate,
+            total_requests=0,
+            pending=0,
+            approved=0,
+            rejected=0,
+            modified=0,
+            rerun=0,
+            avg_review_time_seconds=None,
+            approval_rate=0.0,
         )
 
     async def delete_all_approvals(self) -> int:
         """
-        Delete all approvals from Redis and in-memory storage.
+        Delete all approvals from PostgreSQL and Redis cache.
 
         This will:
-        - Delete all approval keys from Redis (approval:request:*)
-        - Clear the approval list (approval:list)
-        - Clear job approval mappings (approval:job:*)
-        - Clear pipeline contexts (pipeline:context:*)
-        - Clear in-memory approval storage
+        - Count and DELETE all rows from the approvals table
+        - Scan and delete all approval:request:* Redis cache keys
+        - Delete all pipeline contexts (pipeline:context:*)
 
         Returns:
-            Number of approvals deleted
+            Number of approvals deleted from PostgreSQL
         """
+        deleted_count = 0
         try:
-            deleted_count = 0
-
-            # Get all approval IDs from list
-            async def get_ids_operation(redis_client: redis.Redis):
-                return await redis_client.smembers(APPROVAL_LIST_KEY)
-
-            approval_ids = await self._redis_manager.execute(get_ids_operation)
-            approval_ids_list = list(approval_ids) if approval_ids else []
-
-            # Delete all approval keys using batch operations
-            if approval_ids_list:
-                approval_keys = [
-                    f"{APPROVAL_KEY_PREFIX}{approval_id}"
-                    for approval_id in approval_ids_list
-                ]
-                # Delete in batches
-                batch_size = 100
-                for i in range(0, len(approval_keys), batch_size):
-                    batch = approval_keys[i : i + batch_size]
-
-                    async def delete_batch_operation(redis_client: redis.Redis):
-                        return await redis_client.delete(*batch)
-
-                    deleted = await self._redis_manager.execute(delete_batch_operation)
-                    deleted_count += deleted
-                logger.info(f"Deleted {deleted_count} approval keys from Redis")
-
-            # Clear the approval list
-            async def clear_list_operation(redis_client: redis.Redis):
-                return await redis_client.delete(APPROVAL_LIST_KEY)
-
-            await self._redis_manager.execute(clear_list_operation)
-            logger.info("Cleared approval list from Redis")
-
-            # Clear all job approval mappings
-            async def scan_job_keys_operation(redis_client: redis.Redis):
-                keys = []
-                async for key in redis_client.scan_iter(
-                    match=f"{JOB_APPROVAL_KEY_PREFIX}*"
-                ):
-                    keys.append(key)
-                return keys
-
-            job_approval_keys = await self._redis_manager.execute(
-                scan_job_keys_operation
-            )
-
-            if job_approval_keys:
-                batch_size = 100
-                for i in range(0, len(job_approval_keys), batch_size):
-                    batch = job_approval_keys[i : i + batch_size]
-
-                    async def delete_job_batch_operation(redis_client: redis.Redis):
-                        return await redis_client.delete(*batch)
-
-                    await self._redis_manager.execute(delete_job_batch_operation)
-                logger.info(
-                    f"Deleted {len(job_approval_keys)} job approval mappings from Redis"
-                )
-
-            # Clear all pipeline contexts
-            async def scan_context_keys_operation(redis_client: redis.Redis):
-                keys = []
-                async for key in redis_client.scan_iter(
-                    match=f"{PIPELINE_CONTEXT_KEY_PREFIX}*"
-                ):
-                    keys.append(key)
-                return keys
-
-            pipeline_context_keys = await self._redis_manager.execute(
-                scan_context_keys_operation
-            )
-
-            if pipeline_context_keys:
-                batch_size = 100
-                for i in range(0, len(pipeline_context_keys), batch_size):
-                    batch = pipeline_context_keys[i : i + batch_size]
-
-                    async def delete_context_batch_operation(redis_client: redis.Redis):
-                        return await redis_client.delete(*batch)
-
-                    await self._redis_manager.execute(delete_context_batch_operation)
-                logger.info(
-                    f"Deleted {len(pipeline_context_keys)} pipeline contexts from Redis"
-                )
-
-            # Clear in-memory storage
-            in_memory_count = len(self._approvals)
-            self._approvals.clear()
-            self._job_approvals.clear()
-            logger.info(f"Cleared {in_memory_count} approvals from in-memory storage")
-
-            total_deleted = deleted_count + in_memory_count
-            logger.info(f"Total approvals deleted: {total_deleted}")
-            return total_deleted
-
+            # Delete from PostgreSQL (source of truth)
+            db_manager = get_database_manager()
+            if db_manager.is_initialized:
+                async with db_manager.get_session() as session:
+                    count_result = await session.execute(
+                        select(func.count(ApprovalModel.id))
+                    )
+                    deleted_count = count_result.scalar() or 0
+                    await session.execute(delete(ApprovalModel))
+                logger.info(f"Deleted {deleted_count} approvals from PostgreSQL")
         except Exception as e:
-            logger.error(f"Failed to delete all approvals: {e}", exc_info=True)
+            logger.error(
+                f"Failed to delete approvals from PostgreSQL: {e}", exc_info=True
+            )
             raise
+
+        # Clear Redis cache keys (approval:request:*, pipeline:context:*)
+        try:
+
+            async def scan_and_delete(redis_client: redis.Redis, pattern: str):
+                keys = []
+                async for key in redis_client.scan_iter(match=pattern):
+                    keys.append(key)
+                if keys:
+                    batch_size = 100
+                    for i in range(0, len(keys), batch_size):
+                        await redis_client.delete(*keys[i : i + batch_size])
+                return len(keys)
+
+            async def cleanup_redis(redis_client: redis.Redis):
+                approval_keys = await scan_and_delete(
+                    redis_client, f"{APPROVAL_KEY_PREFIX}*"
+                )
+                context_keys = await scan_and_delete(
+                    redis_client, f"{PIPELINE_CONTEXT_KEY_PREFIX}*"
+                )
+                logger.info(
+                    f"Deleted {approval_keys} approval cache keys and "
+                    f"{context_keys} pipeline contexts from Redis"
+                )
+
+            await self._redis_manager.execute(cleanup_redis)
+        except Exception as e:
+            logger.warning(f"Failed to clear approval Redis cache keys: {e}")
+
+        logger.info(f"delete_all_approvals: total deleted = {deleted_count}")
+        return deleted_count
 
     async def cleanup(self):
         """Cleanup Redis connections."""
         # RedisManager cleanup is handled globally
         # This method is here for consistency with other managers
         pass
-
-    def clear_job_approvals(self, job_id: str):
-        """Clear all approvals for a job (useful for cleanup)."""
-        if job_id in self._job_approvals:
-            approval_ids = self._job_approvals[job_id]
-            for approval_id in approval_ids:
-                self._approvals.pop(approval_id, None)
-                self._pending_futures.pop(approval_id, None)
-            del self._job_approvals[job_id]
-            logger.info(f"Cleared {len(approval_ids)} approvals for job {job_id}")
 
 
 # Global approval manager instance
@@ -1417,9 +1309,6 @@ async def get_approval_manager(
             logger.info(
                 "Using default or provided approval settings (database/Redis not available or empty)"
             )
-
-        # Load all approvals from Redis on initialization
-        await _approval_manager._load_all_approvals_from_redis()
     elif reload_from_db:
         # Reload settings from database/Redis to ensure we have the latest
         loaded_settings = await _approval_manager.load_settings()

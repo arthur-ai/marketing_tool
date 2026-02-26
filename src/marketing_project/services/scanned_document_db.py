@@ -178,7 +178,7 @@ class ScannedDocumentDatabase:
             )
             related_docs_json = json.dumps(document.related_documents, default=str)
 
-            now = datetime.utcnow().isoformat()
+            now = datetime.now(timezone.utc).isoformat()
 
             if existing:
                 # Update existing document
@@ -573,7 +573,7 @@ class ScannedDocumentDatabase:
                         SET metadata_json = ?, updated_at = ?
                         WHERE url = ?
                     """,
-                        (metadata_json, datetime.utcnow().isoformat(), url),
+                        (metadata_json, datetime.now(timezone.utc).isoformat(), url),
                     )
                     updated += 1
 

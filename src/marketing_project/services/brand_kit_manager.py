@@ -346,7 +346,7 @@ class BrandKitManager:
                     # Update existing
                     config_model.config_data = config_data
                     config_model.is_active = config.is_active
-                    config_model.updated_at = datetime.utcnow()
+                    config_model.updated_at = datetime.now(timezone.utc)
                 else:
                     # Create new
                     config_model = BrandKitConfigModel(
@@ -381,7 +381,7 @@ class BrandKitManager:
         """
         try:
             # Update timestamp
-            config.updated_at = datetime.utcnow()
+            config.updated_at = datetime.now(timezone.utc)
 
             # Enrich with internal docs before saving
             await self._enrich_with_internal_docs(config)
@@ -516,8 +516,8 @@ class BrandKitManager:
 
             # Set metadata
             generated_config.version = "1.0.0"
-            generated_config.created_at = datetime.utcnow()
-            generated_config.updated_at = datetime.utcnow()
+            generated_config.created_at = datetime.now(timezone.utc)
+            generated_config.updated_at = datetime.now(timezone.utc)
             generated_config.is_active = True
 
             # Update progress
@@ -544,8 +544,8 @@ class BrandKitManager:
             logger.info("Falling back to basic default configuration")
             return BrandKitConfig(
                 version="1.0.0",
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
                 is_active=True,
             )
 

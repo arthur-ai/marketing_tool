@@ -270,7 +270,7 @@ class S3ContentSource(ContentSource):
         data["source_type"] = "s3"
         data["s3_key"] = s3_key
         if "created_at" not in data:
-            data["created_at"] = datetime.utcnow().isoformat() + "Z"
+            data["created_at"] = datetime.now(timezone.utc).isoformat() + "Z"
 
         return data
 
@@ -293,7 +293,7 @@ class S3ContentSource(ContentSource):
             "source": self.config.name,
             "source_type": "s3",
             "s3_key": s3_key,
-            "created_at": datetime.utcnow().isoformat() + "Z",
+            "created_at": datetime.now(timezone.utc).isoformat() + "Z",
         }
 
     async def health_check(self) -> bool:

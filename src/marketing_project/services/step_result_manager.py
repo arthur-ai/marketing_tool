@@ -251,7 +251,7 @@ class StepResultManager:
                 "step_number": step_number,  # Absolute step number (continues sequence)
                 "relative_step_number": relative_step_number,  # Relative to context (1-indexed)
                 "step_name": step_name,
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "input_snapshot": input_snapshot,  # What was used as input
                 "context_keys_used": context_keys_used or [],  # Which keys consumed
                 "result": result_data,
@@ -413,7 +413,7 @@ class StepResultManager:
                 "content_id": content_id,
                 "started_at": started_at.isoformat() if started_at else None,
                 "completed_at": completed_at.isoformat() if completed_at else None,
-                "created_at": datetime.utcnow().isoformat(),
+                "created_at": datetime.now(timezone.utc).isoformat(),
                 **(additional_metadata or {}),
             }
 
@@ -1099,6 +1099,81 @@ class StepResultManager:
             raise FileNotFoundError(
                 f"Step result not found: {step_filename} for job {job_id}"
             ) from e
+
+    async def get_all_step_results_with_data(
+        self, job_id: str
+    ) -> Dict[str, Dict[str, Any]]:
+        """
+        Fetch all step results for a job with full payload in a single DB query.
+
+        Returns a dict mapping step_name → step_result_dict (same shape as
+        get_step_result_by_name). Falls back to an empty dict on error.
+        """
+        try:
+            from sqlalchemy import or_, select
+
+            from marketing_project.models.db_models import StepResultModel
+            from marketing_project.services.database import get_database_manager
+
+            db_manager = get_database_manager()
+            if not db_manager.is_initialized:
+                return {}
+
+            # Resolve to root job (step results are stored against the root job)
+            root_job_id = job_id
+            try:
+                from marketing_project.services.job_manager import get_job_manager
+
+                jm = get_job_manager()
+                job = await jm.get_job(job_id)
+                if job and job.metadata.get("original_job_id"):
+                    root_job_id = job.metadata["original_job_id"]
+            except Exception:
+                pass
+
+            async with db_manager.get_session() as session:
+                stmt = (
+                    select(StepResultModel)
+                    .where(
+                        or_(
+                            StepResultModel.job_id == root_job_id,
+                            StepResultModel.root_job_id == root_job_id,
+                        )
+                    )
+                    .order_by(StepResultModel.step_number)
+                )
+                result = await session.execute(stmt)
+                rows = result.scalars().all()
+
+            results: Dict[str, Dict[str, Any]] = {}
+            for row in rows:
+                step_dict = {
+                    "job_id": row.job_id,
+                    "root_job_id": row.root_job_id,
+                    "step_number": row.step_number,
+                    "step_name": row.step_name,
+                    "timestamp": row.created_at.isoformat() if row.created_at else None,
+                    "result": row.result,
+                    "input_snapshot": row.input_snapshot,
+                    "context_keys_used": row.context_keys_used,
+                    "metadata": {
+                        "status": row.status,
+                        "execution_time": (
+                            float(row.execution_time) if row.execution_time else None
+                        ),
+                        "tokens_used": row.tokens_used,
+                        "error_message": row.error_message,
+                    },
+                }
+                if row.step_name:
+                    results[row.step_name] = step_dict
+            return results
+
+        except Exception as e:
+            logger.warning(
+                f"get_all_step_results_with_data failed for job {job_id}: {type(e).__name__}: {e}"
+            )
+            return {}
 
     async def get_step_result_by_name(
         self,
@@ -1925,7 +2000,7 @@ class StepResultManager:
                         "timestamp": (
                             metadata.get("completed_at") or job.completed_at.isoformat()
                             if job.completed_at
-                            else datetime.utcnow().isoformat()
+                            else datetime.now(timezone.utc).isoformat()
                         ),
                         "has_result": True,
                         "file_size": 0,  # Unknown since it's from job.result

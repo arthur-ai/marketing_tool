@@ -199,7 +199,7 @@ class InternalDocsScanner:
 
                 # Create scanned document for config
                 doc = ScannedDocument(
-                    title=title, url=url, scanned_at=datetime.utcnow()
+                    title=title, url=url, scanned_at=datetime.now(timezone.utc)
                 )
 
                 # Save to database with rich metadata
@@ -209,7 +209,7 @@ class InternalDocsScanner:
                         db_doc = ScannedDocumentDB(
                             title=title,
                             url=url,
-                            scanned_at=datetime.utcnow(),
+                            scanned_at=datetime.now(timezone.utc),
                             metadata=metadata,
                         )
                         # Calculate relationships before saving

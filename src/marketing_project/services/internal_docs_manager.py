@@ -296,13 +296,13 @@ class InternalDocsManager:
                 if not config.version or config.version == "1.0.0":
                     config.version = "1.0.0"
                 if not config.created_at:
-                    config.created_at = datetime.utcnow()
+                    config.created_at = datetime.now(timezone.utc)
                 logger.info(
                     f"Creating new internal docs config (version {config.version})"
                 )
 
             # Update timestamp
-            config.updated_at = datetime.utcnow()
+            config.updated_at = datetime.now(timezone.utc)
             config.is_active = True  # Always active since there's only one config
 
             # Save to database first (source of truth)
@@ -420,7 +420,7 @@ class InternalDocsManager:
         config.scanned_documents.extend(new_docs)
 
         # Update timestamp
-        config.updated_at = datetime.utcnow()
+        config.updated_at = datetime.now(timezone.utc)
 
         logger.info(
             f"Merged {len(new_docs)} new documents into config (total: {len(config.scanned_documents)})"
@@ -452,7 +452,7 @@ class InternalDocsManager:
             # Add new document
             config.scanned_documents.append(doc)
 
-        config.updated_at = datetime.utcnow()
+        config.updated_at = datetime.now(timezone.utc)
         logger.info(f"Added/updated document: {doc.title} ({doc.url})")
         return config
 
@@ -476,7 +476,7 @@ class InternalDocsManager:
 
         removed_count = original_count - len(config.scanned_documents)
         if removed_count > 0:
-            config.updated_at = datetime.utcnow()
+            config.updated_at = datetime.now(timezone.utc)
             logger.info(f"Removed document: {doc_url}")
         else:
             logger.warning(f"Document not found for removal: {doc_url}")

@@ -39,7 +39,7 @@ class FeedbackLoopService:
         Returns:
             Feedback record
         """
-        feedback_id = f"feedback_{job_id}_{int(datetime.utcnow().timestamp())}"
+        feedback_id = f"feedback_{job_id}_{int(datetime.now(timezone.utc).timestamp())}"
 
         feedback_record = {
             "feedback_id": feedback_id,
@@ -48,7 +48,7 @@ class FeedbackLoopService:
             "rating": rating,
             "comments": comments,
             "metadata": metadata or {},
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
         }
 
         self._feedback_data[feedback_id] = feedback_record
@@ -89,7 +89,7 @@ class FeedbackLoopService:
         Returns:
             Feedback statistics
         """
-        cutoff_date = datetime.utcnow().timestamp() - (days * 24 * 60 * 60)
+        cutoff_date = datetime.now(timezone.utc).timestamp() - (days * 24 * 60 * 60)
 
         recent_feedback = [
             f

@@ -160,6 +160,15 @@ class DatabaseManager:
             # Added user_id to jobs table
             "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS user_id VARCHAR",
             "CREATE INDEX IF NOT EXISTS idx_jobs_user_id ON jobs (user_id)",
+            # Approvals table indexes (table created via create_all)
+            "CREATE INDEX IF NOT EXISTS idx_approvals_job_id_status ON approvals (job_id, status)",
+            "CREATE INDEX IF NOT EXISTS idx_approvals_status_created ON approvals (status, created_at)",
+            # Migrate String float columns to FLOAT (safe if already correct type)
+            "ALTER TABLE approval_settings ALTER COLUMN auto_approve_threshold TYPE FLOAT USING auto_approve_threshold::FLOAT",
+            "ALTER TABLE user_settings ALTER COLUMN auto_approve_threshold TYPE FLOAT USING auto_approve_threshold::FLOAT",
+            "ALTER TABLE user_settings ALTER COLUMN preferred_temperature TYPE FLOAT USING preferred_temperature::FLOAT",
+            "ALTER TABLE approvals ALTER COLUMN confidence_score TYPE FLOAT USING confidence_score::FLOAT",
+            "ALTER TABLE step_results ALTER COLUMN execution_time TYPE FLOAT USING execution_time::FLOAT",
         ]
         try:
             async with self._engine.begin() as conn:

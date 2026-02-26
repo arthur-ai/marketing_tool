@@ -1461,7 +1461,7 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                     "execution_time_seconds": execution_time,
                     "total_tokens_used": total_tokens,
                     "model": self.model,
-                    "completed_at": datetime.utcnow().isoformat(),
+                    "completed_at": datetime.now(timezone.utc).isoformat(),
                     "platform_quality_scores": platform_quality_scores,
                     "variations_generated": (
                         len(variations_list) if variations_list else 0
@@ -1912,6 +1912,6 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                 "title": content.get("title"),
                 "execution_time_seconds": execution_time,
                 "model": self.model,
-                "completed_at": datetime.utcnow().isoformat(),
+                "completed_at": datetime.now(timezone.utc).isoformat(),
             },
         }

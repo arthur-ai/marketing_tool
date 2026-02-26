@@ -125,7 +125,7 @@ async def upload_file(
                     "file_id": file_id,
                     "filename": file.filename,
                     "uploaded_by": user.user_id,
-                    "uploaded_at": datetime.utcnow().isoformat(),
+                    "uploaded_at": datetime.now(timezone.utc).isoformat(),
                     "content_type": content_type,
                     "size": len(content),
                 },
@@ -392,7 +392,7 @@ async def process_uploaded_file(
                         "transcript_type": parsed_data.get(
                             "transcript_type", "podcast"
                         ),
-                        "created_at": datetime.utcnow().isoformat() + "Z",
+                        "created_at": datetime.now(timezone.utc).isoformat() + "Z",
                     }
                     if parsed_data.get("timestamps"):
                         json_data["timestamps"] = parsed_data["timestamps"]
@@ -434,7 +434,7 @@ async def process_uploaded_file(
                         "title": Path(filename).stem,
                         "content": content_data,
                         "type": content_type,
-                        "created_at": datetime.utcnow().isoformat() + "Z",
+                        "created_at": datetime.now(timezone.utc).isoformat() + "Z",
                     }
                 with open(processed_path, "w", encoding="utf-8") as f:
                     json.dump(json_data, f, indent=2, ensure_ascii=False)
@@ -468,7 +468,7 @@ async def process_uploaded_file(
                     ),  # Already an int from parser
                     "transcript_type": parsed_data.get("transcript_type", "podcast"),
                     "original_format": file_ext,
-                    "created_at": datetime.utcnow().isoformat() + "Z",
+                    "created_at": datetime.now(timezone.utc).isoformat() + "Z",
                 }
 
                 # Add timestamps if available
@@ -509,7 +509,7 @@ async def process_uploaded_file(
                     "content": content_data,
                     "type": content_type,
                     "original_format": file_ext,
-                    "created_at": datetime.utcnow().isoformat() + "Z",
+                    "created_at": datetime.now(timezone.utc).isoformat() + "Z",
                 }
 
             # Save as JSON for consistency
@@ -712,13 +712,14 @@ def extract_blog_content_from_url(url: str) -> Dict[str, Any]:
             "tags": tags[:10],  # Limit to 10 tags
             "category": "General",
             "word_count": word_count,
-            "created_at": published_date or datetime.utcnow().isoformat() + "Z",
+            "created_at": published_date
+            or datetime.now(timezone.utc).isoformat() + "Z",
             "reading_time": (
                 max(1, word_count // 200) if word_count > 0 else None
             ),  # Rough estimate
             "metadata": {
                 "extracted_from_url": True,
-                "extraction_date": datetime.utcnow().isoformat() + "Z",
+                "extraction_date": datetime.now(timezone.utc).isoformat() + "Z",
                 "original_url": url,
             },
         }

@@ -93,7 +93,7 @@ class CircuitBreaker:
     def record_failure(self):
         """Record a failed call."""
         self.failure_count += 1
-        self.last_failure_time = datetime.utcnow()
+        self.last_failure_time = datetime.now(timezone.utc)
 
         if self.state == CircuitState.CLOSED:
             if self.failure_count >= self.failure_threshold:
@@ -118,7 +118,7 @@ class CircuitBreaker:
             # Check if recovery timeout has passed
             if self.last_failure_time:
                 time_since_failure = (
-                    datetime.utcnow() - self.last_failure_time
+                    datetime.now(timezone.utc) - self.last_failure_time
                 ).total_seconds()
                 if time_since_failure >= self.recovery_timeout:
                     logger.info(

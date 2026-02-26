@@ -56,6 +56,7 @@ from ..services.approval_manager import (
     set_approval_settings,
     set_approval_settings_sync,
 )
+from ..services.job_manager import JobMetadataKeys
 
 logger = logging.getLogger(__name__)
 
@@ -75,43 +76,34 @@ async def get_pending_approvals(
     try:
         manager = await get_approval_manager(reload_from_db=True)
 
-        # Force reload from Redis to ensure we have latest approvals
-        await manager._load_all_approvals_from_redis()
-
         # Get pending approvals
         approvals = await manager.list_approvals(job_id=job_id, status="pending")
 
-        # Filter out approvals for cancelled/failed/completed jobs
+        # Batch-fetch all jobs referenced by these approvals in a single DB query
         from ..services.job_manager import JobStatus, get_job_manager
 
         job_manager = get_job_manager()
-        filtered_approvals = []
+        unique_job_ids = list({a.job_id for a in approvals})
+        jobs_map = await job_manager.get_jobs_by_ids(unique_job_ids)
 
+        filtered_approvals = []
         for approval in approvals:
-            # Check if job is still valid for approval
-            job = await job_manager.get_job(approval.job_id)
+            job = jobs_map.get(approval.job_id)
             if job:
-                # Only include if job is waiting for approval
                 if job.status == JobStatus.WAITING_FOR_APPROVAL:
                     filtered_approvals.append(approval)
                 else:
-                    # Job is cancelled/failed/completed, mark approval as rejected if still pending
-                    # BUT: Skip auto-rejection if:
-                    # 1. Job was completed due to approval (has resume_job_id metadata)
                     should_auto_reject = True
                     if job.status == JobStatus.COMPLETED:
-                        # Check if job was completed due to approval (has resume_job_id)
                         if (
-                            job.metadata.get("resume_job_id")
+                            job.metadata.get(JobMetadataKeys.RESUME_JOB_ID)
                             or job.metadata.get("status") == "approved_and_resumed"
                         ):
-                            # Job was completed because approval was made - don't auto-reject
                             should_auto_reject = False
                             logger.debug(
                                 f"Skipping auto-rejection for approval {approval.id} - "
                                 f"job {approval.job_id} was completed after approval"
                             )
-
                     if should_auto_reject and approval.status == "pending":
                         try:
                             await manager.decide_approval(
@@ -130,9 +122,6 @@ async def get_pending_approvals(
                                 f"Failed to auto-reject approval {approval.id}: {e}"
                             )
             else:
-                # Job not found - might have expired or been deleted
-                # Exclude from pending since job doesn't exist
-                # If approval is still pending, mark it as rejected
                 if approval.status == "pending":
                     try:
                         await manager.decide_approval(
@@ -150,14 +139,12 @@ async def get_pending_approvals(
                         logger.warning(
                             f"Failed to auto-reject approval {approval.id}: {e}"
                         )
-                # Don't include in filtered list
 
         approvals = filtered_approvals
 
-        # Scope to current user's jobs unless admin
+        # Scope to current user's jobs unless admin (narrow SELECT on job_id column only)
         if not user.has_role("admin"):
-            user_jobs = await job_manager.list_jobs(user_id=user.user_id, limit=1000)
-            user_job_ids = {j.id for j in user_jobs}
+            user_job_ids = await job_manager.get_job_ids_for_user(user.user_id)
             approvals = [a for a in approvals if a.job_id in user_job_ids]
 
         # If no pending approvals but job_id provided, check if job is waiting and recreate approval
@@ -210,11 +197,11 @@ async def get_pending_approvals(
                 if isinstance(original_content, dict):
                     input_title = original_content.get("title")
 
-            # If not found, try to get from job metadata
+            # If not found, try to get from job metadata (already in jobs_map — no extra fetch)
             if not input_title:
-                job = await job_manager.get_job(a.job_id)
+                job = jobs_map.get(a.job_id)
                 if job and job.metadata:
-                    input_title = job.metadata.get("title")
+                    input_title = job.metadata.get(JobMetadataKeys.TITLE)
 
             items.append(
                 ApprovalListItem(
@@ -400,7 +387,7 @@ async def get_approval_analytics(user: UserContext = Depends(get_current_user)):
         # Trends over time (last 30 days)
         from datetime import timedelta
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         thirty_days_ago = now - timedelta(days=30)
 
         recent_approvals = [
@@ -575,7 +562,7 @@ async def get_approval_impact(
 
         job = await job_manager.get_job(approval.job_id)
         if job:
-            resume_job_id = job.metadata.get("resume_job_id")
+            resume_job_id = job.metadata.get(JobMetadataKeys.RESUME_JOB_ID)
             if resume_job_id:
                 resume_job = await job_manager.get_job(resume_job_id)
                 if resume_job:
@@ -646,7 +633,7 @@ async def get_approval(approval_id: str, user: UserContext = Depends(get_current
         # Find related subjob if this approval created one
         job = await job_manager.get_job(approval.job_id)
         if job:
-            resume_job_id = job.metadata.get("resume_job_id")
+            resume_job_id = job.metadata.get(JobMetadataKeys.RESUME_JOB_ID)
             if resume_job_id:
                 # Check if this approval triggered the resume
                 resume_job = await job_manager.get_job(resume_job_id)
@@ -767,8 +754,10 @@ async def decide_approval(
                     # Find the root job (original job that started the chain)
                     root_job_id = approval.job_id
                     current_job = job
-                    while current_job.metadata.get("original_job_id"):
-                        root_job_id = current_job.metadata.get("original_job_id")
+                    while current_job.metadata.get(JobMetadataKeys.ORIGINAL_JOB_ID):
+                        root_job_id = current_job.metadata.get(
+                            JobMetadataKeys.ORIGINAL_JOB_ID
+                        )
                         current_job = await job_manager.get_job(root_job_id)
                         if not current_job:
                             break
@@ -776,7 +765,9 @@ async def decide_approval(
                     # Get existing chain metadata from root job
                     root_job = await job_manager.get_job(root_job_id)
                     existing_chain = (
-                        root_job.metadata.get("job_chain", {}) if root_job else {}
+                        root_job.metadata.get(JobMetadataKeys.JOB_CHAIN, {})
+                        if root_job
+                        else {}
                     )
                     existing_chain_order = existing_chain.get(
                         "chain_order", [root_job_id]
@@ -789,7 +780,7 @@ async def decide_approval(
                     # Get session_id from job to propagate to subjob
                     session_id = None
                     if job.metadata and "session_id" in job.metadata:
-                        session_id = job.metadata["session_id"]
+                        session_id = job.metadata[JobMetadataKeys.SESSION_ID]
                     else:
                         # If not in job, try to get from root job
                         root_job = await job_manager.get_job(root_job_id)
@@ -798,7 +789,7 @@ async def decide_approval(
                             and root_job.metadata
                             and "session_id" in root_job.metadata
                         ):
-                            session_id = root_job.metadata["session_id"]
+                            session_id = root_job.metadata[JobMetadataKeys.SESSION_ID]
 
                     resume_job_id = str(uuid.uuid4())
                     new_chain_order = existing_chain_order + [resume_job_id]
@@ -837,12 +828,18 @@ async def decide_approval(
                         # Try to reconstruct user context from metadata
                         from marketing_project.models.user_context import UserContext
 
-                        triggered_by = root_job.metadata.get("triggered_by_user_id")
+                        triggered_by = root_job.metadata.get(
+                            JobMetadataKeys.TRIGGERED_BY_USER_ID
+                        )
                         if triggered_by == parent_user_id:
                             parent_user_context = UserContext(
                                 user_id=parent_user_id,
-                                username=root_job.metadata.get("triggered_by_username"),
-                                email=root_job.metadata.get("triggered_by_email"),
+                                username=root_job.metadata.get(
+                                    JobMetadataKeys.TRIGGERED_BY_USERNAME
+                                ),
+                                email=root_job.metadata.get(
+                                    JobMetadataKeys.TRIGGERED_BY_EMAIL
+                                ),
                             )
 
                     resume_job = await job_manager.create_job(
@@ -868,10 +865,12 @@ async def decide_approval(
 
                     # Update old job status - mark as completed and add metadata about resume job
                     job.status = JobStatus.COMPLETED
-                    job.completed_at = datetime.utcnow()
+                    job.completed_at = datetime.now(timezone.utc)
                     job.current_step = "Approved - Pipeline resumed"
-                    job.metadata["resume_job_id"] = resume_job_id
-                    job.metadata["approved_at"] = datetime.utcnow().isoformat()
+                    job.metadata[JobMetadataKeys.RESUME_JOB_ID] = resume_job_id
+                    job.metadata[JobMetadataKeys.APPROVED_AT] = datetime.now(
+                        timezone.utc
+                    ).isoformat()
                     job.metadata["status"] = "approved_and_resumed"
                     await job_manager._save_job(job)
 
@@ -989,11 +988,11 @@ async def decide_approval(
                 session_id = None
                 if approval_job:
                     if approval_job.metadata and "session_id" in approval_job.metadata:
-                        session_id = approval_job.metadata["session_id"]
+                        session_id = approval_job.metadata[JobMetadataKeys.SESSION_ID]
                     else:
                         # If not in job, try to get from root job via original_job_id
                         original_job_id = (
-                            approval_job.metadata.get("original_job_id")
+                            approval_job.metadata.get(JobMetadataKeys.ORIGINAL_JOB_ID)
                             if approval_job.metadata
                             else None
                         )
@@ -1004,7 +1003,9 @@ async def decide_approval(
                                 and root_job.metadata
                                 and "session_id" in root_job.metadata
                             ):
-                                session_id = root_job.metadata["session_id"]
+                                session_id = root_job.metadata[
+                                    JobMetadataKeys.SESSION_ID
+                                ]
 
                 # Create retry job
                 retry_job_id = str(uuid.uuid4())
@@ -1033,14 +1034,18 @@ async def decide_approval(
 
                     source_job = approval_job or (root_job if original_job_id else None)
                     if source_job:
-                        triggered_by = source_job.metadata.get("triggered_by_user_id")
+                        triggered_by = source_job.metadata.get(
+                            JobMetadataKeys.TRIGGERED_BY_USER_ID
+                        )
                         if triggered_by == parent_user_id:
                             parent_user_context = UserContext(
                                 user_id=parent_user_id,
                                 username=source_job.metadata.get(
                                     "triggered_by_username"
                                 ),
-                                email=source_job.metadata.get("triggered_by_email"),
+                                email=source_job.metadata.get(
+                                    JobMetadataKeys.TRIGGERED_BY_EMAIL
+                                ),
                             )
 
                 retry_job = await job_manager.create_job(
@@ -1067,10 +1072,10 @@ async def decide_approval(
                     user_guidance=decision.comment,  # Use comment as guidance
                 )
 
-                # Update approval with retry info
+                # Update approval with retry info (persists via decide_approval's PostgreSQL write)
                 approval.retry_job_id = retry_job_id
                 approval.retry_count += 1
-                await manager._save_approval_to_redis(approval)
+                await manager._cache_approval_in_redis(approval)
 
                 if rerun_span:
                     # Set output attributes
@@ -1148,102 +1153,17 @@ async def decide_approval(
 
             # Auto-regenerate if enabled (default: True)
             if decision.auto_retry:
-                # Trigger retry automatically using user comment as guidance
-                pipeline_step = approval.pipeline_step
-                input_data = approval.input_data
-
-                # Get context from pipeline context
-                context_data = await manager.load_pipeline_context(approval.job_id)
-                context = context_data.get("context", {}) if context_data else {}
-
-                # Get session_id from approval job to propagate to subjob
-                approval_job = await job_manager.get_job(approval.job_id)
-                session_id = None
-                if approval_job:
-                    if approval_job.metadata and "session_id" in approval_job.metadata:
-                        session_id = approval_job.metadata["session_id"]
-                    else:
-                        # If not in job, try to get from root job via original_job_id
-                        original_job_id = (
-                            approval_job.metadata.get("original_job_id")
-                            if approval_job.metadata
-                            else None
-                        )
-                        if original_job_id:
-                            root_job = await job_manager.get_job(original_job_id)
-                            if (
-                                root_job
-                                and root_job.metadata
-                                and "session_id" in root_job.metadata
-                            ):
-                                session_id = root_job.metadata["session_id"]
-
-                # Create retry job
-                retry_job_id = str(uuid.uuid4())
-                retry_metadata = {
-                    "original_job_id": approval.job_id,
-                    "approval_id": approval_id,
-                    "step_name": pipeline_step,
-                    "retry_attempt": approval.retry_count + 1,
-                }
-
-                # Propagate session_id to subjob
-                if session_id:
-                    retry_metadata["session_id"] = session_id
-
-                # Preserve user_id from approval job
-                parent_user_id = approval_job.user_id if approval_job else None
-                if not parent_user_id and original_job_id:
-                    root_job = await job_manager.get_job(original_job_id)
-                    parent_user_id = root_job.user_id if root_job else None
-
-                parent_user_context = None
-                if parent_user_id:
-                    # Try to reconstruct user context from metadata
-                    from marketing_project.models.user_context import UserContext
-
-                    source_job = approval_job or (root_job if original_job_id else None)
-                    if source_job:
-                        triggered_by = source_job.metadata.get("triggered_by_user_id")
-                        if triggered_by == parent_user_id:
-                            parent_user_context = UserContext(
-                                user_id=parent_user_id,
-                                username=source_job.metadata.get(
-                                    "triggered_by_username"
-                                ),
-                                email=source_job.metadata.get("triggered_by_email"),
-                            )
-
-                retry_job = await job_manager.create_job(
-                    job_id=retry_job_id,
-                    job_type=f"retry_step_{pipeline_step}",
-                    content_id=approval.job_id,
-                    metadata=retry_metadata,
-                    user_id=parent_user_id,
-                    user_context=parent_user_context,
+                retry_job_id = await manager.execute_rejection_with_retry(
+                    approval=approval,
+                    job_manager=job_manager,
+                    user_comment=decision.comment or "",
+                    reviewed_by=decision.reviewed_by or user.username,
                 )
-
-                # Submit to ARQ worker with user guidance
-                await job_manager.submit_to_arq(
-                    retry_job_id,
-                    "retry_step_job",
-                    pipeline_step,
-                    input_data,
-                    context,
-                    retry_job_id,
-                    approval_id,
-                    user_guidance=decision.comment,  # Use comment as guidance
-                )
-
-                # Update approval with retry info
-                approval.retry_job_id = retry_job_id
-                approval.retry_count += 1
-                await manager._save_approval_to_redis(approval)
-
-                logger.info(
-                    f"Auto-regenerated step '{pipeline_step}' for approval {approval_id} "
-                    f"(retry job: {retry_job_id}, attempt: {approval.retry_count})"
-                )
+                if retry_job_id:
+                    logger.info(
+                        f"Auto-regenerated step '{approval.pipeline_step}' for approval {approval_id} "
+                        f"(retry job: {retry_job_id})"
+                    )
             else:
                 # Mark job as failed if auto_retry is False
                 job = await job_manager.get_job(approval.job_id)
@@ -1518,7 +1438,7 @@ async def get_job_approvals(
 
             # If not found, try to get from job metadata
             if not input_title and job and job.metadata:
-                input_title = job.metadata.get("title")
+                input_title = job.metadata.get(JobMetadataKeys.TITLE)
 
             items.append(
                 ApprovalListItem(
@@ -1607,11 +1527,13 @@ async def retry_rejected_step(
         session_id = None
         if job:
             if job.metadata and "session_id" in job.metadata:
-                session_id = job.metadata["session_id"]
+                session_id = job.metadata[JobMetadataKeys.SESSION_ID]
             else:
                 # If not in job, try to get from root job via original_job_id
                 original_job_id = (
-                    job.metadata.get("original_job_id") if job.metadata else None
+                    job.metadata.get(JobMetadataKeys.ORIGINAL_JOB_ID)
+                    if job.metadata
+                    else None
                 )
                 if original_job_id:
                     root_job = await job_manager.get_job(original_job_id)
@@ -1620,7 +1542,7 @@ async def retry_rejected_step(
                         and root_job.metadata
                         and "session_id" in root_job.metadata
                     ):
-                        session_id = root_job.metadata["session_id"]
+                        session_id = root_job.metadata[JobMetadataKeys.SESSION_ID]
 
         retry_job_id = str(uuid.uuid4())
         retry_metadata = {
@@ -1647,12 +1569,18 @@ async def retry_rejected_step(
 
             source_job = job or (root_job if original_job_id else None)
             if source_job:
-                triggered_by = source_job.metadata.get("triggered_by_user_id")
+                triggered_by = source_job.metadata.get(
+                    JobMetadataKeys.TRIGGERED_BY_USER_ID
+                )
                 if triggered_by == parent_user_id:
                     parent_user_context = UserContext(
                         user_id=parent_user_id,
-                        username=source_job.metadata.get("triggered_by_username"),
-                        email=source_job.metadata.get("triggered_by_email"),
+                        username=source_job.metadata.get(
+                            JobMetadataKeys.TRIGGERED_BY_USERNAME
+                        ),
+                        email=source_job.metadata.get(
+                            JobMetadataKeys.TRIGGERED_BY_EMAIL
+                        ),
                     )
 
         retry_job = await job_manager.create_job(
