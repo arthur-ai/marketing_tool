@@ -8,7 +8,7 @@ Uses Redis for persistence and sharing between API and worker processes.
 import json
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import redis.asyncio as redis

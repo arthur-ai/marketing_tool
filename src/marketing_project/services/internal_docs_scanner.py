@@ -8,7 +8,7 @@ extracting document information and analyzing content patterns.
 import asyncio
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set
 from urllib.parse import urljoin, urlparse, urlunparse
 

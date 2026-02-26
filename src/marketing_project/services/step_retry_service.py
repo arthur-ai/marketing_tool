@@ -8,7 +8,7 @@ This allows users to retry a specific step without re-running the entire pipelin
 import json
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from marketing_project.services.function_pipeline.tracing import (
