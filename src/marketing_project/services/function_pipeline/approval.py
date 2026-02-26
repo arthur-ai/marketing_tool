@@ -3,8 +3,10 @@ Approval integration for human-in-the-loop review.
 """
 
 import copy
+import json
 import logging
 import time
+from datetime import date, datetime
 from typing import Any, Dict, Optional
 
 from pydantic import BaseModel
@@ -123,11 +125,21 @@ async def check_step_approval(
             f"Content type: {context.get('content_type', 'unknown') if context else 'unknown'}"
         )
 
-        # Convert result to dict for approval system
+        # Convert result to dict for approval system — use mode="json" so
+        # datetime/UUID fields are serialized; fall back to a JSON round-trip.
+        def _to_jsonb_safe(obj: Any) -> Any:
+            if isinstance(obj, (datetime, date)):
+                return obj.isoformat()
+            raise TypeError(f"Type {type(obj)} not serializable")
+
         try:
             result_dict = parsed_result.model_dump(mode="json")
         except (TypeError, ValueError):
-            result_dict = parsed_result.model_dump()
+            raw = parsed_result.model_dump()
+            try:
+                result_dict = json.loads(json.dumps(raw, default=_to_jsonb_safe))
+            except Exception:
+                result_dict = raw
 
         # Extract confidence score if available
         confidence = result_dict.get("confidence_score")
@@ -259,8 +271,13 @@ async def check_step_approval(
                         try:
                             result_data = parsed_result.model_dump(mode="json")
                         except (TypeError, ValueError):
-                            # Fallback to regular model_dump if mode='json' fails
-                            result_data = parsed_result.model_dump()
+                            raw = parsed_result.model_dump()
+                            try:
+                                result_data = json.loads(
+                                    json.dumps(raw, default=_to_jsonb_safe)
+                                )
+                            except Exception:
+                                result_data = raw
                     else:
                         result_data = parsed_result
 
