@@ -851,7 +851,21 @@ async def decide_approval(
                         user_context=parent_user_context,
                     )
 
-                    # Update chain metadata for all jobs in chain
+                    # Update old job status — mark as completed and link to the
+                    # resume job BEFORE updating chain metadata so the traversal
+                    # can follow the RESUME_JOB_ID link correctly.
+                    job.status = JobStatus.COMPLETED
+                    job.completed_at = datetime.now(timezone.utc)
+                    job.current_step = "Approved - Pipeline resumed"
+                    job.metadata[JobMetadataKeys.RESUME_JOB_ID] = resume_job_id
+                    job.metadata[JobMetadataKeys.APPROVED_AT] = datetime.now(
+                        timezone.utc
+                    ).isoformat()
+                    job.metadata["status"] = "approved_and_resumed"
+                    await job_manager._save_job(job)
+
+                    # Now update chain metadata — RESUME_JOB_ID is already
+                    # persisted so the live traversal will include the new job.
                     await job_manager.update_job_chain_metadata(root_job_id)
 
                     # Submit to ARQ with context
@@ -862,17 +876,6 @@ async def decide_approval(
                         context_data,  # context_data
                         resume_job_id,  # job_id (new resume job ID)
                     )
-
-                    # Update old job status - mark as completed and add metadata about resume job
-                    job.status = JobStatus.COMPLETED
-                    job.completed_at = datetime.now(timezone.utc)
-                    job.current_step = "Approved - Pipeline resumed"
-                    job.metadata[JobMetadataKeys.RESUME_JOB_ID] = resume_job_id
-                    job.metadata[JobMetadataKeys.APPROVED_AT] = datetime.now(
-                        timezone.utc
-                    ).isoformat()
-                    job.metadata["status"] = "approved_and_resumed"
-                    await job_manager._save_job(job)
 
                     logger.info(
                         f"Auto-resumed pipeline for approval {approval_id} "

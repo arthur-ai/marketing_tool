@@ -362,6 +362,15 @@ class ApprovalManager:
             db_manager = get_database_manager()
             if db_manager.is_initialized:
                 async with db_manager.get_session() as session:
+
+                    def _safe(d: Any) -> Any:
+                        if d is None:
+                            return None
+                        try:
+                            return json.loads(json.dumps(d, default=_json_serializer))
+                        except Exception:
+                            return None
+
                     db_approval = ApprovalModel(
                         approval_id=approval_id,
                         job_id=job_id,
@@ -369,8 +378,8 @@ class ApprovalManager:
                         step_name=step_name,
                         pipeline_step=pipeline_step,
                         status=approval.status,
-                        input_data=input_data,
-                        output_data=output_data,
+                        input_data=_safe(input_data),
+                        output_data=_safe(output_data),
                         confidence_score=confidence_score,
                         user_comment=approval.user_comment,
                         reviewed_at=approval.reviewed_at,
@@ -597,7 +606,16 @@ class ApprovalManager:
                         .where(ApprovalModel.approval_id == approval_id)
                         .values(
                             status=approval.status,
-                            modified_output=approval.modified_output,
+                            modified_output=(
+                                json.loads(
+                                    json.dumps(
+                                        approval.modified_output,
+                                        default=_json_serializer,
+                                    )
+                                )
+                                if approval.modified_output is not None
+                                else None
+                            ),
                             user_comment=approval.user_comment,
                             reviewed_by=approval.reviewed_by,
                             reviewed_at=approval.reviewed_at,

@@ -326,6 +326,24 @@ class StepResultManager:
                     elif not isinstance(result_data, (dict, list, type(None))):
                         result_for_db = None
 
+                    # Ensure no datetime objects remain in JSONB columns — do a
+                    # JSON round-trip using the custom serializer so datetimes
+                    # become ISO strings before asyncpg tries to encode them.
+                    if result_for_db is not None:
+                        try:
+                            result_for_db = json.loads(
+                                json.dumps(result_for_db, default=_json_serializer)
+                            )
+                        except Exception:
+                            result_for_db = None
+                    if input_snapshot is not None:
+                        try:
+                            input_snapshot = json.loads(
+                                json.dumps(input_snapshot, default=_json_serializer)
+                            )
+                        except Exception:
+                            input_snapshot = None
+
                     _meta = metadata or {}
                     _exec_time = _meta.get("execution_time")
                     values = dict(

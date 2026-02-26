@@ -1022,31 +1022,25 @@ class JobManager:
             if not root_job:
                 return _empty
 
-            # --- Step 2: build chain_order ---
-            # Prefer stored chain_order (updated by update_job_chain_metadata) to
-            # avoid O(N) DB round-trips on every call.  Fall back to traversal when
-            # the metadata is missing (e.g. first call before any resume has happened).
-            stored_chain = root_job.metadata.get(JobMetadataKeys.JOB_CHAIN, {})
-            stored_order = stored_chain.get("chain_order", [])
-
-            if stored_order:
-                chain_order = stored_order
-            else:
-                # Live traversal following resume_job_id links
-                chain_order = [root_job_id]
-                visited: set = {root_job_id}
-                cur_id = root_job_id
-                while cur_id:
-                    cur = await self.get_job(cur_id)
-                    if not cur:
-                        break
-                    nxt = cur.metadata.get(JobMetadataKeys.RESUME_JOB_ID)
-                    if nxt and nxt not in visited:
-                        visited.add(nxt)
-                        chain_order.append(nxt)
-                        cur_id = nxt
-                    else:
-                        break
+            # --- Step 2: build chain_order via live traversal ---
+            # Always follow RESUME_JOB_ID links from root so we pick up newly
+            # created resume jobs that haven't had their chain metadata synced
+            # yet.  The stored chain_order can lag behind and cause incomplete
+            # trees, so we never rely on it here.
+            chain_order = [root_job_id]
+            visited: set = {root_job_id}
+            cur_id = root_job_id
+            while cur_id:
+                cur = await self.get_job(cur_id)
+                if not cur:
+                    break
+                nxt = cur.metadata.get(JobMetadataKeys.RESUME_JOB_ID)
+                if nxt and nxt not in visited:
+                    visited.add(nxt)
+                    chain_order.append(nxt)
+                    cur_id = nxt
+                else:
+                    break
 
             # --- Step 3: include active retry jobs (Bug 5 fix) ---
             # A retry job is linked via job.metadata[JobMetadataKeys.RETRY_JOB_ID] on the waiting
