@@ -343,9 +343,7 @@ class StepResultManager:
                         result=result_for_db,
                         input_snapshot=input_snapshot,
                         context_keys_used=context_keys_used,
-                        execution_time=(
-                            str(_exec_time) if _exec_time is not None else None
-                        ),
+                        execution_time=_exec_time,
                         tokens_used=_meta.get("tokens_used"),
                         error_message=_meta.get("error_message"),
                     )

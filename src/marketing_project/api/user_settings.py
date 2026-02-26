@@ -264,36 +264,20 @@ async def upsert_my_settings(
                 row.disabled_steps = settings.disabled_steps
                 row.require_approval = settings.require_approval
                 row.approval_agents = settings.approval_agents
-                row.auto_approve_threshold = (
-                    str(settings.auto_approve_threshold)
-                    if settings.auto_approve_threshold is not None
-                    else None
-                )
+                row.auto_approve_threshold = settings.auto_approve_threshold
                 row.approval_timeout_seconds = settings.approval_timeout_seconds
                 row.preferred_model = settings.preferred_model
-                row.preferred_temperature = (
-                    str(settings.preferred_temperature)
-                    if settings.preferred_temperature is not None
-                    else None
-                )
+                row.preferred_temperature = settings.preferred_temperature
             else:
                 row = UserSettingsModel(
                     user_id=user.user_id,
                     disabled_steps=settings.disabled_steps,
                     require_approval=settings.require_approval,
                     approval_agents=settings.approval_agents,
-                    auto_approve_threshold=(
-                        str(settings.auto_approve_threshold)
-                        if settings.auto_approve_threshold is not None
-                        else None
-                    ),
+                    auto_approve_threshold=settings.auto_approve_threshold,
                     approval_timeout_seconds=settings.approval_timeout_seconds,
                     preferred_model=settings.preferred_model,
-                    preferred_temperature=(
-                        str(settings.preferred_temperature)
-                        if settings.preferred_temperature is not None
-                        else None
-                    ),
+                    preferred_temperature=settings.preferred_temperature,
                 )
                 session.add(row)
 
@@ -407,36 +391,20 @@ async def admin_update_user_settings(
                 row.disabled_steps = settings.disabled_steps
                 row.require_approval = settings.require_approval
                 row.approval_agents = settings.approval_agents
-                row.auto_approve_threshold = (
-                    str(settings.auto_approve_threshold)
-                    if settings.auto_approve_threshold is not None
-                    else None
-                )
+                row.auto_approve_threshold = settings.auto_approve_threshold
                 row.approval_timeout_seconds = settings.approval_timeout_seconds
                 row.preferred_model = settings.preferred_model
-                row.preferred_temperature = (
-                    str(settings.preferred_temperature)
-                    if settings.preferred_temperature is not None
-                    else None
-                )
+                row.preferred_temperature = settings.preferred_temperature
             else:
                 row = UserSettingsModel(
                     user_id=user_id,
                     disabled_steps=settings.disabled_steps,
                     require_approval=settings.require_approval,
                     approval_agents=settings.approval_agents,
-                    auto_approve_threshold=(
-                        str(settings.auto_approve_threshold)
-                        if settings.auto_approve_threshold is not None
-                        else None
-                    ),
+                    auto_approve_threshold=settings.auto_approve_threshold,
                     approval_timeout_seconds=settings.approval_timeout_seconds,
                     preferred_model=settings.preferred_model,
-                    preferred_temperature=(
-                        str(settings.preferred_temperature)
-                        if settings.preferred_temperature is not None
-                        else None
-                    ),
+                    preferred_temperature=settings.preferred_temperature,
                 )
                 session.add(row)
 

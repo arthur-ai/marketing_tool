@@ -159,9 +159,7 @@ class ApprovalManager:
                     settings_model.require_approval = settings.require_approval
                     settings_model.approval_agents = settings.approval_agents
                     settings_model.auto_approve_threshold = (
-                        str(settings.auto_approve_threshold)
-                        if settings.auto_approve_threshold
-                        else None
+                        settings.auto_approve_threshold
                     )
                     settings_model.timeout_seconds = settings.timeout_seconds
                 else:
@@ -169,11 +167,7 @@ class ApprovalManager:
                     settings_model = ApprovalSettingsModel(
                         require_approval=settings.require_approval,
                         approval_agents=settings.approval_agents,
-                        auto_approve_threshold=(
-                            str(settings.auto_approve_threshold)
-                            if settings.auto_approve_threshold
-                            else None
-                        ),
+                        auto_approve_threshold=settings.auto_approve_threshold,
                         timeout_seconds=settings.timeout_seconds,
                     )
                     session.add(settings_model)
@@ -377,11 +371,7 @@ class ApprovalManager:
                         status=approval.status,
                         input_data=input_data,
                         output_data=output_data,
-                        confidence_score=(
-                            str(confidence_score)
-                            if confidence_score is not None
-                            else None
-                        ),
+                        confidence_score=confidence_score,
                         user_comment=approval.user_comment,
                         reviewed_at=approval.reviewed_at,
                     )
