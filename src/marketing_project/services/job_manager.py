@@ -1232,6 +1232,12 @@ class JobManager:
                     if user_id:
                         stmt = stmt.where(JobModel.user_id == user_id)
 
+                    # Only return root jobs — exclude sub-jobs (resume / retry
+                    # pipeline jobs that have an original_job_id parent link).
+                    stmt = stmt.where(
+                        JobModel.job_metadata["original_job_id"].astext.is_(None)
+                    )
+
                     # Order by created_at descending and limit
                     stmt = stmt.order_by(desc(JobModel.created_at)).limit(limit)
 
@@ -1290,6 +1296,11 @@ class JobManager:
                 jobs = [j for j in jobs if j.status == status]
             if user_id:
                 jobs = [j for j in jobs if j.user_id == user_id]
+
+            # Exclude sub-jobs (same rule as the DB path above)
+            jobs = [
+                j for j in jobs if not j.metadata.get(JobMetadataKeys.ORIGINAL_JOB_ID)
+            ]
 
             # Sort by creation time (newest first)
             jobs.sort(key=lambda j: j.created_at, reverse=True)
