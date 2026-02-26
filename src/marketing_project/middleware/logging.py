@@ -7,7 +7,7 @@ This module provides request logging and request ID tracking.
 import logging
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict
 
 from fastapi import Request, Response
