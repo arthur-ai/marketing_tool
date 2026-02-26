@@ -230,7 +230,7 @@ class StepRetryService:
                 "status": "success",
                 "result": result.model_dump(),
                 "execution_time": execution_time,
-                "retry_timestamp": datetime.utcnow().isoformat(),
+                "retry_timestamp": datetime.now(timezone.utc).isoformat(),
                 "error_message": None,
             }
 
@@ -277,7 +277,7 @@ class StepRetryService:
                 "status": "error",
                 "result": None,
                 "execution_time": execution_time,
-                "retry_timestamp": datetime.utcnow().isoformat(),
+                "retry_timestamp": datetime.now(timezone.utc).isoformat(),
                 "error_message": error_msg,
             }
 

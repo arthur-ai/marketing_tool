@@ -39,7 +39,11 @@ from marketing_project.services.function_pipeline.tracing import (
     set_span_status,
 )
 from marketing_project.services.internal_docs_scanner import get_internal_docs_scanner
-from marketing_project.services.job_manager import JobStatus, get_job_manager
+from marketing_project.services.job_manager import (
+    JobMetadataKeys,
+    JobStatus,
+    get_job_manager,
+)
 from marketing_project.services.social_media_pipeline import SocialMediaPipeline
 
 # Import Status for tracing
@@ -66,36 +70,31 @@ async def process_blog_job(ctx, content_json: str, job_id: str, **kwargs) -> Dic
     Returns:
         Processing result dictionary
     """
+    job_manager = get_job_manager()
+    # Single get_job call shared by telemetry + metadata storage (Design 7)
+    job = await job_manager.get_job(job_id, _skip_arq_poll=True)
+
+    # Store input content in job metadata immediately (before processing starts)
+    try:
+        content_dict = json.loads(content_json)
+        if job:
+            job.metadata[JobMetadataKeys.INPUT_CONTENT] = content_dict
+            if "title" in content_dict:
+                job.metadata[JobMetadataKeys.TITLE] = content_dict["title"]
+            await job_manager._save_job(job)
+    except Exception as e:
+        logger.warning(f"Failed to store input content for job {job_id}: {e}")
+
     # Create root job span for this job execution
     job_span = None
     if is_tracing_available():
-        # Get job to extract metadata
-        job_manager = get_job_manager()
-        job = await job_manager.get_job(job_id)
-
         job_span = create_job_root_span(
             job_id=job_id, job_type="blog", input_value=content_json, job=job
         )
 
     try:
         logger.info(f"ARQ Worker: Processing blog job {job_id}")
-
-        # Update job manager
-        job_manager = get_job_manager()
         await job_manager.update_job_progress(job_id, 10, "Starting blog processing")
-
-        # Store input content in job metadata
-        try:
-            content_dict = json.loads(content_json)
-            job = await job_manager.get_job(job_id)
-            if job:
-                job.metadata["input_content"] = content_dict
-                # Also extract and store title for easier access
-                if "title" in content_dict:
-                    job.metadata["title"] = content_dict["title"]
-                await job_manager._save_job(job)
-        except Exception as e:
-            logger.warning(f"Failed to store input content for job {job_id}: {e}")
 
         # Process the blog post
         result_json = await process_blog_post(content_json, job_id=job_id)
@@ -104,11 +103,13 @@ async def process_blog_job(ctx, content_json: str, job_id: str, **kwargs) -> Dic
         if result_dict.get("status") == "error":
             raise Exception(result_dict.get("message", "Processing failed"))
 
-        if result_dict.get("status") != "waiting_for_approval":
+        if result_dict.get("status") == "waiting_for_approval":
+            # Explicitly set status so get_job() doesn't need sentinel detection
+            await job_manager.update_job_status(job_id, JobStatus.WAITING_FOR_APPROVAL)
+            logger.info(f"ARQ Worker: Blog job {job_id} is waiting for approval")
+        else:
             await job_manager.update_job_progress(job_id, 100, "Completed")
             logger.info(f"ARQ Worker: Blog job {job_id} completed successfully")
-        else:
-            logger.info(f"ARQ Worker: Blog job {job_id} is waiting for approval")
 
         if job_span:
             # Refresh job to get updated metadata
@@ -146,38 +147,33 @@ async def process_release_notes_job(
     Returns:
         Processing result dictionary
     """
+    job_manager = get_job_manager()
+    # Single get_job call shared by telemetry + metadata storage (Design 7)
+    job = await job_manager.get_job(job_id, _skip_arq_poll=True)
+
+    # Store input content in job metadata immediately (before processing starts)
+    try:
+        content_dict = json.loads(content_json)
+        if job:
+            job.metadata[JobMetadataKeys.INPUT_CONTENT] = content_dict
+            if "title" in content_dict:
+                job.metadata[JobMetadataKeys.TITLE] = content_dict["title"]
+            await job_manager._save_job(job)
+    except Exception as e:
+        logger.warning(f"Failed to store input content for job {job_id}: {e}")
+
     # Create root job span for this job execution
     job_span = None
     if is_tracing_available():
-        # Get job to extract metadata
-        job_manager = get_job_manager()
-        job = await job_manager.get_job(job_id)
-
         job_span = create_job_root_span(
             job_id=job_id, job_type="release_notes", input_value=content_json, job=job
         )
 
     try:
         logger.info(f"ARQ Worker: Processing release notes job {job_id}")
-
-        # Update job manager
-        job_manager = get_job_manager()
         await job_manager.update_job_progress(
             job_id, 10, "Starting release notes processing"
         )
-
-        # Store input content in job metadata
-        try:
-            content_dict = json.loads(content_json)
-            job = await job_manager.get_job(job_id)
-            if job:
-                job.metadata["input_content"] = content_dict
-                # Also extract and store title for easier access
-                if "title" in content_dict:
-                    job.metadata["title"] = content_dict["title"]
-                await job_manager._save_job(job)
-        except Exception as e:
-            logger.warning(f"Failed to store input content for job {job_id}: {e}")
 
         # Process the release notes
         result_json = await process_release_notes(content_json, job_id=job_id)
@@ -186,14 +182,15 @@ async def process_release_notes_job(
         if result_dict.get("status") == "error":
             raise Exception(result_dict.get("message", "Processing failed"))
 
-        if result_dict.get("status") != "waiting_for_approval":
+        if result_dict.get("status") == "waiting_for_approval":
+            await job_manager.update_job_status(job_id, JobStatus.WAITING_FOR_APPROVAL)
+            logger.info(
+                f"ARQ Worker: Release notes job {job_id} is waiting for approval"
+            )
+        else:
             await job_manager.update_job_progress(job_id, 100, "Completed")
             logger.info(
                 f"ARQ Worker: Release notes job {job_id} completed successfully"
-            )
-        else:
-            logger.info(
-                f"ARQ Worker: Release notes job {job_id} is waiting for approval"
             )
 
         if job_span:
@@ -230,43 +227,38 @@ async def process_transcript_job(ctx, content_json: str, job_id: str, **kwargs) 
     Returns:
         Processing result dictionary
     """
+    job_manager = get_job_manager()
+    # Single get_job call shared by telemetry + metadata storage + param extraction (Design 7)
+    job = await job_manager.get_job(job_id, _skip_arq_poll=True)
+
+    # Store input content in job metadata immediately (before processing starts)
+    try:
+        content_dict = json.loads(content_json)
+        if job:
+            job.metadata[JobMetadataKeys.INPUT_CONTENT] = content_dict
+            if "title" in content_dict:
+                job.metadata[JobMetadataKeys.TITLE] = content_dict["title"]
+            await job_manager._save_job(job)
+    except Exception as e:
+        logger.warning(f"Failed to store input content for job {job_id}: {e}")
+
     # Create root job span for this job execution
     job_span = None
     if is_tracing_available():
-        # Get job to extract metadata
-        job_manager = get_job_manager()
-        job = await job_manager.get_job(job_id)
-
         job_span = create_job_root_span(
             job_id=job_id, job_type="transcript", input_value=content_json, job=job
         )
 
     try:
         logger.info(f"ARQ Worker: Processing transcript job {job_id}")
-
-        # Update job manager
-        job_manager = get_job_manager()
         await job_manager.update_job_progress(
             job_id, 10, "Starting transcript processing"
         )
 
-        # Store input content in job metadata
-        try:
-            content_dict = json.loads(content_json)
-            job = await job_manager.get_job(job_id)
-            if job:
-                job.metadata["input_content"] = content_dict
-                # Also extract and store title for easier access
-                if "title" in content_dict:
-                    job.metadata["title"] = content_dict["title"]
-                await job_manager._save_job(job)
-        except Exception as e:
-            logger.warning(f"Failed to store input content for job {job_id}: {e}")
-
         # Extract output_content_type from kwargs (ARQ metadata) or job metadata
+        # Use the already-loaded job object — no extra get_job call needed
         output_content_type = None
         try:
-            # First try to get from kwargs (ARQ metadata)
             if "metadata" in kwargs and isinstance(kwargs["metadata"], dict):
                 output_content_type = kwargs["metadata"].get("output_content_type")
                 if output_content_type:
@@ -274,11 +266,9 @@ async def process_transcript_job(ctx, content_json: str, job_id: str, **kwargs) 
                         f"ARQ Worker: Using output_content_type={output_content_type} from ARQ metadata"
                     )
 
-            # Fallback to job metadata if not in kwargs
-            if not output_content_type:
-                job = await job_manager.get_job(job_id)
-                if job and job.metadata.get("output_content_type"):
-                    output_content_type = job.metadata.get("output_content_type")
+            if not output_content_type and job:
+                output_content_type = job.metadata.get("output_content_type")
+                if output_content_type:
                     logger.info(
                         f"ARQ Worker: Using output_content_type={output_content_type} from job metadata"
                     )
@@ -296,11 +286,12 @@ async def process_transcript_job(ctx, content_json: str, job_id: str, **kwargs) 
         if result_dict.get("status") == "error":
             raise Exception(result_dict.get("message", "Processing failed"))
 
-        if result_dict.get("status") != "waiting_for_approval":
+        if result_dict.get("status") == "waiting_for_approval":
+            await job_manager.update_job_status(job_id, JobStatus.WAITING_FOR_APPROVAL)
+            logger.info(f"ARQ Worker: Transcript job {job_id} is waiting for approval")
+        else:
             await job_manager.update_job_progress(job_id, 100, "Completed")
             logger.info(f"ARQ Worker: Transcript job {job_id} completed successfully")
-        else:
-            logger.info(f"ARQ Worker: Transcript job {job_id} is waiting for approval")
 
         if job_span:
             # Refresh job to get updated metadata
@@ -363,10 +354,10 @@ async def process_social_media_job(
             content_dict = json.loads(content_json)
             job = await job_manager.get_job(job_id)
             if job:
-                job.metadata["input_content"] = content_dict
+                job.metadata[JobMetadataKeys.INPUT_CONTENT] = content_dict
                 # Also extract and store title for easier access
                 if "title" in content_dict:
-                    job.metadata["title"] = content_dict["title"]
+                    job.metadata[JobMetadataKeys.TITLE] = content_dict["title"]
                 await job_manager._save_job(job)
         except Exception as e:
             logger.warning(f"Failed to store input content for job {job_id}: {e}")
@@ -518,10 +509,10 @@ async def process_multi_platform_social_media_job(
             content_dict = json.loads(content_json)
             job = await job_manager.get_job(job_id)
             if job:
-                job.metadata["input_content"] = content_dict
+                job.metadata[JobMetadataKeys.INPUT_CONTENT] = content_dict
                 # Also extract and store title for easier access
                 if "title" in content_dict:
-                    job.metadata["title"] = content_dict["title"]
+                    job.metadata[JobMetadataKeys.TITLE] = content_dict["title"]
                 await job_manager._save_job(job)
         except Exception as e:
             logger.warning(f"Failed to store input content for job {job_id}: {e}")
@@ -1153,8 +1144,8 @@ async def refresh_brand_kit_job(
 
         # Set metadata and enrich
         generated_config.version = "1.0.0"
-        generated_config.created_at = datetime.utcnow()
-        generated_config.updated_at = datetime.utcnow()
+        generated_config.created_at = datetime.now(timezone.utc)
+        generated_config.updated_at = datetime.now(timezone.utc)
         generated_config.is_active = True
 
         if use_internal_docs:
@@ -1216,7 +1207,7 @@ async def resume_pipeline_job(
 
         # Add original_job_id to metadata if not already present
         if job and job.metadata and "original_job_id" not in job.metadata:
-            job.metadata["original_job_id"] = original_job_id
+            job.metadata[JobMetadataKeys.ORIGINAL_JOB_ID] = original_job_id
 
         job_span = create_job_root_span(
             job_id=job_id, job_type="resume_pipeline", input_value=context_data, job=job
@@ -1240,17 +1231,19 @@ async def resume_pipeline_job(
         if input_content:
             job = await job_manager.get_job(job_id)
             if job:
-                job.metadata["input_content"] = input_content
+                job.metadata[JobMetadataKeys.INPUT_CONTENT] = input_content
                 # Also extract and store title for easier access
                 if isinstance(input_content, dict) and "title" in input_content:
-                    job.metadata["title"] = input_content["title"]
+                    job.metadata[JobMetadataKeys.TITLE] = input_content["title"]
                 await job_manager._save_job(job)
 
         # Import pipeline
         from marketing_project.services.function_pipeline import FunctionPipeline
 
         # Create pipeline and resume
-        pipeline = FunctionPipeline(model="gpt-5.1", temperature=0.7)
+        pipeline = FunctionPipeline(
+            model=os.getenv("OPENAI_MODEL", "gpt-5.1"), temperature=0.7
+        )
 
         # Determine content type from context
         content_type = context_data.get("content_type", "blog_post")
@@ -1458,7 +1451,7 @@ async def retry_step_job(
                 "step_result": result.get("result", {}),
                 "original_content": input_data.get("content"),
                 "content_type": context.get("content_type", "blog_post"),
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "job_id": original_approval.job_id,
             }
         else:
@@ -1471,7 +1464,7 @@ async def retry_step_job(
             context_data["last_step"] = step_name
             context_data["last_step_number"] = step_number
             context_data["step_result"] = result.get("result", {})
-            context_data["timestamp"] = datetime.utcnow().isoformat()
+            context_data["timestamp"] = datetime.now(timezone.utc).isoformat()
 
         # Save updated pipeline context so pipeline can resume after approval
         await approval_manager.save_pipeline_context(
@@ -1817,8 +1810,8 @@ async def scan_from_url_job(
                     config = InternalDocsConfig(
                         scanned_documents=scanned_docs,
                         version="1.0.0",
-                        created_at=datetime.utcnow(),
-                        updated_at=datetime.utcnow(),
+                        created_at=datetime.now(timezone.utc),
+                        updated_at=datetime.now(timezone.utc),
                     )
                     success = await manager.save_config(config, set_active=True)
                     if not success:
@@ -1919,8 +1912,8 @@ async def scan_from_list_job(
                     config = InternalDocsConfig(
                         scanned_documents=scanned_docs,
                         version="1.0.0",
-                        created_at=datetime.utcnow(),
-                        updated_at=datetime.utcnow(),
+                        created_at=datetime.now(timezone.utc),
+                        updated_at=datetime.now(timezone.utc),
                     )
                     success = await manager.save_config(config, set_active=True)
                     if not success:
@@ -2023,12 +2016,21 @@ async def shutdown(ctx):
 
 
 async def expire_stale_approvals(ctx):
-    """Auto-cancel waiting_for_approval jobs older than 7 days."""
+    """
+    Auto-cancel waiting_for_approval jobs older than 7 days.
+
+    For each stale job:
+    - PostgreSQL: sets job status to 'cancelled'
+    - Approvals: rejects pending approvals AND creates retry jobs (same as user-initiated rejection)
+    - Redis: deletes saved pipeline contexts
+    """
     from datetime import timedelta, timezone
 
-    from sqlalchemy import update
+    from sqlalchemy import select, update
 
+    from marketing_project.models.approval_models import ApprovalDecisionRequest
     from marketing_project.models.db_models import JobModel
+    from marketing_project.services.approval_manager import get_approval_manager
     from marketing_project.services.database import get_database_manager
 
     cutoff = datetime.now(timezone.utc) - timedelta(days=7)
@@ -2036,15 +2038,106 @@ async def expire_stale_approvals(ctx):
     if not db_manager.is_initialized:
         logger.warning("expire_stale_approvals: database not initialized, skipping")
         return
+
+    # Step 1: find stale job IDs before updating their status
+    stale_job_ids: list[str] = []
     async with db_manager.get_session() as session:
-        stmt = (
-            update(JobModel)
-            .where(JobModel.status == "waiting_for_approval")
-            .where(JobModel.created_at < cutoff)
-            .values(status="cancelled", completed_at=datetime.now(timezone.utc))
+        select_stmt = select(JobModel.job_id).where(
+            JobModel.status == "waiting_for_approval",
+            JobModel.created_at < cutoff,
         )
-        result = await session.execute(stmt)
-    logger.info(f"Auto-cancelled {result.rowcount} stale waiting_for_approval jobs")
+        result = await session.execute(select_stmt)
+        stale_job_ids = [row[0] for row in result.fetchall()]
+
+        if stale_job_ids:
+            update_stmt = (
+                update(JobModel)
+                .where(JobModel.status == "waiting_for_approval")
+                .where(JobModel.created_at < cutoff)
+                .values(status="cancelled", completed_at=datetime.now(timezone.utc))
+            )
+            update_result = await session.execute(update_stmt)
+            logger.info(
+                f"Auto-cancelled {update_result.rowcount} stale waiting_for_approval jobs"
+            )
+
+    if not stale_job_ids:
+        return
+
+    # Step 2: reject pending approvals (with retry job creation) + delete pipeline contexts
+    try:
+        approval_manager = await get_approval_manager()
+        job_manager = get_job_manager()
+        rejected = 0
+        retried = 0
+        contexts_deleted = 0
+
+        for job_id in stale_job_ids:
+            # Reject pending approvals, creating retry jobs (consistent with user rejection)
+            try:
+                pending = await approval_manager.list_approvals(
+                    job_id=job_id, status="pending"
+                )
+                for approval in pending:
+                    try:
+                        # First mark the approval as rejected in PostgreSQL/Redis
+                        await approval_manager.decide_approval(
+                            approval.id,
+                            ApprovalDecisionRequest(
+                                decision="reject",
+                                comment="Job expired (older than 7 days)",
+                                reviewed_by="system",
+                            ),
+                        )
+                        rejected += 1
+                        # Then create a retry job so the pipeline can be re-attempted
+                        retry_job_id = (
+                            await approval_manager.execute_rejection_with_retry(
+                                approval=approval,
+                                job_manager=job_manager,
+                                user_comment="Auto-expired after 7 days — retrying",
+                                reviewed_by="system",
+                            )
+                        )
+                        if retry_job_id:
+                            retried += 1
+                    except Exception as e:
+                        logger.warning(
+                            f"expire_stale_approvals: could not reject/retry approval "
+                            f"{approval.id} for job {job_id}: {e}"
+                        )
+            except Exception as e:
+                logger.warning(
+                    f"expire_stale_approvals: could not list approvals for {job_id}: {e}"
+                )
+
+            # Delete saved pipeline context to free Redis memory
+            try:
+                import redis.asyncio as _redis
+
+                from marketing_project.services.redis_manager import get_redis_manager
+
+                redis_mgr = get_redis_manager()
+
+                async def _del_context(client: _redis.Redis):
+                    await client.delete(f"pipeline:context:{job_id}")
+
+                await redis_mgr.execute(_del_context)
+                contexts_deleted += 1
+            except Exception as e:
+                logger.warning(
+                    f"expire_stale_approvals: could not delete pipeline context "
+                    f"for {job_id}: {e}"
+                )
+
+        logger.info(
+            f"expire_stale_approvals: rejected {rejected} approvals, "
+            f"created {retried} retry jobs, "
+            f"deleted {contexts_deleted} pipeline contexts for "
+            f"{len(stale_job_ids)} stale jobs"
+        )
+    except Exception as e:
+        logger.error(f"expire_stale_approvals: cleanup failed: {e}")
 
 
 # ARQ Worker Settings

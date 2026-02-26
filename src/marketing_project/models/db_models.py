@@ -12,6 +12,7 @@ from sqlalchemy import (
     Boolean,
     Column,
     DateTime,
+    Float,
     Index,
     Integer,
     String,
@@ -32,7 +33,7 @@ class ApprovalSettingsModel(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     require_approval = Column(Boolean, default=False, nullable=False)
     approval_agents = Column(JSONB, nullable=False)  # List of strings
-    auto_approve_threshold = Column(String, nullable=True)  # Optional float as string
+    auto_approve_threshold = Column(Float, nullable=True)
     timeout_seconds = Column(Integer, nullable=True)
     created_at = Column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -201,12 +202,12 @@ class UserSettingsModel(Base):
     # Approval preferences (None = use global default)
     require_approval = Column(Boolean, nullable=True)
     approval_agents = Column(JSONB, nullable=True)  # List[str] | None
-    auto_approve_threshold = Column(String, nullable=True)  # float as string
+    auto_approve_threshold = Column(Float, nullable=True)
     approval_timeout_seconds = Column(Integer, nullable=True)
 
     # LLM preferences (None = use global default)
     preferred_model = Column(String, nullable=True)
-    preferred_temperature = Column(String, nullable=True)  # float as string
+    preferred_temperature = Column(Float, nullable=True)
 
     created_at = Column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -347,6 +348,68 @@ class JobModel(Base):
         }
 
 
+class ApprovalModel(Base):
+    """Database model for approval requests (human-in-the-loop review)."""
+
+    __tablename__ = "approvals"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    approval_id = Column(String, nullable=False, unique=True, index=True)
+    job_id = Column(String, nullable=False, index=True)
+    agent_name = Column(String, nullable=False)
+    step_name = Column(String, nullable=False)
+    pipeline_step = Column(String, nullable=True)
+    status = Column(String, nullable=False, default="pending", index=True)
+    input_data = Column(JSONB, nullable=True)
+    output_data = Column(JSONB, nullable=True)
+    modified_output = Column(JSONB, nullable=True)
+    confidence_score = Column(Float, nullable=True)
+    user_comment = Column(Text, nullable=True)
+    reviewed_by = Column(String, nullable=True)
+    retry_count = Column(Integer, default=0, nullable=False)
+    retry_job_id = Column(String, nullable=True)
+    created_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
+    )
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        Index("idx_approvals_job_id_status", "job_id", "status"),
+        Index("idx_approvals_status_created", "status", "created_at"),
+    )
+
+    def to_approval_request(self):
+        """Convert to ApprovalRequest Pydantic model."""
+        from marketing_project.models.approval_models import ApprovalRequest
+
+        return ApprovalRequest(
+            id=self.approval_id,
+            job_id=self.job_id,
+            agent_name=self.agent_name,
+            step_name=self.step_name,
+            pipeline_step=self.pipeline_step,
+            status=self.status,
+            input_data=self.input_data or {},
+            output_data=self.output_data or {},
+            modified_output=self.modified_output,
+            confidence_score=(
+                float(self.confidence_score) if self.confidence_score else None
+            ),
+            user_comment=self.user_comment,
+            reviewed_by=self.reviewed_by,
+            retry_count=self.retry_count or 0,
+            retry_job_id=self.retry_job_id,
+            created_at=self.created_at,
+            reviewed_at=self.reviewed_at,
+        )
+
+
 class StepResultModel(Base):
     """Database model for pipeline step results."""
 
@@ -365,7 +428,7 @@ class StepResultModel(Base):
     result = Column(JSONB, nullable=True)  # Full LLM output
     input_snapshot = Column(JSONB, nullable=True)
     context_keys_used = Column(JSONB, nullable=True)
-    execution_time = Column(String, nullable=True)  # float stored as string
+    execution_time = Column(Float, nullable=True)
     tokens_used = Column(Integer, nullable=True)
     error_message = Column(Text, nullable=True)
     created_at = Column(

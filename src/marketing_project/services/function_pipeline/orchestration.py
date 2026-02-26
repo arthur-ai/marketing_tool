@@ -297,7 +297,7 @@ def compile_pipeline_result(
         "execution_time_seconds": execution_time,
         "total_tokens_used": total_tokens,
         "model": model,
-        "completed_at": datetime.utcnow().isoformat(),
+        "completed_at": datetime.now(timezone.utc).isoformat(),
         "step_info": [
             (
                 step.model_dump(mode="json")

@@ -16,7 +16,13 @@ from ..middleware.rbac import require_roles, verify_job_ownership
 from ..models.approval_models import ApprovalDecisionRequest
 from ..models.user_context import UserContext
 from ..services.approval_manager import get_approval_manager
-from ..services.job_manager import Job, JobManager, JobStatus, get_job_manager
+from ..services.job_manager import (
+    Job,
+    JobManager,
+    JobMetadataKeys,
+    JobStatus,
+    get_job_manager,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +100,7 @@ async def list_jobs(
             enhanced_jobs = []
             for job in jobs:
                 # Only check subjob status for root jobs (not subjobs themselves)
-                if not job.metadata.get("original_job_id"):
+                if not job.metadata.get(JobMetadataKeys.ORIGINAL_JOB_ID):
                     job_with_status = await manager.get_job_with_subjob_status(job.id)
                     if job_with_status and job_with_status["subjob_status"]:
                         # Add subjob status to metadata
@@ -121,16 +127,23 @@ async def get_job(job_id: str, user: UserContext = Depends(get_current_user)):
     Includes subjob information and performance metrics if available.
     """
     try:
+        import copy
+
         manager = get_job_manager()
         job = await verify_job_ownership(job_id, user, manager)
+
+        # Work on a shallow copy so we don't mutate the cached job object.
+        # The subjob enrichment below is response-only decoration.
+        job = copy.copy(job)
+        job.metadata = {**job.metadata}
 
         # Enrich job metadata with subjob information if not already present
         if not job.metadata.get("subjobs_info"):
             subjob_info = {}
 
             # Check if this job has subjobs
-            if job.metadata.get("resume_job_id"):
-                resume_job_id = job.metadata.get("resume_job_id")
+            if job.metadata.get(JobMetadataKeys.RESUME_JOB_ID):
+                resume_job_id = job.metadata.get(JobMetadataKeys.RESUME_JOB_ID)
                 resume_job = await manager.get_job(resume_job_id)
                 if resume_job:
                     subjob_info["resume_job_id"] = resume_job_id
@@ -141,8 +154,8 @@ async def get_job(job_id: str, user: UserContext = Depends(get_current_user)):
                     )
 
             # Check if this job is a subjob
-            if job.metadata.get("original_job_id"):
-                original_job_id = job.metadata.get("original_job_id")
+            if job.metadata.get(JobMetadataKeys.ORIGINAL_JOB_ID):
+                original_job_id = job.metadata.get(JobMetadataKeys.ORIGINAL_JOB_ID)
                 original_job = await manager.get_job(original_job_id)
                 if original_job:
                     subjob_info["parent_job_id"] = original_job_id
@@ -316,8 +329,12 @@ async def get_job_result(job_id: str, user: UserContext = Depends(get_current_us
         result = job.result or {}
         if isinstance(result, dict):
             # Add input_content from metadata if not in result
-            if "input_content" not in result and job.metadata.get("input_content"):
-                result["input_content"] = job.metadata.get("input_content")
+            if "input_content" not in result and job.metadata.get(
+                JobMetadataKeys.INPUT_CONTENT
+            ):
+                result["input_content"] = job.metadata.get(
+                    JobMetadataKeys.INPUT_CONTENT
+                )
             # Ensure final_content is accessible
             if "final_content" not in result and result.get("result", {}).get(
                 "final_content"
@@ -325,7 +342,9 @@ async def get_job_result(job_id: str, user: UserContext = Depends(get_current_us
                 result["final_content"] = result.get("result", {}).get("final_content")
 
         # Get input_content from metadata (always include)
-        input_content = job.metadata.get("input_content") or result.get("input_content")
+        input_content = job.metadata.get(JobMetadataKeys.INPUT_CONTENT) or result.get(
+            "input_content"
+        )
 
         # Build step_inputs and step_outputs arrays from step results
         step_inputs = []
@@ -342,47 +361,41 @@ async def get_job_result(job_id: str, user: UserContext = Depends(get_current_us
             # Sort steps by step_number
             steps_sorted = sorted(steps, key=lambda x: x.get("step_number", 0) or 0)
 
+            # Fetch all step payloads in a single DB query instead of N individual queries
+            step_results_map = await step_manager.get_all_step_results_with_data(job_id)
+
             for step in steps_sorted:
                 step_name = step.get("step_name")
                 step_number = step.get("step_number")
                 if not step_name:
                     continue
 
-                try:
-                    # Get full step result to extract input snapshot and output
-                    step_result = await step_manager.get_step_result_by_name(
-                        job_id, step_name
+                step_result = step_results_map.get(step_name, {})
+
+                # Extract input snapshot
+                input_snapshot = step_result.get("input_snapshot")
+                if input_snapshot:
+                    step_inputs.append(
+                        {
+                            "step_name": step_name,
+                            "step_number": step_number,
+                            "input_snapshot": input_snapshot,
+                            "context_keys_used": step_result.get(
+                                "context_keys_used", []
+                            ),
+                        }
                     )
 
-                    # Extract input snapshot
-                    input_snapshot = step_result.get("input_snapshot")
-                    if input_snapshot:
-                        step_inputs.append(
-                            {
-                                "step_name": step_name,
-                                "step_number": step_number,
-                                "input_snapshot": input_snapshot,
-                                "context_keys_used": step_result.get(
-                                    "context_keys_used", []
-                                ),
-                            }
-                        )
-
-                    # Extract output
-                    step_output = step_result.get("result")
-                    if step_output:
-                        step_outputs.append(
-                            {
-                                "step_name": step_name,
-                                "step_number": step_number,
-                                "output": step_output,
-                            }
-                        )
-                except Exception as e:
-                    logger.warning(
-                        f"Failed to get step result for {step_name} in job {job_id}: {e}"
+                # Extract output
+                step_output = step_result.get("result")
+                if step_output:
+                    step_outputs.append(
+                        {
+                            "step_name": step_name,
+                            "step_number": step_number,
+                            "output": step_output,
+                        }
                     )
-                    continue
         except Exception as e:
             logger.warning(
                 f"Failed to get step results for job {job_id}: {e}. Continuing without step_inputs/step_outputs."
@@ -421,6 +434,27 @@ async def force_delete_job(
     """
     try:
         manager = get_job_manager()
+
+        # Reject any pending approvals for this job before deleting it
+        approval_manager = await get_approval_manager()
+        pending_approvals = await approval_manager.list_approvals(
+            job_id=job_id, status="pending"
+        )
+        for approval in pending_approvals:
+            try:
+                await approval_manager.decide_approval(
+                    approval.id,
+                    ApprovalDecisionRequest(
+                        decision="reject",
+                        comment=f"Job {job_id} was deleted",
+                        reviewed_by="system",
+                    ),
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Failed to reject approval {approval.id} during job deletion: {e}"
+                )
+
         deleted = await manager.delete_job(job_id)
 
         if not deleted:
@@ -445,6 +479,7 @@ async def delete_all_jobs(user: UserContext = Depends(require_roles(["admin"])))
     Delete all jobs from the system.
 
     This will:
+    - Reject all pending approvals and clear Redis approval state
     - Delete all jobs from Redis
     - Clear the jobs index
     - Clear in-memory job storage
@@ -454,12 +489,39 @@ async def delete_all_jobs(user: UserContext = Depends(require_roles(["admin"])))
     """
     try:
         manager = get_job_manager()
+
+        # Reject all pending approvals before deleting jobs
+        approval_manager = await get_approval_manager()
+        pending_approvals = await approval_manager.list_approvals(status="pending")
+        rejected_count = 0
+        for approval in pending_approvals:
+            try:
+                await approval_manager.decide_approval(
+                    approval.id,
+                    ApprovalDecisionRequest(
+                        decision="reject",
+                        comment="All jobs deleted by admin",
+                        reviewed_by=user.username,
+                    ),
+                )
+                rejected_count += 1
+            except Exception as e:
+                logger.warning(
+                    f"Failed to reject approval {approval.id} during delete_all_jobs: {e}"
+                )
+
+        if rejected_count:
+            logger.info(
+                f"Rejected {rejected_count} pending approvals before deleting all jobs"
+            )
+
         deleted_count = await manager.delete_all_jobs()
 
         return {
             "success": True,
             "message": f"Deleted {deleted_count} jobs",
             "deleted_count": deleted_count,
+            "approvals_rejected": rejected_count,
         }
 
     except Exception as e:
@@ -655,27 +717,29 @@ async def resume_job(job_id: str, user: UserContext = Depends(get_current_user))
         # Find the root job (original job that started the chain)
         root_job_id = job_id
         current_job = original_job
-        while current_job.metadata.get("original_job_id"):
-            root_job_id = current_job.metadata.get("original_job_id")
+        while current_job.metadata.get(JobMetadataKeys.ORIGINAL_JOB_ID):
+            root_job_id = current_job.metadata.get(JobMetadataKeys.ORIGINAL_JOB_ID)
             current_job = await job_manager.get_job(root_job_id)
             if not current_job:
                 break
 
         # Get existing chain metadata from root job
         root_job = await job_manager.get_job(root_job_id)
-        existing_chain = root_job.metadata.get("job_chain", {}) if root_job else {}
+        existing_chain = (
+            root_job.metadata.get(JobMetadataKeys.JOB_CHAIN, {}) if root_job else {}
+        )
         existing_chain_order = existing_chain.get("chain_order", [root_job_id])
         existing_all_job_ids = existing_chain.get("all_job_ids", [root_job_id])
 
         # Get session_id from original job to propagate to subjob
         session_id = None
         if original_job.metadata and "session_id" in original_job.metadata:
-            session_id = original_job.metadata["session_id"]
+            session_id = original_job.metadata[JobMetadataKeys.SESSION_ID]
         else:
             # If not in original job, try to get from root job
             root_job = await job_manager.get_job(root_job_id)
             if root_job and root_job.metadata and "session_id" in root_job.metadata:
-                session_id = root_job.metadata["session_id"]
+                session_id = root_job.metadata[JobMetadataKeys.SESSION_ID]
 
         # Create new job for resume
         resume_job_id = str(uuid.uuid4())
@@ -708,12 +772,14 @@ async def resume_job(job_id: str, user: UserContext = Depends(get_current_user))
             # Try to reconstruct user context from metadata
             from marketing_project.models.user_context import UserContext
 
-            triggered_by = root_job.metadata.get("triggered_by_user_id")
+            triggered_by = root_job.metadata.get(JobMetadataKeys.TRIGGERED_BY_USER_ID)
             if triggered_by == parent_user_id:
                 parent_user_context = UserContext(
                     user_id=parent_user_id,
-                    username=root_job.metadata.get("triggered_by_username"),
-                    email=root_job.metadata.get("triggered_by_email"),
+                    username=root_job.metadata.get(
+                        JobMetadataKeys.TRIGGERED_BY_USERNAME
+                    ),
+                    email=root_job.metadata.get(JobMetadataKeys.TRIGGERED_BY_EMAIL),
                 )
 
         resume_job = await job_manager.create_job(

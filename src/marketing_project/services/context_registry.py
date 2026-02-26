@@ -237,7 +237,7 @@ class ContextRegistry:
                 "step_name": step_name,
                 "step_number": step_number,
                 "execution_context_id": execution_context_id,
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "output_data": output_data,
                 "input_snapshot": input_snapshot,
                 "context_keys_used": context_keys_used or [],
@@ -413,7 +413,8 @@ class ContextRegistry:
                                             "execution_context_id", ctx_id
                                         ),
                                         timestamp=data.get(
-                                            "timestamp", datetime.utcnow().isoformat()
+                                            "timestamp",
+                                            datetime.now(timezone.utc).isoformat(),
                                         ),
                                         compressed=compressed,
                                     )
@@ -471,7 +472,7 @@ class ContextRegistry:
                             step_number=data.get("step_number", 0),
                             execution_context_id=data.get("execution_context_id", "0"),
                             timestamp=data.get(
-                                "timestamp", datetime.utcnow().isoformat()
+                                "timestamp", datetime.now(timezone.utc).isoformat()
                             ),
                             compressed=compressed,
                         )

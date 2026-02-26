@@ -261,7 +261,7 @@ async def scan_from_url(
         from marketing_project.services.job_manager import get_job_manager
 
         job_manager = get_job_manager()  # Synchronous, not async
-        job_id = f"scan_url_{int(datetime.utcnow().timestamp() * 1000)}"
+        job_id = f"scan_url_{int(datetime.now(timezone.utc).timestamp() * 1000)}"
 
         # Create job first
         job = await job_manager.create_job(
@@ -321,7 +321,7 @@ async def scan_from_list(
         from marketing_project.services.job_manager import get_job_manager
 
         job_manager = get_job_manager()  # Synchronous, not async
-        job_id = f"scan_list_{int(datetime.utcnow().timestamp() * 1000)}"
+        job_id = f"scan_list_{int(datetime.now(timezone.utc).timestamp() * 1000)}"
 
         # Create job first
         job = await job_manager.create_job(
@@ -836,7 +836,7 @@ async def bulk_rescan_documents(request: BulkOperationRequest):
         from marketing_project.services.job_manager import get_job_manager
 
         job_manager = get_job_manager()  # Synchronous, not async
-        job_id = f"bulk_rescan_{int(datetime.utcnow().timestamp() * 1000)}"
+        job_id = f"bulk_rescan_{int(datetime.now(timezone.utc).timestamp() * 1000)}"
 
         # Create job first
         job = await job_manager.create_job(
@@ -976,7 +976,7 @@ async def bulk_upload_documents(
                         doc = ScannedDocumentDB(
                             title=item.get("title", "Untitled"),
                             url=item["url"],
-                            scanned_at=datetime.utcnow(),
+                            scanned_at=datetime.now(timezone.utc),
                             metadata=metadata,
                         )
 
@@ -1063,7 +1063,7 @@ async def bulk_upload_documents(
                         doc = ScannedDocumentDB(
                             title=row.get("title", "Untitled"),
                             url=row["url"],
-                            scanned_at=datetime.utcnow(),
+                            scanned_at=datetime.now(timezone.utc),
                             metadata=metadata,
                         )
 
