@@ -398,9 +398,7 @@ class ApprovalModel(Base):
             input_data=self.input_data or {},
             output_data=self.output_data or {},
             modified_output=self.modified_output,
-            confidence_score=(
-                float(self.confidence_score) if self.confidence_score else None
-            ),
+            confidence_score=self.confidence_score,
             user_comment=self.user_comment,
             reviewed_by=self.reviewed_by,
             retry_count=self.retry_count or 0,
