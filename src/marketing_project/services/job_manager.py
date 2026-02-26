@@ -623,6 +623,18 @@ class JobManager:
         # If job has a result but status hasn't been updated yet (e.g. worker crashed before
         # marking complete), reconcile it now
         if job.result is not None and job.result != {}:
+            # Don't upgrade waiting_for_approval to completed — the result dict
+            # may be the approval sentinel ({"status": "waiting_for_approval"})
+            # or a partial result, neither of which means the pipeline finished.
+            if (
+                isinstance(job.result, dict)
+                and job.result.get("status") == "waiting_for_approval"
+            ):
+                # Ensure status is correctly set to WAITING_FOR_APPROVAL
+                if job.status != JobStatus.WAITING_FOR_APPROVAL:
+                    job.status = JobStatus.WAITING_FOR_APPROVAL
+                    await self._save_job(job)
+                return job
             if job.status not in [
                 JobStatus.COMPLETED,
                 JobStatus.FAILED,
@@ -688,12 +700,28 @@ class JobManager:
                         # persisted in DB/Redis and the early-return above will have caught it.
                         try:
                             result = await arq_job.result()
-                            job.status = JobStatus.COMPLETED
-                            job.completed_at = datetime.now(timezone.utc)
-                            job.progress = 100
-                            job.result = result
-                            job.current_step = "Completed"
-                            logger.info(f"Job {job_id} completed with result from ARQ")
+                            # Check if the pipeline stopped for an approval checkpoint
+                            # (result dict contains {"status": "waiting_for_approval"})
+                            if (
+                                isinstance(result, dict)
+                                and result.get("status") == "waiting_for_approval"
+                            ):
+                                job.status = JobStatus.WAITING_FOR_APPROVAL
+                                if not job.completed_at:
+                                    job.completed_at = datetime.now(timezone.utc)
+                                job.result = result
+                                logger.info(
+                                    f"Job {job_id} ARQ task complete but pipeline is waiting_for_approval"
+                                )
+                            else:
+                                job.status = JobStatus.COMPLETED
+                                job.completed_at = datetime.now(timezone.utc)
+                                job.progress = 100
+                                job.result = result
+                                job.current_step = "Completed"
+                                logger.info(
+                                    f"Job {job_id} completed with result from ARQ"
+                                )
                             # Save updated status to Redis and database
                             await self._save_job(job)
 
