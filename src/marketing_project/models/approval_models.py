@@ -5,7 +5,7 @@ This module defines models for approval requests that allow users to review
 and approve/reject outputs from non-deterministic agents before proceeding.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
@@ -53,7 +53,7 @@ class ApprovalRequest(BaseModel):
     )
 
     # Metadata
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     reviewed_at: Optional[datetime] = None
     reviewed_by: Optional[str] = None
 
@@ -88,6 +88,7 @@ class ApprovalListItem(BaseModel):
     created_at: datetime
     reviewed_at: Optional[datetime] = None
     input_title: Optional[str] = None
+    user_id: Optional[str] = None
 
 
 class PendingApprovalsResponse(BaseModel):

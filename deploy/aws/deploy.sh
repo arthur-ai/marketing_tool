@@ -92,6 +92,7 @@ REQUIRED ENVIRONMENT VARIABLES:
     API_KEY                  API authentication key (32+ characters)
     DATABASE_PASSWORD        Database master password (stored in AWS Secrets Manager)
     REDIS_PASSWORD           Redis authentication token (16-128 characters)
+    ENCRYPTION_KEY           Fernet encryption key for provider credentials (generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
 
 OPTIONAL ENVIRONMENT VARIABLES:
     EXISTING_MONGODB_ENDPOINT  Existing MongoDB/DocumentDB endpoint (optional - provide to use existing MongoDB)
@@ -244,7 +245,7 @@ fi
 # Check required environment variables
 print_info "Checking required environment variables..."
 
-required_vars=("OPENAI_API_KEY" "API_KEY" "DATABASE_PASSWORD")
+required_vars=("OPENAI_API_KEY" "API_KEY" "DATABASE_PASSWORD" "ENCRYPTION_KEY")
 missing_vars=()
 
 for var in "${required_vars[@]}"; do
@@ -434,6 +435,9 @@ if [[ -n "$FRONTEND_CONTAINER_IMAGE" ]]; then
     PARAMETERS="$PARAMETERS ParameterKey=FrontendDockerRegistryUsername,ParameterValue=$FRONTEND_DOCKER_REGISTRY_USERNAME"
     PARAMETERS="$PARAMETERS ParameterKey=FrontendDockerRegistryPassword,ParameterValue=$FRONTEND_DOCKER_REGISTRY_PASSWORD"
 fi
+
+# Encryption key (required)
+PARAMETERS="$PARAMETERS ParameterKey=EncryptionKey,ParameterValue=$ENCRYPTION_KEY"
 
 # Telemetry parameters (optional)
 ARTHUR_BASE_URL="${ARTHUR_BASE_URL:-http://localhost:3030}"

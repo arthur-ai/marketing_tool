@@ -328,15 +328,16 @@ class PipelineStepPlugin(ABC):
         # Fetch prompts from Arthur (required — no local template fallback).
         from marketing_project.services.arthur_prompt_client import fetch_arthur_prompt
 
-        arthur_messages = await fetch_arthur_prompt(self.step_name)
-        if arthur_messages is None:
+        arthur_result = await fetch_arthur_prompt(self.step_name)
+        if arthur_result is None:
             raise RuntimeError(
                 f"Arthur prompt unavailable for step '{self.step_name}'. "
                 "Ensure ARTHUR_BASE_URL, ARTHUR_API_KEY, and ARTHUR_TASK_ID are set "
                 "and the prompt exists with a 'production' version tag."
             )
 
-        system_instruction, user_template = arthur_messages
+        system_instruction = arthur_result.system_content
+        user_template = arthur_result.user_template
 
         from jinja2 import Environment
 
@@ -356,6 +357,9 @@ class PipelineStepPlugin(ABC):
             step_number=execution_step_number,
             context=context,
             job_id=job_id,
+            model_override=arthur_result.model_name,
+            provider_override=arthur_result.model_provider,
+            model_config=arthur_result.model_config,
         )
 
         # If result is ApprovalRequiredSentinel, propagate it up

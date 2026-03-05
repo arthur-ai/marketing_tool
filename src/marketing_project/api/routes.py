@@ -12,6 +12,9 @@ from marketing_project.api.analytics import router as analytics_router
 from marketing_project.api.approvals import router as approvals_router
 from marketing_project.api.batch import router as batch_router
 from marketing_project.api.brand_kit import router as brand_kit_router
+from marketing_project.api.competitor_research import (
+    router as competitor_research_router,
+)
 from marketing_project.api.content import router as content_router
 from marketing_project.api.core import router as core_router
 from marketing_project.api.feedback import router as feedback_router
@@ -19,6 +22,7 @@ from marketing_project.api.health import router as health_router
 from marketing_project.api.internal_docs import router as internal_docs_router
 from marketing_project.api.jobs import router as jobs_router
 from marketing_project.api.processors import router as processors_router
+from marketing_project.api.provider_settings import router as provider_settings_router
 from marketing_project.api.settings import router as settings_router
 from marketing_project.api.social_media import router as social_media_router
 from marketing_project.api.step_results import router as step_results_router
@@ -171,6 +175,15 @@ def register_routes() -> APIRouter:
     api_router.include_router(settings_router, tags=["Settings"])
 
     # ========================================
+    # PROVIDER SETTINGS ROUTES
+    # ========================================
+    # GET    /api/v1/settings/providers              - List all providers
+    # GET    /api/v1/settings/providers/{provider}   - Get one provider
+    # PUT    /api/v1/settings/providers/{provider}   - Upsert credentials
+    # DELETE /api/v1/settings/providers/{provider}   - Remove credentials
+    api_router.include_router(provider_settings_router, tags=["Provider Settings"])
+
+    # ========================================
     # ADMIN USER MANAGEMENT ROUTES
     # ========================================
     # GET /api/v1/admin/users                      - [Admin] List all users
@@ -191,6 +204,18 @@ def register_routes() -> APIRouter:
     # PUT /api/v1/users/{user_id}/settings - [Admin] Update user settings
     api_router.include_router(
         user_settings_router, prefix="/users", tags=["User Settings"]
+    )
+
+    # ========================================
+    # COMPETITOR RESEARCH ROUTES
+    # ========================================
+    # POST /api/v1/competitor-research - Submit a research job
+    # GET  /api/v1/competitor-research - List research jobs
+    # GET  /api/v1/competitor-research/{job_id} - Get job result
+    api_router.include_router(
+        competitor_research_router,
+        prefix="/competitor-research",
+        tags=["Competitor Research"],
     )
 
     return api_router

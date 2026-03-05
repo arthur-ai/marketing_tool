@@ -5,6 +5,7 @@ Defines database tables for configuration storage.
 """
 
 import json
+import os
 from datetime import datetime
 from typing import Any, Dict, Optional
 
@@ -17,12 +18,46 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    TypeDecorator,
     UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql import func
 
 from marketing_project.services.database import Base
+
+
+class EncryptedText(TypeDecorator):
+    """
+    SQLAlchemy type that transparently encrypts/decrypts text using Fernet.
+
+    Requires ENCRYPTION_KEY env var (a URL-safe base64-encoded 32-byte key).
+    Generate one with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    """
+
+    impl = Text
+    cache_ok = True
+
+    def _get_fernet(self):
+        from cryptography.fernet import Fernet
+
+        key = os.environ.get("ENCRYPTION_KEY", "")
+        if not key:
+            raise RuntimeError(
+                "ENCRYPTION_KEY environment variable is required for encrypted DB columns. "
+                'Generate one with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"'
+            )
+        return Fernet(key.encode())
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return None
+        return self._get_fernet().encrypt(value.encode()).decode()
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return None
+        return self._get_fernet().decrypt(value.encode()).decode()
 
 
 class ApprovalSettingsModel(Base):
@@ -408,6 +443,112 @@ class ApprovalModel(Base):
         )
 
 
+class CompetitorResearchModel(Base):
+    """Database model for competitor research jobs and results."""
+
+    __tablename__ = "competitor_research"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    job_id = Column(String, nullable=False, unique=True, index=True)
+    user_id = Column(String, nullable=True, index=True)
+    status = Column(
+        String, nullable=False, default="pending", index=True
+    )  # pending, processing, completed, failed
+    content_type = Column(
+        String, nullable=False, default="both"
+    )  # blog, social_media, both
+    your_niche = Column(String, nullable=True)
+    your_content_goals = Column(Text, nullable=True)
+    request_data = Column(
+        JSONB, nullable=True
+    )  # Full CompetitorResearchRequest as JSON
+    result_data = Column(JSONB, nullable=True)  # Full CompetitorResearchResult as JSON
+    competitor_count = Column(Integer, nullable=False, default=0)
+    error = Column(Text, nullable=True)
+    created_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
+    )
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        Index("idx_competitor_research_user_status", "user_id", "status"),
+        Index("idx_competitor_research_status_created", "status", "created_at"),
+    )
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert model to dictionary."""
+        return {
+            "job_id": self.job_id,
+            "user_id": self.user_id,
+            "status": self.status,
+            "content_type": self.content_type,
+            "your_niche": self.your_niche,
+            "your_content_goals": self.your_content_goals,
+            "request_data": (
+                self.request_data
+                if isinstance(self.request_data, dict)
+                else (
+                    json.loads(self.request_data)
+                    if isinstance(self.request_data, str)
+                    else {}
+                )
+            ),
+            "result_data": (
+                self.result_data
+                if isinstance(self.result_data, dict)
+                else (
+                    json.loads(self.result_data)
+                    if isinstance(self.result_data, str)
+                    else None
+                )
+            ),
+            "competitor_count": self.competitor_count,
+            "error": self.error,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "completed_at": (
+                self.completed_at.isoformat() if self.completed_at else None
+            ),
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+class CrawledUrlContentModel(Base):
+    """Stores raw fetched content for each URL in a competitor research job."""
+
+    __tablename__ = "crawled_url_content"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    research_job_id = Column(String, nullable=False, index=True)
+    url = Column(Text, nullable=False)
+    title = Column(Text, nullable=True)
+    full_content = Column(Text, nullable=True)
+    meta_description = Column(Text, nullable=True)
+    word_count = Column(Integer, nullable=True)
+    fetched_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (Index("idx_crawled_url_research_job", "research_job_id"),)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "research_job_id": self.research_job_id,
+            "url": self.url,
+            "title": self.title,
+            "full_content": self.full_content,
+            "meta_description": self.meta_description,
+            "word_count": self.word_count,
+            "fetched_at": self.fetched_at.isoformat() if self.fetched_at else None,
+        }
+
+
 class StepResultModel(Base):
     """Database model for pipeline step results."""
 
@@ -438,3 +579,43 @@ class StepResultModel(Base):
         Index("idx_step_results_job_id", "job_id"),
         Index("idx_step_results_root_job_id", "root_job_id"),
     )
+
+
+class ProviderCredentialsModel(Base):
+    """Stores encrypted LLM provider credentials (one row per provider)."""
+
+    __tablename__ = "provider_credentials"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    provider = Column(String, nullable=False, unique=True, index=True)
+    is_enabled = Column(Boolean, default=True, nullable=False)
+
+    # Generic credentials
+    api_key = Column(EncryptedText, nullable=True)  # OpenAI / Anthropic / Gemini
+
+    # Vertex AI
+    project_id = Column(String, nullable=True)  # GCP project ID
+    region = Column(String, nullable=True)  # Vertex AI location / Bedrock region
+    vertex_credentials_json = Column(
+        EncryptedText, nullable=True
+    )  # GCP SA JSON (encrypted)
+
+    # AWS Bedrock
+    aws_bedrock_credentials_json = Column(
+        EncryptedText, nullable=True
+    )  # AWS creds JSON (encrypted)
+
+    # vLLM
+    api_base = Column(EncryptedText, nullable=True)  # vLLM endpoint URL
+
+    created_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    __table_args__ = (Index("idx_provider_credentials_provider", "provider"),)
