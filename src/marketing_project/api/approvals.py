@@ -5,7 +5,6 @@ Endpoints for managing human-in-the-loop approvals of non-deterministic agent ou
 """
 
 import logging
-import time
 from datetime import datetime, timezone
 from typing import List, Optional
 
@@ -17,29 +16,6 @@ from ..middleware.rbac import (
     verify_approval_ownership,
     verify_job_ownership,
 )
-from ..services.function_pipeline.tracing import (
-    add_span_event,
-    close_span,
-    create_span,
-    ensure_span_has_minimum_metadata,
-    is_tracing_available,
-    link_spans,
-    record_span_exception,
-    set_span_attribute,
-    set_span_duration,
-    set_span_error,
-    set_span_input,
-    set_span_kind,
-    set_span_output,
-    set_span_status,
-)
-
-# Import Status for tracing
-try:
-    from opentelemetry.trace import Status, StatusCode
-except ImportError:
-    Status = None
-    StatusCode = None
 from ..models.approval_models import (
     ApprovalDecisionRequest,
     ApprovalListItem,
@@ -189,6 +165,8 @@ async def get_pending_approvals(
         # Convert to list items
         items = []
         for a in approvals:
+            job = jobs_map.get(a.job_id)
+
             # Extract input_title from approval input_data or job metadata
             input_title = None
             # Try to get from approval input_data first
@@ -198,10 +176,8 @@ async def get_pending_approvals(
                     input_title = original_content.get("title")
 
             # If not found, try to get from job metadata (already in jobs_map — no extra fetch)
-            if not input_title:
-                job = jobs_map.get(a.job_id)
-                if job and job.metadata:
-                    input_title = job.metadata.get(JobMetadataKeys.TITLE)
+            if not input_title and job and job.metadata:
+                input_title = job.metadata.get(JobMetadataKeys.TITLE)
 
             items.append(
                 ApprovalListItem(
@@ -214,6 +190,7 @@ async def get_pending_approvals(
                     created_at=a.created_at,
                     reviewed_at=a.reviewed_at,
                     input_title=input_title,
+                    user_id=job.user_id if job else None,
                 )
             )
 
@@ -890,81 +867,8 @@ async def decide_approval(
 
         # Handle rerun - rerun step with user comment as guidance, create new approval
         if decision.decision == "rerun":
-            # Create telemetry span for rerun decision
-            rerun_span = None
-            rerun_start_time = time.time()
-            if is_tracing_available():
-                rerun_span = create_span(
-                    "approval.rerun_decision",
-                    attributes={
-                        "approval_id": approval_id,
-                        "step_name": approval.pipeline_step,
-                        "job_id": approval.job_id,
-                        "retry_attempt": approval.retry_count + 1,
-                        "has_user_guidance": bool(decision.comment),
-                    },
-                    span_type="rerun",
-                )
-                if rerun_span:
-                    # Set OpenInference span kind
-                    set_span_kind(rerun_span, "AGENT")
-
-                    # Set input attributes - always set, never blank
-                    input_data_for_span = {
-                        "approval_id": approval_id,
-                        "step_name": approval.pipeline_step,
-                        "input_data": (
-                            approval.input_data if approval.input_data else {}
-                        ),
-                        "user_guidance": decision.comment or "",
-                    }
-                    set_span_input(rerun_span, input_data_for_span)
-
-                    # Ensure minimum metadata
-                    ensure_span_has_minimum_metadata(
-                        rerun_span, "approval.rerun_decision", "rerun"
-                    )
-
-                    # Add started event
-                    add_span_event(
-                        rerun_span,
-                        "rerun.started",
-                        {
-                            "approval_id": approval_id,
-                            "retry_attempt": approval.retry_count + 1,
-                        },
-                    )
-
-                    # Try to link to approval span if available
-                    try:
-                        from opentelemetry import trace
-
-                        current_span = trace.get_current_span()
-                        if current_span:
-                            span_context = current_span.get_span_context()
-                            if span_context and span_context.is_valid:
-                                link_spans(
-                                    rerun_span,
-                                    span_context,
-                                    {
-                                        "relationship": "rerun_from_approval",
-                                    },
-                                )
-                    except Exception:
-                        pass
-
-                    if approval.input_data:
-                        content_type = approval.input_data.get("content_type")
-                        if content_type:
-                            set_span_attribute(rerun_span, "content_type", content_type)
-
             try:
                 if not decision.comment:
-                    if rerun_span:
-                        set_span_status(
-                            rerun_span, StatusCode.ERROR, "Comment required for rerun"
-                        )
-                        set_span_attribute(rerun_span, "error.type", "ValidationError")
                     raise HTTPException(
                         status_code=400,
                         detail="Comment is required for rerun decision to provide guidance for regeneration",
@@ -977,14 +881,6 @@ async def decide_approval(
                 # Get context from pipeline context
                 context_data = await manager.load_pipeline_context(approval.job_id)
                 context = context_data.get("context", {}) if context_data else {}
-
-                if rerun_span:
-                    set_span_attribute(rerun_span, "pipeline_step", pipeline_step)
-                    set_span_attribute(
-                        rerun_span,
-                        "user_guidance_length",
-                        len(decision.comment) if decision.comment else 0,
-                    )
 
                 # Get session_id from approval job to propagate to subjob
                 approval_job = await job_manager.get_job(approval.job_id)
@@ -1060,9 +956,6 @@ async def decide_approval(
                     user_context=parent_user_context,
                 )
 
-                if rerun_span:
-                    set_span_attribute(rerun_span, "retry_job_id", retry_job_id)
-
                 # Submit to ARQ worker with user guidance
                 await job_manager.submit_to_arq(
                     retry_job_id,
@@ -1080,76 +973,12 @@ async def decide_approval(
                 approval.retry_count += 1
                 await manager._cache_approval_in_redis(approval)
 
-                if rerun_span:
-                    # Set output attributes
-                    output_data = {
-                        "status": "rerun_initiated",
-                        "retry_job_id": retry_job_id,
-                        "retry_attempt": approval.retry_count,
-                        "step_name": pipeline_step,
-                    }
-                    set_span_output(rerun_span, output_data)
-
-                    # Set duration
-                    set_span_duration(rerun_span, rerun_start_time)
-
-                    # Add success event
-                    add_span_event(
-                        rerun_span,
-                        "rerun.completed",
-                        {
-                            "retry_job_id": retry_job_id,
-                            "retry_attempt": approval.retry_count,
-                        },
-                    )
-
-                    set_span_status(
-                        rerun_span, StatusCode.OK, "Rerun initiated successfully"
-                    )
-                    set_span_attribute(
-                        rerun_span, "final_retry_count", approval.retry_count
-                    )
-
                 logger.info(
                     f"Rerun step '{pipeline_step}' for approval {approval_id} "
                     f"(retry job: {retry_job_id}, attempt: {approval.retry_count})"
                 )
             except Exception as e:
-                if rerun_span:
-                    # Set output attributes (error result)
-                    error_output = {
-                        "status": "error",
-                        "error": str(e),
-                        "error_type": type(e).__name__,
-                    }
-                    set_span_output(rerun_span, error_output)
-
-                    # Set duration
-                    set_span_duration(rerun_span, rerun_start_time)
-
-                    # Enhanced error handling
-                    set_span_error(
-                        rerun_span,
-                        e,
-                        {
-                            "approval_id": approval_id,
-                            "step_name": approval.pipeline_step,
-                        },
-                    )
-
-                    # Add failure event
-                    add_span_event(
-                        rerun_span,
-                        "rerun.failed",
-                        {
-                            "error_type": type(e).__name__,
-                        },
-                    )
-
-                    set_span_status(rerun_span, StatusCode.ERROR, str(e))
                 raise
-            finally:
-                close_span(rerun_span)
 
         # Handle rejection - auto-regenerate if enabled, otherwise mark as failed
         if decision.decision == "reject":

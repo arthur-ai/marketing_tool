@@ -21,10 +21,12 @@ RUN groupadd -r appuser && useradd -r -g appuser appuser
 # Set work directory
 WORKDIR /app
 
-# Copy requirements first for better caching
+# Copy requirements and vendored wheels first for better caching
 COPY requirements.txt .
+COPY vendor/ ./vendor/
 
-# Install Python dependencies
+# Install vendored wheels then Python dependencies
+RUN pip install --no-cache-dir "vendor/arthur_observability_sdk-1.0.0-py3-none-any.whl[openai,langchain,litellm]"
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Download UDPipe English model (required for SEO keywords engine)

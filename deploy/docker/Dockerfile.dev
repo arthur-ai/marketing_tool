@@ -18,16 +18,15 @@ RUN apt-get update && apt-get install -y \
     wget \
     && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user
-RUN groupadd -r appuser && useradd -r -g appuser appuser
-
 # Set work directory
 WORKDIR /app
 
-# Copy requirements first for better caching
+# Copy requirements and vendored wheels first for better caching
 COPY requirements.txt .
+COPY vendor/ ./vendor/
 
-# Install Python dependencies
+# Install vendored wheels then Python dependencies
+RUN pip install --no-cache-dir "vendor/arthur_observability_sdk-1.0.0-py3-none-any.whl[openai,langchain,litellm]"
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Download UDPipe English model (required for SEO keywords engine)
@@ -40,11 +39,7 @@ RUN mkdir -p /root/.udpipe/models && \
 # Note: logs go to Docker logs (stdout/stderr), not files
 RUN mkdir -p /app/uploads /app/cache /app/src
 
-# Change ownership to appuser
-RUN chown -R appuser:appuser /app
-
-# Switch to non-root user
-USER appuser
+# Dev image runs as root so runtime pip installs (arthur-sdk editable) work without permission issues
 
 # Expose port
 EXPOSE 8000

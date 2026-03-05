@@ -1,12 +1,12 @@
 """
 Telemetry setup using the Arthur Observability SDK.
 
-Instruments OpenAI and LangChain calls and exports traces to Arthur via OTLP.
+Instruments OpenAI calls and exports traces to Arthur via OTLP.
 Custom job/pipeline spans are created via services/function_pipeline/tracing.py,
 which uses the global OpenTelemetry tracer set up here.
 
-Install the SDK (local repo):
-    pip install -e /path/to/arthur-observability-sdk[openai,langchain]
+Install the SDK:
+    pip install vendor/arthur_observability_sdk-1.0.0-py3-none-any.whl
 """
 
 import logging
@@ -15,7 +15,7 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# Holds the ArthurClient instance for lifetime management
+# Holds the Arthur instance for lifetime management
 _arthur_client: Optional[object] = None
 
 
@@ -25,7 +25,7 @@ def setup_tracing(service_instance_id: Optional[str] = None) -> bool:
 
     Reads configuration from environment variables:
         ARTHUR_API_KEY          – required; Arthur authentication key
-        ARTHUR_TASK_ID          – required; Arthur task identifier
+        ARTHUR_TASK_ID          – optional; Arthur task identifier (created if not provided)
         ARTHUR_BASE_URL         – optional; defaults to https://app.arthur.ai
         OTEL_SERVICE_NAME       – optional; defaults to "marketing-tool"
         OTEL_SERVICE_INSTANCE_ID – optional; auto-generated from hostname+pid
@@ -36,11 +36,11 @@ def setup_tracing(service_instance_id: Optional[str] = None) -> bool:
     global _arthur_client
 
     try:
-        from arthur_obs_sdk import ArthurClient, instrument_langchain, instrument_openai
+        from arthur_observability_sdk import Arthur
     except ImportError:
         logger.warning(
             "Arthur Observability SDK not installed. "
-            "Run: pip install -e /path/to/arthur-observability-sdk[openai,langchain]"
+            "Run: pip install /Users/ibrahim/Downloads/arthur_observability_sdk-1.0.0-py3-none-any.whl"
         )
         return False
 
@@ -49,10 +49,8 @@ def setup_tracing(service_instance_id: Optional[str] = None) -> bool:
         arthur_task_id = os.getenv("ARTHUR_TASK_ID")
         arthur_base_url = os.getenv("ARTHUR_BASE_URL", "https://app.arthur.ai")
 
-        if not arthur_api_key or not arthur_task_id:
-            logger.info(
-                "⚠ Telemetry not configured (missing ARTHUR_API_KEY or ARTHUR_TASK_ID)"
-            )
+        if not arthur_api_key:
+            logger.info("⚠ Telemetry not configured (missing ARTHUR_API_KEY)")
             return False
 
         service_name = os.getenv("OTEL_SERVICE_NAME") or os.getenv(
@@ -67,34 +65,37 @@ def setup_tracing(service_instance_id: Optional[str] = None) -> bool:
 
                 service_instance_id = f"{socket.gethostname()}-{os.getpid()}"
 
-        _arthur_client = ArthurClient(
-            task_id=arthur_task_id,
+        arthur_kwargs = dict(
             api_key=arthur_api_key,
             base_url=arthur_base_url,
             service_name=service_name,
-            resource_attributes={
-                "service.instance.id": service_instance_id,
-                "deployment.environment": deployment_env,
-            },
         )
+        if arthur_task_id:
+            arthur_kwargs["task_id"] = arthur_task_id
+
+        _arthur_client = Arthur(**arthur_kwargs)
 
         # Instrument LLM frameworks – spans flow into the Arthur-managed tracer provider
         try:
-            instrument_openai()
+            _arthur_client.instrument_openai()
             logger.info("OpenAI instrumentation enabled")
         except Exception as e:
             logger.warning(f"Failed to instrument OpenAI: {e}")
 
         try:
-            instrument_langchain()
-            logger.info("LangChain instrumentation enabled")
+            _arthur_client.instrument_litellm()
+            logger.info("LiteLLM instrumentation enabled")
         except Exception as e:
-            logger.warning(f"Failed to instrument LangChain: {e}")
+            logger.warning(f"Failed to instrument LiteLLM: {e}")
 
+        task_info = (
+            f", task_id={arthur_task_id}"
+            if arthur_task_id
+            else " (no task_id — Arthur will auto-create one)"
+        )
         logger.info(
             f"Telemetry initialised: service={service_name}, "
-            f"instance={service_instance_id}, environment={deployment_env}, "
-            f"arthur_task={arthur_task_id}"
+            f"instance={service_instance_id}, environment={deployment_env}{task_info}"
         )
         return True
 

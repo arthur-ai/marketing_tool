@@ -169,6 +169,37 @@ class DatabaseManager:
             "ALTER TABLE user_settings ALTER COLUMN preferred_temperature TYPE FLOAT USING preferred_temperature::FLOAT",
             "ALTER TABLE approvals ALTER COLUMN confidence_score TYPE FLOAT USING confidence_score::FLOAT",
             "ALTER TABLE step_results ALTER COLUMN execution_time TYPE FLOAT USING execution_time::FLOAT",
+            # crawled_url_content table (competitor research URL storage)
+            """
+            CREATE TABLE IF NOT EXISTS crawled_url_content (
+                id SERIAL PRIMARY KEY,
+                research_job_id VARCHAR NOT NULL,
+                url TEXT NOT NULL,
+                title TEXT,
+                full_content TEXT,
+                meta_description TEXT,
+                word_count INTEGER,
+                fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+            """,
+            "CREATE INDEX IF NOT EXISTS idx_crawled_url_research_job ON crawled_url_content (research_job_id)",
+            # Provider credentials table (LiteLLM multi-provider backend)
+            """
+            CREATE TABLE IF NOT EXISTS provider_credentials (
+                id SERIAL PRIMARY KEY,
+                provider VARCHAR NOT NULL UNIQUE,
+                is_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                api_key TEXT,
+                project_id VARCHAR,
+                region VARCHAR,
+                vertex_credentials_json TEXT,
+                aws_bedrock_credentials_json TEXT,
+                api_base TEXT,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+            """,
+            "CREATE INDEX IF NOT EXISTS idx_provider_credentials_provider ON provider_credentials (provider)",
         ]
         try:
             async with self._engine.begin() as conn:

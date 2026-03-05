@@ -215,6 +215,11 @@ Parameters:
     Default: ''
     Description: Task ID for Arthur (optional - leave empty to disable telemetry, must have is_agentic=True if provided)
 
+  EncryptionKey:
+    Type: String
+    NoEcho: true
+    Description: 'Fernet encryption key for provider credentials (generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")'
+
   OtelServiceName:
     Type: String
     Default: 'marketing-tool'
@@ -761,6 +766,8 @@ Resources:
               ValueFrom: !Ref ApiKeySecret
             - Name: ARTHUR_API_KEY
               ValueFrom: !Ref ArthurSecret
+            - Name: ENCRYPTION_KEY
+              ValueFrom: !Ref EncryptionKeySecret
             - !If
               - UseKeycloak
               - Name: KEYCLOAK_CLIENT_SECRET
@@ -883,6 +890,8 @@ Resources:
               ValueFrom: !Ref ApiKeySecret
             - Name: ARTHUR_API_KEY
               ValueFrom: !Ref ArthurSecret
+            - Name: ENCRYPTION_KEY
+              ValueFrom: !Ref EncryptionKeySecret
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -1281,6 +1290,7 @@ Resources:
                   - !Ref ApiKeySecret
                   - !If [HasDockerRegistryCredentials, !Ref FrontendDockerRegistrySecret, !Ref 'AWS::NoValue']
                   - !Ref ArthurSecret
+                  - !Ref EncryptionKeySecret
         - !If
           - UseKeycloak
           - PolicyName: KeycloakSecretsAccess
@@ -1359,6 +1369,13 @@ Resources:
       Name: !Sub '${ProjectName}-${Environment}-api-key'
       Description: API authentication key for marketing tool
       SecretString: !Ref ApiKey
+
+  EncryptionKeySecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub '${ProjectName}-${Environment}-encryption-key'
+      Description: Fernet encryption key for provider credentials
+      SecretString: !Ref EncryptionKey
 
   ArthurSecret:
     Type: AWS::SecretsManager::Secret

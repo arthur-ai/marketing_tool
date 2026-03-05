@@ -52,11 +52,8 @@ services:
       # Mount data directories (no logs - they go to Docker logs)
       - ./uploads:/app/uploads
       - ../../content:/app/content
-      # Arthur Observability SDK (local editable install)
-      - /Users/ibrahim/Documents/Github/arthur-observability-sdk:/arthur-sdk
     command: >
-      sh -c "pip install -q -e '/arthur-sdk[openai,langchain]' &&
-      uvicorn src.marketing_project.server:app
+      sh -c "uvicorn src.marketing_project.server:app
       --host 0.0.0.0
       --port 8000
       --reload
@@ -166,11 +163,12 @@ services:
       - ../../requirements.txt:/app/requirements.txt
       - ./uploads:/app/uploads
       - ../../content:/app/content
-      # Arthur Observability SDK (local editable install)
-      - /Users/ibrahim/Documents/Github/arthur-observability-sdk:/arthur-sdk
-    command: >
-      sh -c "pip install -q -e '/arthur-sdk[openai,langchain]' &&
-      arq marketing_project.worker.WorkerSettings"
+    command: arq marketing_project.worker.WorkerSettings
+    healthcheck:
+      test: ["CMD", "redis-cli", "-h", "redis", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     restart: unless-stopped
     depends_on:
       redis:
