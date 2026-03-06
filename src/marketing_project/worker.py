@@ -63,6 +63,16 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def _flush_telemetry(job_id: str) -> None:
+    """Flush pending telemetry spans after a job completes."""
+    try:
+        from marketing_project.services.telemetry import flush_telemetry
+
+        flush_telemetry(job_id)
+    except Exception as e:
+        logger.warning(f"Telemetry flush error for job {job_id}: {e}")
+
+
 # ARQ Job Functions
 async def process_blog_job(ctx, content_json: str, job_id: str, **kwargs) -> Dict:
     """
@@ -137,6 +147,7 @@ async def process_blog_job(ctx, content_json: str, job_id: str, **kwargs) -> Dic
         raise
     finally:
         close_span(job_span)
+        _flush_telemetry(job_id)
 
 
 async def process_release_notes_job(
@@ -219,6 +230,7 @@ async def process_release_notes_job(
         raise
     finally:
         close_span(job_span)
+        _flush_telemetry(job_id)
 
 
 async def process_transcript_job(ctx, content_json: str, job_id: str, **kwargs) -> Dict:
@@ -319,6 +331,7 @@ async def process_transcript_job(ctx, content_json: str, job_id: str, **kwargs) 
         raise
     finally:
         close_span(job_span)
+        _flush_telemetry(job_id)
 
 
 async def process_social_media_job(
@@ -459,6 +472,7 @@ async def process_social_media_job(
         raise
     finally:
         close_span(job_span)
+        _flush_telemetry(job_id)
 
 
 async def process_multi_platform_social_media_job(
@@ -603,6 +617,7 @@ async def process_multi_platform_social_media_job(
         raise
     finally:
         close_span(job_span)
+        _flush_telemetry(job_id)
 
 
 async def analyze_brand_kit_batch_job(
@@ -697,6 +712,7 @@ async def analyze_brand_kit_batch_job(
         raise
     finally:
         close_span(job_span)
+        _flush_telemetry(job_id)
 
 
 async def synthesize_brand_kit_job(
@@ -789,6 +805,7 @@ async def synthesize_brand_kit_job(
         raise
     finally:
         close_span(job_span)
+        _flush_telemetry(job_id)
 
 
 async def refresh_brand_kit_job(
@@ -1328,6 +1345,7 @@ async def resume_pipeline_job(
         raise
     finally:
         close_span(job_span)
+        _flush_telemetry(job_id)
 
 
 async def retry_step_job(
@@ -1571,6 +1589,7 @@ async def retry_step_job(
         raise
     finally:
         close_span(job_span)
+        _flush_telemetry(job_id)
 
 
 async def execute_single_step_job(
@@ -1687,6 +1706,7 @@ async def execute_single_step_job(
         raise
     finally:
         close_span(job_span)
+        _flush_telemetry(job_id)
 
 
 async def bulk_rescan_documents_job(ctx, urls: List[str], job_id: str) -> Dict:

@@ -209,6 +209,13 @@ class ArticleGenerationResult(BaseModel):
         None, ge=0.0, le=100.0, description="Predicted engagement potential (0-100)"
     )
 
+    @field_validator("word_count", mode="before")
+    @classmethod
+    def coerce_word_count_to_int(cls, v: Any) -> Optional[int]:
+        if v is None:
+            return None
+        return int(round(float(v)))
+
 
 class HeaderStructure(BaseModel):
     """Header structure analysis with H1-H3 hierarchy."""
@@ -436,7 +443,7 @@ class ContentFormattingResult(BaseModel):
     sections: Optional[List[Dict[str, str]]] = Field(
         description="Content sections with headings and content", default=None
     )
-    reading_time: Optional[int] = Field(
+    reading_time: Optional[float] = Field(
         description="Estimated reading time in minutes", default=None
     )
     table_of_contents: Optional[List[Dict[str, str]]] = Field(
@@ -770,7 +777,7 @@ class TranscriptSpeakersExtractionResult(BaseModel):
 class TranscriptDurationExtractionResult(BaseModel):
     """Result from transcript duration extraction step."""
 
-    duration: Optional[int] = Field(
+    duration: Optional[float] = Field(
         None, description="Duration in seconds extracted/calculated from transcript"
     )
     duration_validated: bool = Field(
@@ -818,7 +825,7 @@ class TranscriptPreprocessingApprovalResult(BaseModel):
         default_factory=list,
         description="Confirmed speaker list after validation",
     )
-    duration: Optional[int] = Field(
+    duration: Optional[float] = Field(
         None, description="Confirmed duration in seconds after validation"
     )
     transcript_type: Optional[str] = Field(
@@ -935,7 +942,7 @@ class BlogPostPreprocessingApprovalResult(BaseModel):
         description="Extracted/confirmed tags list",
     )
     word_count: Optional[int] = Field(None, description="Calculated word count")
-    reading_time: Optional[int] = Field(
+    reading_time: Optional[float] = Field(
         None, description="Calculated reading time in minutes"
     )
     content_summary: Optional[str] = Field(
@@ -1079,6 +1086,13 @@ class BlogPostPreprocessingApprovalResult(BaseModel):
     )
 
     model_config = ConfigDict(json_schema_extra=_fix_anyof_additional_properties)
+
+    @field_validator("word_count", mode="before")
+    @classmethod
+    def coerce_word_count_to_int(cls, v: Any) -> Optional[int]:
+        if v is None:
+            return None
+        return int(round(float(v)))
 
 
 class StepInputOutput(BaseModel):
