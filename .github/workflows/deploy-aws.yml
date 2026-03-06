@@ -182,6 +182,7 @@ jobs:
           API_KEY: ${{ secrets.API_KEY }}
           DATABASE_PASSWORD: ${{ secrets.DATABASE_PASSWORD }}
           REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
+          ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
           EXISTING_MONGODB_ENDPOINT: ${{ secrets.EXISTING_MONGODB_ENDPOINT }}
           DOMAIN_NAME: ${{ secrets.DOMAIN_NAME }}
           HOSTED_ZONE_ID: ${{ secrets.HOSTED_ZONE_ID }}

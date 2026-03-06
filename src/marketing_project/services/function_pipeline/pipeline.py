@@ -13,7 +13,6 @@ Key Benefits:
 """
 
 import asyncio
-import copy
 import json
 import logging
 import time
@@ -23,13 +22,10 @@ from typing import Any, Dict, List, Optional
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 
-# OpenTelemetry imports for tracing (kept for backward compatibility)
+# OpenTelemetry StatusCode for use with set_span_status
 try:
-    from opentelemetry import trace
-    from opentelemetry.trace import Status, StatusCode
+    from opentelemetry.trace import StatusCode
 except ImportError:
-    trace = None
-    Status = None
     StatusCode = None
 
 
@@ -84,23 +80,14 @@ from marketing_project.services.function_pipeline.orchestration import (
 from marketing_project.services.function_pipeline.step_results import save_step_result
 from marketing_project.services.function_pipeline.tracing import (
     add_job_metadata_to_span,
-    add_span_event,
     close_span,
     create_job_root_span,
     create_span,
-    ensure_span_has_minimum_metadata,
-    extract_content_characteristics,
-    extract_quality_metrics,
-    extract_step_business_metrics,
+    create_step_span,
     is_tracing_available,
-    link_spans,
     record_span_exception,
     set_job_output,
     set_span_attribute,
-    set_span_duration,
-    set_span_error,
-    set_span_input,
-    set_span_kind,
     set_span_output,
     set_span_status,
 )
@@ -203,152 +190,13 @@ class FunctionPipeline:
         Returns:
             Pydantic model instance with step results
         """
-        # Create step execution span
-        step_start_time = time.time()
-        context_keys_available = (
-            list(pipeline_context.keys()) if pipeline_context else []
+        step_span = (
+            create_step_span(step_name, execution_step_number or 0, job_id or "")
+            if is_tracing_available()
+            else None
         )
-        step_span = create_span(
-            f"pipeline.step_execution.{step_name}",
-            attributes={
-                "step_name": step_name,
-                "plugin_name": step_name,
-                "context_keys_available": json.dumps(context_keys_available),
-                "context_keys_count": len(context_keys_available),
-            },
-            span_type="step_execution",
-        )
-        if step_span:
-            # Set OpenInference span kind
-            set_span_kind(step_span, "AGENT")
-
-            # Set input attributes (pipeline context) - always set, never blank
-            set_span_input(step_span, pipeline_context if pipeline_context else {})
-
-            # Store original job input (first input of the full job) for observability
-            original_input = (
-                pipeline_context.get("input_content") if pipeline_context else None
-            )
-            if original_input:
-                try:
-                    # Create a snapshot of the original input
-                    if isinstance(original_input, dict):
-                        input_snapshot = {
-                            "content_type": pipeline_context.get(
-                                "content_type", "unknown"
-                            ),
-                            "has_title": bool(original_input.get("title")),
-                            "title": (
-                                original_input.get("title", "")[:200]
-                                if original_input.get("title")
-                                else None
-                            ),  # Truncate for size
-                        }
-                        # Store preview of content if available
-                        if "content" in original_input:
-                            content_str = str(original_input["content"])
-                            input_snapshot["content_preview"] = content_str[
-                                :500
-                            ]  # First 500 chars
-                            input_snapshot["content_size_bytes"] = len(
-                                content_str.encode("utf-8")
-                            )
-                    else:
-                        input_snapshot = {
-                            "content_type": (
-                                pipeline_context.get("content_type", "unknown")
-                                if pipeline_context
-                                else "unknown"
-                            ),
-                            "input_type": type(original_input).__name__,
-                            "input_preview": str(original_input)[:500],
-                        }
-                    set_span_attribute(
-                        step_span,
-                        "job.original_input_snapshot",
-                        json.dumps(input_snapshot, default=str),
-                    )
-                except Exception as e:
-                    logger.debug(f"Failed to store original input snapshot: {e}")
-            else:
-                # Set default snapshot if no original input
-                try:
-                    input_snapshot = {
-                        "content_type": (
-                            pipeline_context.get("content_type", "unknown")
-                            if pipeline_context
-                            else "unknown"
-                        ),
-                        "has_title": False,
-                    }
-                    set_span_attribute(
-                        step_span,
-                        "job.original_input_snapshot",
-                        json.dumps(input_snapshot, default=str),
-                    )
-                except Exception:
-                    pass
-
-            # Add step dependencies tracking
-            try:
-                registry = get_plugin_registry()
-                plugin = registry.get_plugin(step_name)
-                if plugin:
-                    required_keys = plugin.get_required_context_keys()
-                    available_keys = (
-                        list(pipeline_context.keys()) if pipeline_context else []
-                    )
-                    missing_keys = [k for k in required_keys if k not in available_keys]
-
-                    set_span_attribute(
-                        step_span, "step.dependencies", json.dumps(required_keys)
-                    )
-                    set_span_attribute(
-                        step_span,
-                        "step.dependencies_available",
-                        json.dumps(available_keys),
-                    )
-                    set_span_attribute(
-                        step_span, "step.dependencies_missing", json.dumps(missing_keys)
-                    )
-                    set_span_attribute(
-                        step_span, "step.dependencies_satisfied", len(missing_keys) == 0
-                    )
-                    set_span_attribute(
-                        step_span, "step.execution_order", execution_step_number or 0
-                    )
-            except Exception:
-                # Set defaults if plugin not found
-                set_span_attribute(step_span, "step.dependencies", json.dumps([]))
-                set_span_attribute(
-                    step_span,
-                    "step.dependencies_available",
-                    json.dumps(context_keys_available),
-                )
-                set_span_attribute(
-                    step_span, "step.dependencies_missing", json.dumps([])
-                )
-                set_span_attribute(step_span, "step.dependencies_satisfied", True)
-
-            # Ensure minimum metadata
-            ensure_span_has_minimum_metadata(
-                step_span, f"pipeline.step_execution.{step_name}", "step_execution"
-            )
-
-            # Add event
-            add_span_event(
-                step_span,
-                "step.started",
-                {
-                    "step_name": step_name,
-                    "context_keys_count": len(context_keys_available),
-                },
-            )
-
-            if execution_step_number:
-                set_span_attribute(step_span, "step_number", execution_step_number)
-            if job_id:
-                set_span_attribute(step_span, "job_id", job_id)
+        if step_span and job_id:
+            set_span_attribute(step_span, "job_id", job_id)
 
         try:
             registry = get_plugin_registry()
@@ -385,52 +233,6 @@ class FunctionPipeline:
                                     f"Resolved context key '{key}' from context registry for step {step_name}"
                                 )
 
-                        # Add context resolution event and metrics
-                        if step_span:
-                            if resolved_keys:
-                                add_span_event(
-                                    step_span,
-                                    "context.resolved",
-                                    {
-                                        "resolved_keys": resolved_keys,
-                                        "source": "context_registry",
-                                    },
-                                )
-                                set_span_attribute(
-                                    step_span,
-                                    "context_registry.hits",
-                                    len(resolved_keys),
-                                )
-                                set_span_attribute(
-                                    step_span,
-                                    "context_registry.keys_resolved",
-                                    json.dumps(resolved_keys),
-                                )
-                            else:
-                                set_span_attribute(
-                                    step_span, "context_registry.hits", 0
-                                )
-
-                            # Track context registry metrics
-                            set_span_attribute(
-                                step_span,
-                                "context_registry.queries_count",
-                                len(missing_keys),
-                            )
-                            set_span_attribute(
-                                step_span,
-                                "context_registry.misses",
-                                len(missing_keys) - len(resolved_keys),
-                            )
-                            if len(missing_keys) > 0:
-                                hit_rate = len(resolved_keys) / len(missing_keys)
-                                set_span_attribute(
-                                    step_span, "context_registry.hit_rate", hit_rate
-                                )
-                            else:
-                                set_span_attribute(
-                                    step_span, "context_registry.hit_rate", 1.0
-                                )
                 except Exception as e:
                     logger.warning(
                         f"Failed to resolve context from registry for step {step_name}: {e}"
@@ -470,192 +272,32 @@ class FunctionPipeline:
                     f"Pipeline execution stopped at step {step_name} due to approval requirement. "
                     f"Approval ID: {result.approval_result.approval_id}"
                 )
-                # Set output attributes (approval sentinel)
-                if step_span:
-                    set_span_output(
-                        step_span,
-                        {
-                            "type": "ApprovalRequiredSentinel",
-                            "approval_id": result.approval_result.approval_id,
-                        },
-                    )
-
-                    # Set duration
-                    set_span_duration(step_span, step_start_time)
-
-                    # Add approval required event
-                    add_span_event(
-                        step_span,
-                        "approval.required",
-                        {
-                            "approval_id": result.approval_result.approval_id,
-                        },
-                    )
-
-                    # Link to approval span if we can get the span context
-                    try:
-                        from opentelemetry import trace
-
-                        approval_span_context = (
-                            trace.get_current_span().get_span_context()
-                        )
-                        if approval_span_context and approval_span_context.is_valid:
-                            link_spans(
-                                step_span,
-                                approval_span_context,
-                                {
-                                    "relationship": "approval_required",
-                                },
-                            )
-                    except Exception:
-                        pass
-
                 # Close span and return the sentinel to propagate up
-                if Status and StatusCode:
-                    set_span_status(step_span, StatusCode.OK)  # Not an error
-                close_span(step_span)
+                if step_span:
+                    set_span_status(step_span, StatusCode.OK)
+                    close_span(step_span)
                 return result
 
-            # Set output attributes (step result) - always set, never blank
+            # Set step output and close span on success
             if step_span:
                 try:
-                    # Convert result to dict if it's a Pydantic model
                     if hasattr(result, "model_dump"):
                         output_data = result.model_dump()
-                    elif hasattr(result, "dict"):
-                        output_data = result.dict()
                     elif isinstance(result, dict):
                         output_data = result
                     else:
                         output_data = {"result_type": type(result).__name__}
-
-                    # Always set output (never blank)
                     set_span_output(step_span, output_data)
-
-                    # Store final output summary (last output of the step) for observability
-                    try:
-                        output_summary = {
-                            "step_name": step_name,
-                            "output_keys": (
-                                list(output_data.keys())
-                                if isinstance(output_data, dict)
-                                else []
-                            ),
-                            "output_keys_count": (
-                                len(output_data.keys())
-                                if isinstance(output_data, dict)
-                                else 0
-                            ),
-                            "has_confidence_score": isinstance(output_data, dict)
-                            and "confidence_score" in output_data,
-                            "output_size_bytes": len(
-                                json.dumps(output_data, default=str).encode("utf-8")
-                            ),
-                        }
-                        # Add step-specific key indicators
-                        if isinstance(output_data, dict):
-                            if "main_keyword" in output_data:
-                                output_summary["has_main_keyword"] = True
-                            if "target_audience" in output_data:
-                                output_summary["has_target_audience"] = True
-                            if "key_messages" in output_data:
-                                output_summary["has_key_messages"] = True
-                        set_span_attribute(
-                            step_span,
-                            "step.final_output_summary",
-                            json.dumps(output_summary, default=str),
-                        )
-                    except Exception as e:
-                        logger.debug(f"Failed to store final output summary: {e}")
-
-                    # Extract quality metrics
-                    extract_quality_metrics(step_span, result)
-
-                    # Extract step-specific business metrics
-                    business_metrics = extract_step_business_metrics(step_name, result)
-                    for key, value in business_metrics.items():
-                        set_span_attribute(step_span, key, value)
-
-                    # Add content transformation metrics
-                    try:
-                        if pipeline_context:
-                            input_size = len(
-                                json.dumps(pipeline_context, default=str).encode(
-                                    "utf-8"
-                                )
-                            )
-                            output_size = len(
-                                json.dumps(output_data, default=str).encode("utf-8")
-                            )
-                            set_span_attribute(
-                                step_span, "transformation.input_size_bytes", input_size
-                            )
-                            set_span_attribute(
-                                step_span,
-                                "transformation.output_size_bytes",
-                                output_size,
-                            )
-                            if input_size > 0:
-                                size_change_percent = (
-                                    (output_size - input_size) / input_size
-                                ) * 100
-                                set_span_attribute(
-                                    step_span,
-                                    "transformation.size_change_percent",
-                                    size_change_percent,
-                                )
-                    except Exception:
-                        pass
-                except Exception as e:
-                    logger.debug(f"Failed to set step execution output: {e}")
-                    # Even on error, set minimal output
-                    set_span_output(step_span, {"error": str(e)})
-
-            # Set duration and add completion event
-            if step_span:
-                set_span_duration(step_span, step_start_time)
-                add_span_event(
-                    step_span,
-                    "step.completed",
-                    {
-                        "step_name": step_name,
-                    },
-                )
-
-            # Close step execution span
-            if Status and StatusCode:
+                except Exception:
+                    pass
                 set_span_status(step_span, StatusCode.OK)
-            close_span(step_span)
+                close_span(step_span)
 
             return result
         except Exception as e:
-            # Update step span on error
             if step_span:
-                # Set duration
-                set_span_duration(step_span, step_start_time)
-
-                # Enhanced error handling
-                set_span_error(
-                    step_span,
-                    e,
-                    {
-                        "step_name": step_name,
-                        "context_keys_count": len(context_keys_available),
-                    },
-                )
-
-                # Add failure event
-                add_span_event(
-                    step_span,
-                    "step.failed",
-                    {
-                        "step_name": step_name,
-                        "error_type": type(e).__name__,
-                    },
-                )
-
-                if Status and StatusCode:
-                    set_span_status(step_span, StatusCode.ERROR, str(e))
+                record_span_exception(step_span, e)
+                set_span_status(step_span, StatusCode.ERROR, str(e))
                 close_span(step_span, type(e), e, None)
             raise
 
@@ -669,6 +311,9 @@ class FunctionPipeline:
         context: Optional[Dict] = None,
         max_retries: Optional[int] = None,
         job_id: Optional[str] = None,
+        model_override: Optional[str] = None,
+        provider_override: Optional[str] = None,
+        model_config: Optional[Dict] = None,
     ) -> BaseModel:
         """
         Call OpenAI with structured output using response_format.
@@ -700,8 +345,8 @@ class FunctionPipeline:
         elif step_number:  # For initial execution, relative equals absolute
             relative_step_number = step_number
 
-        # Get step-specific model and temperature
-        step_model = self._get_step_model(step_name)
+        # Get step-specific model and temperature; Arthur override takes precedence
+        step_model = model_override or self._get_step_model(step_name)
         step_temperature = self._get_step_temperature(step_name)
         step_max_retries = (
             max_retries
@@ -730,6 +375,8 @@ class FunctionPipeline:
                 step_max_retries=step_max_retries,
                 job_id=job_id,
                 context=context,
+                provider_override=provider_override,
+                model_config=model_config,
             )
 
             execution_time = time.time() - start_time
@@ -876,41 +523,28 @@ class FunctionPipeline:
         # Reset step info
         self.step_info = []
 
-        # Create job root span if one doesn't exist (e.g., if called directly, not from ARQ job)
-        # If called from ARQ job, the job root span already exists and pipeline span will be a child
-        # OpenTelemetry context propagation will automatically nest spans correctly
+        # Create job root span if tracing is available
         job_root_span = None
         if is_tracing_available() and job_id:
             try:
-                # Check if there's already a current span (from ARQ job)
-                # If there's no active span, create a job root span
-                current_span = trace.get_current_span()
-                # Check if span context is valid (has a valid span_id)
-                span_context = current_span.get_span_context() if current_span else None
-                if span_context is None or span_context.span_id == 0:
-                    # Get job to extract metadata
-                    job = None
-                    try:
-                        from marketing_project.services.job_manager import (
-                            get_job_manager,
-                        )
+                job = None
+                try:
+                    from marketing_project.services.job_manager import get_job_manager
 
-                        job_manager = get_job_manager()
-                        job = await job_manager.get_job(job_id)
-                        # Ensure content_type is in metadata
-                        if job and job.metadata and "content_type" not in job.metadata:
-                            job.metadata["content_type"] = content_type
-                    except Exception:
-                        pass
-
-                    job_root_span = create_job_root_span(
-                        job_id=job_id,
-                        job_type="pipeline",
-                        input_value=content_json,
-                        job=job,
-                    )
+                    job_manager = get_job_manager()
+                    job = await job_manager.get_job(job_id)
+                    if job and job.metadata and "content_type" not in job.metadata:
+                        job.metadata["content_type"] = content_type
+                except Exception:
+                    pass
+                job_root_span = create_job_root_span(
+                    job_id=job_id,
+                    job_type="pipeline",
+                    input_value=content_json,
+                    job=job,
+                )
             except Exception as e:
-                logger.debug(f"Failed to check/create job root span: {e}")
+                logger.debug(f"Failed to create job root span: {e}")
 
         # Parse input content
         try:
@@ -919,99 +553,9 @@ class FunctionPipeline:
             logger.error(f"Invalid JSON input: {e}")
             raise ValueError(f"Invalid JSON input: {e}")
 
-        # Create pipeline execution span (will be child of job root span if it exists)
-        pipeline_span = None
-        pipeline_start_time = time.time()
-        if is_tracing_available():
-            try:
-                tracer = trace.get_tracer(__name__)
-                pipeline_span = tracer.start_as_current_span(
-                    "pipeline.execute", kind=trace.SpanKind.INTERNAL
-                )
-                pipeline_span.__enter__()
-
-                # Store start time for duration calculation
-                pipeline_span._pipeline_start_time = pipeline_start_time
-
-                # Set OpenInference span kind
-                set_span_kind(pipeline_span, "CHAIN")
-
-                # Set input attributes (always set, never blank)
-                set_span_input(pipeline_span, content if content else {})
-
-                # Extract and add content characteristics
-                content_chars = extract_content_characteristics(
-                    content if content else {}
-                )
-                for key, value in content_chars.items():
-                    if value is not None and value != "unknown":
-                        set_span_attribute(pipeline_span, f"content.{key}", value)
-
-                # Add pipeline configuration metadata
-                try:
-                    from marketing_project.prompts.prompts import TEMPLATE_VERSION
-
-                    set_span_attribute(
-                        pipeline_span, "pipeline.template_version", TEMPLATE_VERSION
-                    )
-                except Exception:
-                    set_span_attribute(pipeline_span, "pipeline.template_version", "v1")
-
-                # Add pipeline config version (could be from env or config)
-                set_span_attribute(pipeline_span, "pipeline.config_version", "v1")
-
-                # Add enabled steps (get from pipeline config)
-                try:
-                    enabled_steps = [
-                        step.step_name for step in self.steps if step.enabled
-                    ]
-                    optional_steps = [
-                        step.step_name for step in self.steps if step.optional
-                    ]
-                    set_span_attribute(
-                        pipeline_span,
-                        "pipeline.enabled_steps",
-                        json.dumps(enabled_steps),
-                    )
-                    set_span_attribute(
-                        pipeline_span,
-                        "pipeline.optional_steps",
-                        json.dumps(optional_steps),
-                    )
-                    set_span_attribute(
-                        pipeline_span, "pipeline.total_steps", len(enabled_steps)
-                    )
-                except Exception:
-                    pass
-
-                # Ensure minimum metadata
-                ensure_span_has_minimum_metadata(
-                    pipeline_span, "pipeline.execute", "pipeline_execute"
-                )
-
-                # Add started event
-                add_span_event(
-                    pipeline_span,
-                    "pipeline.started",
-                    {
-                        "content_type": content_type,
-                        "output_content_type": output_content_type or "unknown",
-                    },
-                )
-
-                # Set other attributes
-                pipeline_span.set_attribute("agentic.workflow_type", "pipeline")
-                pipeline_span.set_attribute("pipeline_type", "function_pipeline")
-                pipeline_span.set_attribute("content_type", content_type)
-                if output_content_type:
-                    pipeline_span.set_attribute(
-                        "output_content_type", output_content_type
-                    )
-                if job_id:
-                    pipeline_span.set_attribute("job_id", job_id)
-            except Exception as e:
-                logger.debug(f"Failed to create pipeline execution span: {e}")
-                pipeline_span = None
+        pipeline_span = (
+            create_span("pipeline.execute") if is_tracing_available() else None
+        )
 
         # Store input content in job metadata if job_id is provided
         if job_id:
@@ -1109,7 +653,6 @@ class FunctionPipeline:
                 # For initial execution, relative_step_number equals execution_index
                 pipeline_context["_relative_step_number"] = execution_index
 
-                step_start_time = time.time()
                 logger.info(
                     f"Executing step {execution_index}/{total_steps} (plugin step_number={plugin.step_number}): {plugin.step_name}"
                 )
@@ -1144,26 +687,6 @@ class FunctionPipeline:
                         # Approval required - stop pipeline execution
                         pipeline_end = time.time()
                         execution_time = pipeline_end - pipeline_start
-
-                        # Update pipeline span for approval (not an error)
-                        if pipeline_span:
-                            try:
-                                approval_output = {
-                                    "status": "waiting_for_approval",
-                                    "approval_id": step_result.approval_result.approval_id,
-                                    "stopped_at_step": step_result.approval_result.step_number,
-                                    "stopped_at_step_name": step_result.approval_result.step_name,
-                                    "results_so_far": results,
-                                }
-                                from marketing_project.services.function_pipeline.tracing import (
-                                    set_span_output,
-                                )
-
-                                set_span_output(pipeline_span, approval_output)
-                            except Exception as span_error:
-                                logger.warning(
-                                    f"Failed to update pipeline span: {span_error}"
-                                )
 
                         # Return early with approval status
                         from marketing_project.services.job_manager import (
@@ -1294,91 +817,17 @@ class FunctionPipeline:
             pipeline_end = time.time()
             execution_time = pipeline_end - pipeline_start
 
-            # Update and close pipeline span
+            # Close pipeline span
             if pipeline_span:
                 try:
-                    # Set output attributes (always set, never blank)
-                    set_span_output(pipeline_span, result if result else {})
-
-                    pipeline_span.set_attribute("steps_completed", len(results))
-                    pipeline_span.set_attribute(
-                        "execution_time_seconds", execution_time
-                    )
-
-                    # Add business intelligence metrics
-                    try:
-                        total_steps = (
-                            len(self.steps) if hasattr(self, "steps") else len(results)
-                        )
-                        steps_completed_rate = (
-                            len(results) / total_steps if total_steps > 0 else 0.0
-                        )
-                        set_span_attribute(
-                            pipeline_span,
-                            "business.steps_completed_rate",
-                            steps_completed_rate,
-                        )
-                        set_span_attribute(
-                            pipeline_span, "business.steps_completed", len(results)
-                        )
-                        set_span_attribute(
-                            pipeline_span, "business.total_steps", total_steps
-                        )
-
-                        # Calculate success rate (steps that didn't fail)
-                        if failed_steps:
-                            success_rate = (
-                                (total_steps - len(failed_steps)) / total_steps
-                                if total_steps > 0
-                                else 0.0
-                            )
-                            set_span_attribute(
-                                pipeline_span, "business.success_rate", success_rate
-                            )
-                            set_span_attribute(
-                                pipeline_span,
-                                "business.failed_steps_count",
-                                len(failed_steps),
-                            )
-                        else:
-                            set_span_attribute(
-                                pipeline_span, "business.success_rate", 1.0
-                            )
-                            set_span_attribute(
-                                pipeline_span, "business.failed_steps_count", 0
-                            )
-                    except Exception:
-                        pass
-
-                    # Set duration (pipeline_start was set earlier)
-                    if hasattr(pipeline_span, "_pipeline_start_time"):
-                        set_span_duration(
-                            pipeline_span, pipeline_span._pipeline_start_time
-                        )
-
-                    # Add completion event
-                    add_span_event(
-                        pipeline_span,
-                        "pipeline.completed",
-                        {
-                            "steps_completed": len(results),
-                            "execution_time": execution_time,
-                        },
-                    )
-
-                    if Status and StatusCode:
-                        pipeline_span.set_status(Status(StatusCode.OK))
-                    pipeline_span.__exit__(None, None, None)
+                    set_span_status(pipeline_span, StatusCode.OK)
+                    close_span(pipeline_span)
                 except Exception as e:
                     logger.debug(f"Failed to close pipeline span: {e}")
 
             # Close job root span if we created it
             if job_root_span and job_id:
                 try:
-                    # Refresh job to get updated metadata
-                    from marketing_project.services.function_pipeline.tracing import (
-                        get_session_id_for_job,
-                    )
                     from marketing_project.services.job_manager import get_job_manager
 
                     job_manager = get_job_manager()
@@ -1387,19 +836,8 @@ class FunctionPipeline:
                         add_job_metadata_to_span(
                             job_root_span, updated_job, job_id, "pipeline"
                         )
-
-                        # Ensure session.id is set (check parent chain if needed)
-                        if not updated_job.metadata.get("session_id"):
-                            session_id = await get_session_id_for_job(job_id)
-                            if session_id:
-                                set_span_attribute(
-                                    job_root_span, "session.id", session_id
-                                )
-
                     set_job_output(job_root_span, result)
-                    set_span_status(
-                        job_root_span, StatusCode.OK if StatusCode else None
-                    )
+                    set_span_status(job_root_span, StatusCode.OK)
                     close_span(job_root_span)
                 except Exception as e:
                     logger.debug(f"Failed to close job root span: {e}")
@@ -1429,159 +867,27 @@ class FunctionPipeline:
             return result
 
         except Exception as e:
-            # Check if this is an approval required exception
-            from marketing_project.processors.approval_helper import (
-                ApprovalRequiredException,
-            )
-            from marketing_project.services.job_manager import (
-                JobStatus,
-                get_job_manager,
-            )
-
-            if (
-                False
-            ):  # Removed ApprovalRequiredException check - approvals use sentinels now
-                # Approval required - pipeline stops, job completes with WAITING_FOR_APPROVAL status
-                pipeline_end = time.time()
-                execution_time = pipeline_end - pipeline_start
-
-                # Update pipeline span for approval (not an error)
-                if pipeline_span:
-                    try:
-                        # Set output attributes with approval information
-                        approval_output = {
-                            "status": "waiting_for_approval",
-                            "approval_id": e.approval_id,
-                            "stopped_at_step": e.step_number,
-                            "stopped_at_step_name": e.step_name,
-                            "results_so_far": results,
-                        }
-                        set_span_output(pipeline_span, approval_output)
-
-                        pipeline_span.set_attribute("approval_required", True)
-                        pipeline_span.set_attribute("approval_id", e.approval_id)
-                        pipeline_span.set_attribute("stopped_at_step", e.step_number)
-                        pipeline_span.set_attribute("stopped_at_step_name", e.step_name)
-                        pipeline_span.set_status(
-                            Status(StatusCode.OK)
-                        )  # Still OK, just needs approval
-                        pipeline_span.__exit__(None, None, None)
-                    except Exception as span_err:
-                        logger.debug(
-                            f"Failed to update pipeline span for approval: {span_err}"
-                        )
-
-                # Close job root span if we created it (approval is not a failure)
-                if job_root_span:
-                    try:
-                        set_span_attribute(
-                            job_root_span, "job.status", "waiting_for_approval"
-                        )
-                        set_span_attribute(job_root_span, "approval_id", e.approval_id)
-                        # Set output with approval information
-                        approval_output = {
-                            "pipeline_status": "waiting_for_approval",
-                            "approval_id": e.approval_id,
-                            "stopped_at_step": e.step_number,
-                            "stopped_at_step_name": e.step_name,
-                            "step_results": results if "results" in locals() else [],
-                        }
-                        set_job_output(job_root_span, approval_output)
-                        set_span_status(
-                            job_root_span, StatusCode.OK if StatusCode else None
-                        )
-                        close_span(job_root_span)
-                    except Exception as span_err:
-                        logger.debug(f"Failed to close job root span: {span_err}")
-
-                logger.info(
-                    f"[APPROVAL] Pipeline stopped for approval at step {e.step_number} ({e.step_name}) "
-                    f"after {execution_time:.2f}s. Job {e.job_id} marked as WAITING_FOR_APPROVAL"
-                )
-
-                # Ensure job status is updated
-                job_manager = get_job_manager()
-                await job_manager.update_job_status(
-                    e.job_id, JobStatus.WAITING_FOR_APPROVAL
-                )
-                await job_manager.update_job_progress(
-                    e.job_id, 90, f"Waiting for approval at step {e.step_number}"
-                )
-
-                # Return partial results for display
-                return {
-                    "pipeline_status": "waiting_for_approval",
-                    "step_results": results,
-                    "quality_warnings": quality_warnings,
-                    "final_content": None,
-                    "metadata": {
-                        "job_id": e.job_id,
-                        "content_id": content.get("id"),
-                        "content_type": content_type,
-                        "title": content.get("title"),
-                        "steps_completed": e.step_number - 1,
-                        "execution_time_seconds": execution_time,
-                        "total_tokens_used": sum(
-                            step.tokens_used
-                            for step in self.step_info
-                            if step.tokens_used
-                        ),
-                        "model": self.model,
-                        "stopped_at_step": e.step_number,
-                        "stopped_at_step_name": e.step_name,
-                        "approval_id": e.approval_id,
-                        "step_info": [
-                            (
-                                step.model_dump(mode="json")
-                                if hasattr(step, "model_dump")
-                                else (
-                                    step.model_dump()
-                                    if hasattr(step, "model_dump")
-                                    else step
-                                )
-                            )
-                            for step in self.step_info
-                        ],
-                    },
-                }
-
             # Other exceptions - pipeline failed
             pipeline_end = time.time()
             execution_time = pipeline_end - pipeline_start
 
             logger.error(f"Pipeline failed after {execution_time:.2f}s: {e}")
 
-            # Ensure pipeline span is closed if not already
+            # Close pipeline span on error
             if pipeline_span:
                 try:
-                    # Set output with error information
-                    error_output = {
-                        "pipeline_status": "failed",
-                        "error": str(e),
-                        "error_type": type(e).__name__,
-                        "step_results": results if "results" in locals() else {},
-                    }
-                    set_span_output(pipeline_span, error_output)
-                    pipeline_span.__exit__(type(e), e, None)
+                    record_span_exception(pipeline_span, e)
+                    set_span_status(pipeline_span, StatusCode.ERROR, str(e))
+                    close_span(pipeline_span, type(e), e, None)
                 except Exception:
                     pass
 
-            # Close job root span if we created it
+            # Close job root span on error
             if job_root_span:
                 try:
-                    set_span_attribute(job_root_span, "job.status", "failed")
-                    # Set output with error information
-                    error_output = {
-                        "pipeline_status": "failed",
-                        "error": str(e),
-                        "step_results": results if "results" in locals() else [],
-                    }
-                    set_job_output(job_root_span, error_output)
                     record_span_exception(job_root_span, e)
-                    set_span_status(
-                        job_root_span, StatusCode.ERROR if StatusCode else None, str(e)
-                    )
-                    close_span(job_root_span)
+                    set_span_status(job_root_span, StatusCode.ERROR, str(e))
+                    close_span(job_root_span, type(e), e, None)
                 except Exception as span_err:
                     logger.debug(f"Failed to close job root span: {span_err}")
 
@@ -1935,81 +1241,6 @@ class FunctionPipeline:
             return result
 
         except Exception as e:
-            # Check if this is an approval required exception
-            from marketing_project.processors.approval_helper import (
-                ApprovalRequiredException,
-            )
-            from marketing_project.services.job_manager import (
-                JobStatus,
-                get_job_manager,
-            )
-
-            if (
-                False
-            ):  # Removed ApprovalRequiredException check - approvals use sentinels now
-                # Approval required - pipeline stops, job completes with WAITING_FOR_APPROVAL status
-                pipeline_end = time.time()
-                execution_time = pipeline_end - pipeline_start
-
-                logger.info(
-                    f"[APPROVAL] Resume pipeline stopped for approval at step {e.step_number} ({e.step_name}) "
-                    f"after {execution_time:.2f}s. Job {e.job_id} marked as WAITING_FOR_APPROVAL"
-                )
-
-                # Ensure job status is updated
-                job_manager = get_job_manager()
-                await job_manager.update_job_status(
-                    e.job_id, JobStatus.WAITING_FOR_APPROVAL
-                )
-                await job_manager.update_job_progress(
-                    e.job_id, 90, f"Waiting for approval at step {e.step_number}"
-                )
-
-                # Save pipeline context for resume
-                from marketing_project.services.approval_manager import (
-                    get_approval_manager,
-                )
-
-                approval_manager = await get_approval_manager()
-                original_content = context_data.get("original_content")
-                await approval_manager.save_pipeline_context(
-                    job_id=e.job_id,
-                    context=pipeline_context,
-                    step_name=e.step_name,
-                    step_number=e.step_number,
-                    step_result={},  # Will be filled by approval_manager from approval
-                    original_content=original_content,
-                )
-
-                # Return partial results for display
-                return {
-                    "pipeline_status": "waiting_for_approval",
-                    "step_results": results,
-                    "quality_warnings": quality_warnings,
-                    "final_content": None,
-                    "metadata": {
-                        "job_id": e.job_id,
-                        "resumed_from_step": last_step_number,
-                        "steps_completed": len(results),
-                        "execution_time_seconds": execution_time,
-                        "approval_id": e.approval_id,
-                        "approval_step": e.step_number,
-                        "approval_step_name": e.step_name,
-                        "step_info": [
-                            (
-                                step.model_dump(mode="json")
-                                if hasattr(step, "model_dump")
-                                else (
-                                    step.model_dump()
-                                    if hasattr(step, "model_dump")
-                                    else step
-                                )
-                            )
-                            for step in self.step_info
-                        ],
-                    },
-                }
-
             # Other exceptions - log and re-raise
             logger.error(f"Resume pipeline failed: {e}")
             raise

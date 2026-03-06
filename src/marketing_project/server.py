@@ -78,6 +78,13 @@ async def lifespan(app: FastAPI):
     logger.info(f"Template version: {TEMPLATE_VERSION}")
     logger.info(f"Prompts directory: {PROMPTS_DIR}")
 
+    # Warn early if ENCRYPTION_KEY is missing — provider credentials will fail at access time
+    if not os.environ.get("ENCRYPTION_KEY"):
+        logger.warning(
+            "⚠ ENCRYPTION_KEY not set — provider credentials cannot be encrypted or decrypted. "
+            'Generate a key with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"'
+        )
+
     # Initialize main database connection
     try:
         # Import models to register them with SQLAlchemy Base
@@ -118,9 +125,7 @@ async def lifespan(app: FastAPI):
         if setup_tracing():
             logger.info("✓ Telemetry initialized successfully")
         else:
-            logger.info(
-                "⚠ Telemetry not configured (missing ARTHUR_API_KEY or ARTHUR_TASK_ID)"
-            )
+            logger.info("⚠ Telemetry not configured (missing ARTHUR_API_KEY)")
     except Exception as e:
         logger.warning(f"⚠ Failed to initialize telemetry: {e}")
 

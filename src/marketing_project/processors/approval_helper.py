@@ -140,7 +140,10 @@ async def check_and_create_approval_request(
         ApprovalResult indicating the approval status. If status is REQUIRED,
         the pipeline should stop and wait for approval.
     """
-    manager = await get_approval_manager(reload_from_db=True)
+    # Do not reload from DB on every step — settings are stable for the duration of a job.
+    # The worker initialises the manager once from DB at startup; the API reloads on every
+    # user-facing request where staleness would actually matter.
+    manager = await get_approval_manager(reload_from_db=False)
     settings = manager.settings
 
     # Check if approvals are enabled

@@ -329,13 +329,14 @@ async def process_social_media_job(
     Returns:
         Processing result dictionary
     """
+    job_manager = get_job_manager()
+
+    # Single get_job call shared by telemetry + metadata storage + parameter extraction
+    job = await job_manager.get_job(job_id, _skip_arq_poll=True)
+
     # Create root job span for this job execution
     job_span = None
     if is_tracing_available():
-        # Get job to extract metadata
-        job_manager = get_job_manager()
-        job = await job_manager.get_job(job_id)
-
         job_span = create_job_root_span(
             job_id=job_id, job_type="social_media", input_value=content_json, job=job
         )
@@ -343,32 +344,24 @@ async def process_social_media_job(
     try:
         logger.info(f"ARQ Worker: Processing social media job {job_id}")
 
-        # Update job manager
-        job_manager = get_job_manager()
         await job_manager.update_job_progress(
             job_id, 10, "Starting social media pipeline"
         )
 
-        # Store input content in job metadata
-        try:
-            content_dict = json.loads(content_json)
-            job = await job_manager.get_job(job_id)
-            if job:
-                job.metadata[JobMetadataKeys.INPUT_CONTENT] = content_dict
-                # Also extract and store title for easier access
-                if "title" in content_dict:
-                    job.metadata[JobMetadataKeys.TITLE] = content_dict["title"]
-                await job_manager._save_job(job)
-        except Exception as e:
-            logger.warning(f"Failed to store input content for job {job_id}: {e}")
-
-        # Get social media platform, email type, and variations count from job metadata
+        # Store input content in job metadata and extract parameters — all from the single job fetch
         social_media_platform = "linkedin"
         email_type = None
         variations_count = 1
+        pipeline_config = None
+
         try:
-            job = await job_manager.get_job(job_id)
+            content_dict = json.loads(content_json)
             if job:
+                job.metadata[JobMetadataKeys.INPUT_CONTENT] = content_dict
+                if "title" in content_dict:
+                    job.metadata[JobMetadataKeys.TITLE] = content_dict["title"]
+
+                # Extract social media parameters from the already-fetched job
                 social_media_platform = job.metadata.get(
                     "social_media_platform", "linkedin"
                 )
@@ -377,26 +370,21 @@ async def process_social_media_job(
                 logger.info(
                     f"ARQ Worker: Using social_media_platform={social_media_platform}, email_type={email_type}, variations_count={variations_count}"
                 )
+
+                # Extract pipeline config from the already-fetched job
+                if job.metadata.get("pipeline_config"):
+                    from marketing_project.models.pipeline_steps import PipelineConfig
+
+                    pipeline_config = PipelineConfig(**job.metadata["pipeline_config"])
+
+                await job_manager._save_job(job)
         except Exception as e:
-            logger.warning(
-                f"ARQ Worker: Could not get social media parameters from job metadata: {e}"
-            )
+            logger.warning(f"Failed to store input content for job {job_id}: {e}")
 
         # Execute social media pipeline
         await job_manager.update_job_progress(
             job_id, 20, f"Running social media pipeline for {social_media_platform}"
         )
-
-        # Get pipeline config from job metadata if available
-        pipeline_config = None
-        try:
-            job = await job_manager.get_job(job_id)
-            if job and job.metadata.get("pipeline_config"):
-                from marketing_project.models.pipeline_steps import PipelineConfig
-
-                pipeline_config = PipelineConfig(**job.metadata["pipeline_config"])
-        except Exception as e:
-            logger.warning(f"Could not load pipeline config from job metadata: {e}")
 
         # Create pipeline with config (no defaults - must be configured in settings)
         if pipeline_config:
@@ -481,13 +469,14 @@ async def process_multi_platform_social_media_job(
     Returns:
         Processing result dictionary with results for each platform
     """
+    job_manager = get_job_manager()
+
+    # Single get_job call shared by telemetry + metadata storage + parameter extraction
+    job = await job_manager.get_job(job_id, _skip_arq_poll=True)
+
     # Create root job span for this job execution
     job_span = None
     if is_tracing_available():
-        # Get job to extract metadata
-        job_manager = get_job_manager()
-        job = await job_manager.get_job(job_id)
-
         job_span = create_job_root_span(
             job_id=job_id,
             job_type="multi_platform_social_media",
@@ -498,32 +487,23 @@ async def process_multi_platform_social_media_job(
     try:
         logger.info(f"ARQ Worker: Processing multi-platform social media job {job_id}")
 
-        # Update job manager
-        job_manager = get_job_manager()
         await job_manager.update_job_progress(
             job_id, 10, "Starting multi-platform social media pipeline"
         )
 
-        # Store input content in job metadata
-        try:
-            content_dict = json.loads(content_json)
-            job = await job_manager.get_job(job_id)
-            if job:
-                job.metadata[JobMetadataKeys.INPUT_CONTENT] = content_dict
-                # Also extract and store title for easier access
-                if "title" in content_dict:
-                    job.metadata[JobMetadataKeys.TITLE] = content_dict["title"]
-                await job_manager._save_job(job)
-        except Exception as e:
-            logger.warning(f"Failed to store input content for job {job_id}: {e}")
-
-        # Get platforms, email type from job metadata
+        # Store input content in job metadata and extract parameters — all from the single job fetch
         platforms = ["linkedin"]
         email_type = None
+        pipeline_config = None
+
         try:
-            job = await job_manager.get_job(job_id)
+            content_dict = json.loads(content_json)
             if job:
-                # Check for social_media_platforms (list) first, fallback to single platform
+                job.metadata[JobMetadataKeys.INPUT_CONTENT] = content_dict
+                if "title" in content_dict:
+                    job.metadata[JobMetadataKeys.TITLE] = content_dict["title"]
+
+                # Extract platform parameters from the already-fetched job
                 if "social_media_platforms" in job.metadata:
                     platforms = job.metadata["social_media_platforms"]
                 elif "social_media_platform" in job.metadata:
@@ -532,10 +512,16 @@ async def process_multi_platform_social_media_job(
                 logger.info(
                     f"ARQ Worker: Using platforms={platforms}, email_type={email_type}"
                 )
+
+                # Extract pipeline config from the already-fetched job
+                if job.metadata.get("pipeline_config"):
+                    from marketing_project.models.pipeline_steps import PipelineConfig
+
+                    pipeline_config = PipelineConfig(**job.metadata["pipeline_config"])
+
+                await job_manager._save_job(job)
         except Exception as e:
-            logger.warning(
-                f"ARQ Worker: Could not get social media parameters from job metadata: {e}"
-            )
+            logger.warning(f"Failed to store input content for job {job_id}: {e}")
 
         # Validate platforms
         if not platforms or len(platforms) == 0:
@@ -549,17 +535,6 @@ async def process_multi_platform_social_media_job(
         await job_manager.update_job_progress(
             job_id, 20, f"Running multi-platform pipeline for {', '.join(platforms)}"
         )
-
-        # Get pipeline config from job metadata if available
-        pipeline_config = None
-        try:
-            job = await job_manager.get_job(job_id)
-            if job and job.metadata.get("pipeline_config"):
-                from marketing_project.models.pipeline_steps import PipelineConfig
-
-                pipeline_config = PipelineConfig(**job.metadata["pipeline_config"])
-        except Exception as e:
-            logger.warning(f"Could not load pipeline config from job metadata: {e}")
 
         # Create pipeline with config (no defaults - must be configured in settings)
         if pipeline_config:
@@ -644,6 +619,14 @@ async def analyze_brand_kit_batch_job(
     Returns:
         Dictionary with batch analysis results
     """
+    job_span = None
+    if is_tracing_available():
+        job_span = create_job_root_span(
+            job_id=batch_job_id,
+            job_type="brand_kit_batch_analysis",
+            input_value={"batch_index": batch_index, "batch_size": len(content_batch)},
+            attributes={"parent_job_id": parent_job_id},
+        )
     try:
         logger.info(
             f"ARQ Worker: Analyzing brand kit batch {batch_index + 1} (job {batch_job_id}, parent {parent_job_id})"
@@ -700,7 +683,13 @@ async def analyze_brand_kit_batch_job(
 
     except Exception as e:
         logger.error(f"ARQ Worker: Batch {batch_index + 1} failed: {e}")
+        if job_span:
+            record_span_exception(job_span, e)
+            if StatusCode:
+                set_span_status(job_span, StatusCode.ERROR, str(e))
         raise
+    finally:
+        close_span(job_span)
 
 
 async def synthesize_brand_kit_job(
@@ -722,6 +711,14 @@ async def synthesize_brand_kit_job(
     Returns:
         Dictionary with synthesized brand kit config
     """
+    job_span = None
+    if is_tracing_available():
+        job_span = create_job_root_span(
+            job_id=synthesis_job_id,
+            job_type="brand_kit_synthesis",
+            input_value={"analysis_count": len(all_analyses)},
+            attributes={"parent_job_id": parent_job_id},
+        )
     try:
         logger.info(
             f"ARQ Worker: Synthesizing brand kit config (job {synthesis_job_id}, parent {parent_job_id})"
@@ -778,7 +775,13 @@ async def synthesize_brand_kit_job(
 
     except Exception as e:
         logger.error(f"ARQ Worker: Synthesis failed: {e}")
+        if job_span:
+            record_span_exception(job_span, e)
+            if StatusCode:
+                set_span_status(job_span, StatusCode.ERROR, str(e))
         raise
+    finally:
+        close_span(job_span)
 
 
 async def refresh_brand_kit_job(
@@ -1013,18 +1016,21 @@ async def refresh_brand_kit_job(
 
             all_analyses = []
             completed_batches = 0
+            total_batches = len(batch_job_ids)
 
             # Poll for batch completion
             import asyncio
 
-            max_wait_time = 600 * len(batch_job_ids)  # 10 min per batch
+            max_wait_time = 600 * total_batches  # 10 min per batch
             start_time = asyncio.get_event_loop().time()
+            pending_batch_ids = set(batch_job_ids)
 
-            while completed_batches < len(batch_job_ids):
+            while completed_batches < total_batches:
                 if asyncio.get_event_loop().time() - start_time > max_wait_time:
                     raise TimeoutError(f"Batch jobs timed out after {max_wait_time}s")
 
-                for batch_job_id in batch_job_ids:
+                # Iterate over a snapshot to avoid mutating the set mid-loop
+                for batch_job_id in list(pending_batch_ids):
                     batch_job = await job_manager.get_job(batch_job_id)
                     if batch_job:
                         if batch_job.status.value == "completed":
@@ -1033,29 +1039,29 @@ async def refresh_brand_kit_job(
                                 and batch_job.result.get("status") == "success"
                             ):
                                 all_analyses.append(batch_job.result)
-                                completed_batches += 1
-                                batch_job_ids.remove(batch_job_id)
+                            pending_batch_ids.discard(batch_job_id)
+                            completed_batches += 1
 
-                                progress = 20 + int(
-                                    (completed_batches / len(content_batches)) * 50
-                                )  # 20-70%
-                                await job_manager.update_job_progress(
-                                    job_id,
-                                    progress,
-                                    f"Completed {completed_batches}/{len(content_batches)} batches",
-                                )
-                                logger.info(
-                                    f"Batch {completed_batches}/{len(content_batches)} completed"
-                                )
+                            progress = 20 + int(
+                                (completed_batches / total_batches) * 50
+                            )  # 20-70%
+                            await job_manager.update_job_progress(
+                                job_id,
+                                progress,
+                                f"Completed {completed_batches}/{total_batches} batches",
+                            )
+                            logger.info(
+                                f"Batch {completed_batches}/{total_batches} completed"
+                            )
                         elif batch_job.status.value == "failed":
                             logger.error(
                                 f"Batch job {batch_job_id} failed: {batch_job.error}"
                             )
                             # Continue with other batches
-                            batch_job_ids.remove(batch_job_id)
+                            pending_batch_ids.discard(batch_job_id)
                             completed_batches += 1
 
-                if completed_batches < len(content_batches):
+                if completed_batches < total_batches:
                     await asyncio.sleep(2)  # Poll every 2 seconds
 
             logger.info(
@@ -1129,7 +1135,8 @@ async def refresh_brand_kit_job(
                     elif synth_job.status.value == "failed":
                         raise Exception(f"Synthesis job failed: {synth_job.error}")
 
-                await asyncio.sleep(2)
+                if not synthesis_complete:
+                    await asyncio.sleep(2)
 
             logger.info("Synthesis completed successfully")
         else:
@@ -1198,17 +1205,38 @@ async def resume_pipeline_job(
     Returns:
         Processing result dictionary
     """
+    job_manager = get_job_manager()
+
+    # Single get_job call — enriches metadata and is reused for tracing + input content storage
+    job = await job_manager.get_job(job_id, _skip_arq_poll=True)
+
+    # Persist resume-specific metadata unconditionally (not just when tracing is enabled)
+    if job and job.metadata:
+        needs_save = False
+        if "original_job_id" not in job.metadata:
+            job.metadata[JobMetadataKeys.ORIGINAL_JOB_ID] = original_job_id
+            needs_save = True
+
+        input_content = context_data.get("input_content") or context_data.get(
+            "original_content"
+        )
+        if input_content:
+            job.metadata[JobMetadataKeys.INPUT_CONTENT] = input_content
+            if isinstance(input_content, dict) and "title" in input_content:
+                job.metadata[JobMetadataKeys.TITLE] = input_content["title"]
+            needs_save = True
+
+        if needs_save:
+            try:
+                await job_manager._save_job(job)
+            except Exception as _e:
+                logger.warning(
+                    f"Failed to persist resume metadata for job {job_id}: {_e}"
+                )
+
     # Create root job span for this job execution
     job_span = None
     if is_tracing_available():
-        # Get job to extract metadata
-        job_manager = get_job_manager()
-        job = await job_manager.get_job(job_id)
-
-        # Add original_job_id to metadata if not already present
-        if job and job.metadata and "original_job_id" not in job.metadata:
-            job.metadata[JobMetadataKeys.ORIGINAL_JOB_ID] = original_job_id
-
         job_span = create_job_root_span(
             job_id=job_id, job_type="resume_pipeline", input_value=context_data, job=job
         )
@@ -1218,24 +1246,9 @@ async def resume_pipeline_job(
             f"ARQ Worker: Resuming pipeline for original job {original_job_id}, new job {job_id}"
         )
 
-        # Update job manager
-        job_manager = get_job_manager()
         await job_manager.update_job_progress(
             job_id, 10, "Resuming pipeline after approval"
         )
-
-        # Store input content in job metadata if available
-        input_content = context_data.get("input_content") or context_data.get(
-            "original_content"
-        )
-        if input_content:
-            job = await job_manager.get_job(job_id)
-            if job:
-                job.metadata[JobMetadataKeys.INPUT_CONTENT] = input_content
-                # Also extract and store title for easier access
-                if isinstance(input_content, dict) and "title" in input_content:
-                    job.metadata[JobMetadataKeys.TITLE] = input_content["title"]
-                await job_manager._save_job(job)
 
         # Import pipeline
         from marketing_project.services.function_pipeline import FunctionPipeline
@@ -1278,12 +1291,8 @@ async def resume_pipeline_job(
         logger.info(f"ARQ Worker: Resume job {job_id} completed successfully")
 
         if job_span:
-            # Refresh job to get updated metadata
-            updated_job = await job_manager.get_job(job_id)
-            if updated_job:
-                add_job_metadata_to_span(
-                    job_span, updated_job, job_id, "resume_pipeline"
-                )
+            if job:
+                add_job_metadata_to_span(job_span, job, job_id, "resume_pipeline")
             set_job_output(
                 job_span,
                 {
@@ -1338,35 +1347,38 @@ async def retry_step_job(
     Returns:
         Step execution result dictionary
     """
+    job_manager = get_job_manager()
+
+    # Single get_job call — enriches metadata for tracing and is reused throughout
+    job = await job_manager.get_job(job_id, _skip_arq_poll=True)
+
+    # Persist retry-specific metadata so it's visible in job listings and tracing
+    if job and job.metadata:
+        if "approval_id" not in job.metadata:
+            job.metadata["approval_id"] = approval_id
+        if "step_name" not in job.metadata:
+            job.metadata["step_name"] = step_name
+        if "has_user_guidance" not in job.metadata:
+            job.metadata["has_user_guidance"] = bool(user_guidance)
+        if user_guidance and "user_guidance_length" not in job.metadata:
+            job.metadata["user_guidance_length"] = len(user_guidance)
+        if context:
+            content_type = context.get("content_type")
+            if content_type and "content_type" not in job.metadata:
+                job.metadata["content_type"] = content_type
+        try:
+            await job_manager._save_job(job)
+        except Exception as _e:
+            logger.warning(f"Failed to persist retry metadata for job {job_id}: {_e}")
+
     # Create root job span for this job execution
     job_span = None
     if is_tracing_available():
-        # Get job to extract metadata
-        job_manager = get_job_manager()
-        job = await job_manager.get_job(job_id)
-
-        # Add retry-specific metadata if not already present
-        if job and job.metadata:
-            if "approval_id" not in job.metadata:
-                job.metadata["approval_id"] = approval_id
-            if "step_name" not in job.metadata:
-                job.metadata["step_name"] = step_name
-            if "has_user_guidance" not in job.metadata:
-                job.metadata["has_user_guidance"] = bool(user_guidance)
-            if user_guidance and "user_guidance_length" not in job.metadata:
-                job.metadata["user_guidance_length"] = len(user_guidance)
-            if context:
-                content_type = context.get("content_type")
-                if content_type and "content_type" not in job.metadata:
-                    job.metadata["content_type"] = content_type
-
-        # Prepare input value
         input_value = {
             "input_data": input_data,
             "context": context,
             "user_guidance": user_guidance,
         }
-
         job_span = create_job_root_span(
             job_id=job_id,
             job_type=f"retry_step_{step_name}",
@@ -1387,7 +1399,6 @@ async def retry_step_job(
         from marketing_project.services.step_retry_service import get_retry_service
 
         # Update job manager - mark as processing and update progress
-        job_manager = get_job_manager()
         await job_manager.update_job_status(job_id, JobStatus.PROCESSING)
         await job_manager.update_job_progress(job_id, 10, f"Retrying step: {step_name}")
 
@@ -1577,16 +1588,15 @@ async def execute_single_step_job(
     Returns:
         Step execution result dictionary
     """
+    job_manager = get_job_manager()
+
+    # Single get_job call shared by telemetry and result/error storage
+    job = await job_manager.get_job(job_id, _skip_arq_poll=True)
+
     # Create root job span for this job execution
     job_span = None
     if is_tracing_available():
-        # Get job to extract metadata
-        job_manager = get_job_manager()
-        job = await job_manager.get_job(job_id)
-
-        # Prepare input value (content_json + context)
         input_data = {"content": content_json, "context": context}
-
         job_span = create_job_root_span(
             job_id=job_id, job_type=f"step_{step_name}", input_value=input_data, job=job
         )
@@ -1594,8 +1604,6 @@ async def execute_single_step_job(
     try:
         logger.info(f"ARQ Worker: Executing single step '{step_name}' for job {job_id}")
 
-        # Update job manager
-        job_manager = get_job_manager()
         await job_manager.update_job_status(job_id, JobStatus.PROCESSING)
         await job_manager.update_job_progress(
             job_id, 10, f"Executing step: {step_name}"
@@ -1612,18 +1620,18 @@ async def execute_single_step_job(
             job_id=job_id,
         )
 
-        # Update job with result
         await job_manager.update_job_progress(
             job_id, 90, f"Step '{step_name}' completed"
         )
         await job_manager.update_job_status(job_id, JobStatus.COMPLETED)
 
-        # Store result in job
-        job = await job_manager.get_job(job_id)
-        if job:
-            job.result = result
-            job.current_step = step_name
-            await job_manager._save_job(job)
+        # Fetch fresh job state after status/progress updates to avoid overwriting
+        # COMPLETED status with the stale QUEUED state from initial fetch
+        completed_job = await job_manager.get_job(job_id, _skip_arq_poll=True)
+        if completed_job:
+            completed_job.result = result
+            completed_job.current_step = step_name
+            await job_manager._save_job(completed_job)
 
         await job_manager.update_job_progress(job_id, 100, "Completed")
         logger.info(
@@ -1631,11 +1639,9 @@ async def execute_single_step_job(
         )
 
         if job_span:
-            # Refresh job to get updated metadata
-            updated_job = await job_manager.get_job(job_id)
-            if updated_job:
+            if completed_job:
                 add_job_metadata_to_span(
-                    job_span, updated_job, job_id, f"step_{step_name}"
+                    job_span, completed_job, job_id, f"step_{step_name}"
                 )
             set_job_output(
                 job_span,
@@ -1662,15 +1668,15 @@ async def execute_single_step_job(
             set_span_attribute(job_span, "job.status", "failed")
             record_span_exception(job_span, e)
             set_span_status(job_span, StatusCode.ERROR if StatusCode else None, str(e))
-        job_manager = get_job_manager()
         await job_manager.update_job_status(job_id, JobStatus.FAILED)
         await job_manager.update_job_progress(
             job_id, 0, f"Step execution failed: {str(e)}"
         )
-        job = await job_manager.get_job(job_id)
-        if job:
-            job.error = str(e)
-            await job_manager._save_job(job)
+        # Fetch fresh state after status update to avoid overwriting FAILED with stale QUEUED
+        failed_job = await job_manager.get_job(job_id, _skip_arq_poll=True)
+        if failed_job:
+            failed_job.error = str(e)
+            await job_manager._save_job(failed_job)
         raise
     finally:
         close_span(job_span)
@@ -2140,6 +2146,56 @@ async def expire_stale_approvals(ctx):
         logger.error(f"expire_stale_approvals: cleanup failed: {e}")
 
 
+async def process_competitor_research_job(ctx, job_id: str, request_json: str) -> Dict:
+    """
+    Background job for running competitor research analysis.
+
+    Analyzes competitor blogs and social media posts using LLM to identify
+    why their content performs well and surface actionable strategic insights.
+
+    Args:
+        ctx: ARQ context
+        job_id: Research job ID (created before enqueueing)
+        request_json: JSON-serialized CompetitorResearchRequest
+
+    Returns:
+        Dict with job_id and status
+    """
+    from marketing_project.models.competitor_models import CompetitorResearchRequest
+    from marketing_project.services.competitor_research_service import (
+        get_competitor_research_service,
+    )
+
+    logger.info(f"[COMPETITOR] Starting competitor research job {job_id}")
+    service = get_competitor_research_service()
+
+    try:
+        request_data = json.loads(request_json)
+        request = CompetitorResearchRequest(**request_data)
+
+        result = await service.run_research(job_id=job_id, request=request)
+
+        logger.info(
+            f"[COMPETITOR] Job {job_id} completed: " f"{len(result.analyses)} analyses"
+        )
+        return {
+            "job_id": job_id,
+            "status": "completed",
+            "analyses_count": len(result.analyses),
+        }
+
+    except Exception as e:
+        logger.error(
+            f"[COMPETITOR] Job {job_id} failed: {e}",
+            exc_info=True,
+        )
+        try:
+            await service.update_job_status(job_id, "failed", error=str(e))
+        except Exception:
+            pass
+        return {"job_id": job_id, "status": "failed", "error": str(e)}
+
+
 # ARQ Worker Settings
 class WorkerSettings:
     """
@@ -2185,6 +2241,7 @@ class WorkerSettings:
         refresh_brand_kit_job,
         analyze_brand_kit_batch_job,
         synthesize_brand_kit_job,
+        process_competitor_research_job,
     ]
 
     # Worker settings

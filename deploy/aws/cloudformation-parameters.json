@@ -118,5 +118,10 @@
     "ParameterKey": "ArthurTaskId",
     "ParameterValue": "",
     "Description": "Task ID for Arthur (optional - leave empty to disable telemetry, must have is_agentic=True if provided)"
+  },
+  {
+    "ParameterKey": "EncryptionKey",
+    "ParameterValue": "YOUR_FERNET_ENCRYPTION_KEY_HERE",
+    "Description": "Fernet encryption key for provider credentials (generate with: python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\")"
   }
 ]

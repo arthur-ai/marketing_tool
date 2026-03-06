@@ -18,16 +18,6 @@ from typing import Any, Dict, List, Optional
 import yaml
 from openai import AsyncOpenAI
 
-# OpenTelemetry imports for tracing
-try:
-    from opentelemetry import trace
-    from opentelemetry.trace import Status, StatusCode
-
-    _tracing_available = True
-except ImportError:
-    _tracing_available = False
-    logger.debug("OpenTelemetry not available, tracing disabled")
-
 
 def _json_serializer(obj: Any) -> Any:
     """Custom JSON serializer for datetime and other non-serializable objects."""
@@ -63,18 +53,6 @@ from marketing_project.plugins.social_media_post_generation.tasks import (
     SocialMediaPostGenerationPlugin,
 )
 from marketing_project.prompts.prompts import get_template, has_template
-from marketing_project.services.function_pipeline.tracing import (
-    ensure_span_has_minimum_metadata,
-    extract_model_info,
-    set_llm_invocation_parameters,
-    set_llm_messages,
-    set_llm_response_format,
-    set_llm_system_and_provider,
-    set_llm_token_counts,
-    set_span_input,
-    set_span_kind,
-    set_span_output,
-)
 
 logger = logging.getLogger("marketing_project.services.social_media_pipeline")
 
@@ -633,14 +611,8 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
         Returns:
             Instance of response_model
 
-        Raises:
-            ApprovalRequiredException: If approval is required (pipeline should stop)
+        Returns ApprovalRequiredSentinel if approval is required (pipeline should stop).
         """
-        # Import at method level so it's available in exception handlers
-        from marketing_project.processors.approval_helper import (
-            ApprovalRequiredException,
-        )
-
         start_time = time.time()
 
         # Get step-specific model and temperature from pipeline config
@@ -689,184 +661,23 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
 
             # Initialize parsed_result for all code paths
             parsed_result = None
-            response = None
 
-            # Create OpenTelemetry span for this LLM call
-            if _tracing_available:
-                try:
-                    tracer = trace.get_tracer(__name__)
-                    with tracer.start_as_current_span(
-                        f"social_media_pipeline.{step_name}",
-                        kind=trace.SpanKind.CLIENT,
-                    ) as span:
-                        # Set OpenInference span kind
-                        set_span_kind(span, "LLM")
-
-                        # Set input attributes (full context dict) - always set, never blank
-                        set_span_input(span, context if context else {})
-                        if context:
-                            content_type = context.get("content_type")
-                            if content_type:
-                                span.set_attribute("content_type", content_type)
-                            platform = context.get("social_media_platform")
-                            if platform:
-                                span.set_attribute("platform", platform)
-                                span.set_attribute("social_media_platform", platform)
-
-                        # Extract and set model performance metrics
-                        model_info = extract_model_info(step_model)
-                        for key, value in model_info.items():
-                            span.set_attribute(f"llm.{key}", value)
-
-                        # Set LLM input messages (always set, never blank)
-                        set_llm_messages(span, messages if messages else [])
-
-                        # Ensure minimum metadata
-                        ensure_span_has_minimum_metadata(
-                            span, f"social_media_pipeline.{step_name}", "llm_call"
-                        )
-
-                        # Set span attributes
-                        span.set_attribute("step_name", step_name)
-                        span.set_attribute("step_number", step_number)
-                        span.set_attribute("model", step_model)
-                        span.set_attribute("llm.model_name", step_model)
-                        set_llm_system_and_provider(
-                            span, system="openai", provider="openai"
-                        )
-                        span.set_attribute("temperature", step_temperature)
-                        if job_id:
-                            span.set_attribute("job_id", job_id)
-
-                        # Set LLM response format (JSON schema)
-                        response_format = {
-                            "type": "json_schema",
-                            "json_schema": {
-                                "name": step_name,
-                                "strict": True,
-                                "schema": schema,
-                            },
-                        }
-                        set_llm_response_format(span, response_format)
-
-                        # Set LLM invocation parameters
-                        invocation_params = {
-                            "temperature": step_temperature,
-                            "model": step_model,
-                        }
-                        set_llm_invocation_parameters(span, invocation_params)
-
-                        response = await self.client.chat.completions.create(
-                            model=step_model,
-                            messages=messages,
-                            response_format=response_format,
-                            temperature=step_temperature,
-                        )
-
-                        # Parse response to get result for output
-                        content = response.choices[0].message.content
-                        result_data = None
-                        result = None
-                        if content:
-                            try:
-                                result_data = json.loads(content)
-                                result = response_model(**result_data)
-                            except Exception as parse_error:
-                                logger.debug(
-                                    f"Failed to parse response in span: {parse_error}"
-                                )
-
-                        # Update span with response metadata
-                        try:
-                            # Set output attributes (parsed result or raw content)
-                            if result:
-                                set_span_output(
-                                    span,
-                                    (
-                                        result.model_dump()
-                                        if hasattr(result, "model_dump")
-                                        else result_data
-                                    ),
-                                )
-                            elif content:
-                                set_span_output(
-                                    span, content, output_mime_type="application/json"
-                                )
-
-                            # Set LLM output messages
-                            output_messages = []
-                            if response.choices and len(response.choices) > 0:
-                                choice = response.choices[0]
-                                if choice.message:
-                                    output_messages.append(
-                                        {
-                                            "role": choice.message.role or "assistant",
-                                            "content": choice.message.content,
-                                        }
-                                    )
-                            set_llm_messages(
-                                span, None, output_messages if output_messages else None
-                            )
-
-                            # Set token counts using OpenInference format
-                            if response.usage:
-                                set_llm_token_counts(
-                                    span,
-                                    prompt_tokens=response.usage.prompt_tokens,
-                                    completion_tokens=response.usage.completion_tokens,
-                                    total_tokens=response.usage.total_tokens,
-                                )
-                                # Keep legacy attributes for backward compatibility
-                                span.set_attribute(
-                                    "input_tokens", response.usage.prompt_tokens or 0
-                                )
-                                span.set_attribute(
-                                    "output_tokens",
-                                    response.usage.completion_tokens or 0,
-                                )
-                                span.set_attribute(
-                                    "total_tokens", response.usage.total_tokens or 0
-                                )
-                            span.set_status(Status(StatusCode.OK))
-                        except Exception as e:
-                            logger.debug(f"Failed to update span with response: {e}")
-
-                        # Store parsed result for return after span closes
-                        parsed_result = result
-                except Exception as span_error:
-                    logger.debug(f"Failed to create span: {span_error}")
-                    # Fallback to non-instrumented call - response will be set here
-                    response = await self.client.chat.completions.create(
-                        model=step_model,
-                        messages=messages,
-                        response_format={
-                            "type": "json_schema",
-                            "json_schema": {
-                                "name": step_name,
-                                "strict": True,
-                                "schema": schema,
-                            },
-                        },
-                        temperature=step_temperature,
-                    )
-            else:
-                # No tracing available, make direct call - response will be set here
-                response = await self.client.chat.completions.create(
-                    model=step_model,
-                    messages=messages,
-                    response_format={
-                        "type": "json_schema",
-                        "json_schema": {
-                            "name": step_name,
-                            "strict": True,
-                            "schema": schema,
-                        },
+            response = await self.client.chat.completions.create(
+                model=step_model,
+                messages=messages,
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": step_name,
+                        "strict": True,
+                        "schema": schema,
                     },
-                    temperature=step_temperature,
-                )
+                },
+                temperature=step_temperature,
+            )
 
-            # Parse response (only if not already parsed in span)
-            if parsed_result is None and response:
+            # Parse response
+            if response:
                 content = response.choices[0].message.content
                 if not content:
                     raise ValueError("Empty response from OpenAI API")
@@ -875,10 +686,7 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                 result_data = json.loads(content)
                 parsed_result = response_model(**result_data)
 
-            # Return parsed result
-            if parsed_result:
-                return parsed_result
-            else:
+            if not parsed_result:
                 raise ValueError("Failed to parse response from OpenAI API")
 
             execution_time = time.time() - start_time
@@ -890,91 +698,36 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
             if job_id:
                 try:
                     from marketing_project.processors.approval_helper import (
-                        check_and_create_approval_request,
+                        ApprovalCheckFailedException,
+                        ApprovalRequiredSentinel,
                     )
-                    from marketing_project.services.job_manager import (
-                        JobStatus,
-                        get_job_manager,
-                    )
-
-                    logger.info(
-                        f"[APPROVAL] Checking approval for step {step_number} ({step_name}) in job {job_id}"
+                    from marketing_project.services.function_pipeline.approval import (
+                        check_step_approval,
                     )
 
-                    # Convert result to dict for approval system
-                    try:
-                        result_dict = result.model_dump(mode="json")
-                    except (TypeError, ValueError):
-                        result_dict = result.model_dump()
-
-                    # Extract confidence score if available
-                    confidence = result_dict.get("confidence_score")
-
-                    # Prepare input data for approval context
-                    pipeline_content = context.get("input_content") if context else None
-                    content_for_approval = (
-                        pipeline_content
-                        if pipeline_content
-                        else {"title": "N/A", "content": "N/A"}
-                    )
-                    input_data = {
-                        "prompt": prompt[:500],  # Truncate for readability
-                        "system_instruction": system_instruction[:200],
-                        "context_keys": list(context.keys()) if context else [],
-                        "original_content": pipeline_content or content_for_approval,
-                    }
-
-                    # Check if approval is needed (raises ApprovalRequiredException if required)
-                    await check_and_create_approval_request(
-                        job_id=job_id,
-                        agent_name=step_name,
-                        step_name=f"Step {step_number}: {step_name}",
-                        step_number=step_number,
-                        input_data=input_data,
-                        output_data=result_dict,
-                        context=context or {},
-                        confidence_score=confidence,
-                        suggestions=[
-                            f"Review {step_name} output quality",
-                            "Check alignment with content goals",
-                            "Verify accuracy and appropriateness",
-                        ],
-                    )
-                    # If no exception raised, approval not needed or auto-approved, continue
-                    logger.info(
-                        f"[APPROVAL] No approval required for step {step_number} ({step_name}), continuing pipeline"
-                    )
-
-                except ApprovalRequiredException as e:
-                    # Approval required - pipeline should stop
-                    logger.info(
-                        f"[APPROVAL] Step {step_number} ({step_name}) requires approval. "
-                        f"Pipeline stopping. Approval ID: {e.approval_id}"
-                    )
-
-                    # Update job status to WAITING_FOR_APPROVAL
-                    job_manager = get_job_manager()
-                    await job_manager.update_job_status(
-                        job_id, JobStatus.WAITING_FOR_APPROVAL
-                    )
-                    await job_manager.update_job_progress(
-                        job_id,
-                        90,
-                        f"Waiting for approval at step {step_number}: {step_name}",
-                    )
-
-                    # Track step info
-                    execution_time = time.time() - start_time
-                    step_info = PipelineStepInfo(
+                    approval_result = await check_step_approval(
+                        parsed_result=parsed_result,
                         step_name=step_name,
                         step_number=step_number,
-                        status="waiting_for_approval",
-                        execution_time=execution_time,
+                        job_id=job_id,
+                        prompt=prompt,
+                        system_instruction=system_instruction,
+                        context=context,
+                        start_time=start_time,
+                        step_info_list=self.step_info,
                     )
-                    self.step_info.append(step_info)
 
-                    # Re-raise to be handled by execute_pipeline
+                    if approval_result.requires_approval:
+                        return ApprovalRequiredSentinel(approval_result)
+
+                except ApprovalCheckFailedException:
                     raise
+                except Exception as approval_error:
+                    logger.error(
+                        f"[APPROVAL] Unexpected error in approval check for step {step_number} ({step_name}): {approval_error}. "
+                        f"Continuing pipeline execution.",
+                        exc_info=True,
+                    )
 
             # Record step info
             step_info = PipelineStepInfo(
@@ -991,11 +744,8 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                 f"(tokens: {tokens_used})"
             )
 
-            return result
+            return parsed_result
 
-        except ApprovalRequiredException:
-            # Re-raise approval exceptions
-            raise
         except Exception as e:
             execution_time = time.time() - start_time
             step_info = PipelineStepInfo(
