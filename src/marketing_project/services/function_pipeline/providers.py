@@ -112,12 +112,12 @@ async def call_llm_structured(
     llm_client = await credential_service.get_llm_client(effective_provider)
 
     # Extra kwargs from Arthur prompt config (e.g. api_base override for vLLM)
-    extra_kwargs: Dict[str, Any] = model_config or {}
+    extra_kwargs: Dict[str, Any] = dict(model_config or {})
+    extra_kwargs.setdefault("response_format", {"type": "json_object"})
 
     response = await llm_client.acompletion(
         model=litellm_model,
         messages=messages_with_schema,
-        response_format={"type": "json_object"},
         temperature=temperature,
         **extra_kwargs,
     )

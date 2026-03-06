@@ -53,6 +53,13 @@ except ImportError:
     Status = None
     StatusCode = None
 
+# Configure Python root logger to INFO so marketing_project.* logs are visible in CloudWatch.
+# ARQ only configures its own 'arq' logger; without this, all our INFO logs are swallowed.
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
+
 logger = logging.getLogger(__name__)
 
 
