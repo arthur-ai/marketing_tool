@@ -85,7 +85,14 @@ def setup_tracing(service_instance_id: Optional[str] = None) -> bool:
         )
         if arthur_task_id:
             arthur_kwargs["task_id"] = arthur_task_id
-            logger.info(f"Telemetry: passing task_id={arthur_task_id!r} to Arthur")
+            # The vendor SDK stores task_id for prompt API calls but does NOT embed it
+            # in OTel resource attributes — so Arthur can't route traces to the task.
+            # We pass it explicitly via resource_attributes so every span carries it.
+            arthur_kwargs["resource_attributes"] = {"arthur.task": arthur_task_id}
+            logger.info(
+                f"Telemetry: passing task_id={arthur_task_id!r} to Arthur "
+                f"(also set as arthur.task resource attribute)"
+            )
         else:
             logger.warning(
                 "Telemetry: ARTHUR_TASK_ID is not set — traces may not be routed to a task"
