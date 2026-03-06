@@ -30,11 +30,21 @@ def is_tracing_available() -> bool:
 def create_span(name: str, attributes: Optional[dict] = None, **_kwargs):
     """Create and enter an OpenTelemetry span."""
     if not _tracing_available:
+        logger.debug(f"Tracing unavailable, skipping span: {name}")
         return None
     try:
         tracer = trace.get_tracer(__name__)
+        provider_type = type(trace.get_tracer_provider()).__name__
         span = tracer.start_as_current_span(name, kind=trace.SpanKind.INTERNAL)
         span.__enter__()
+        # Warn if we got a no-op span (provider not properly configured)
+        is_noop = type(span).__name__ in ("NonRecordingSpan", "DefaultSpan")
+        if is_noop:
+            logger.warning(
+                f"Span '{name}' is a no-op (provider={provider_type}) — spans will NOT be exported"
+            )
+        else:
+            logger.debug(f"Span created: {name} (provider={provider_type})")
         if attributes:
             for key, value in attributes.items():
                 try:
@@ -43,7 +53,7 @@ def create_span(name: str, attributes: Optional[dict] = None, **_kwargs):
                     pass
         return span
     except Exception as e:
-        logger.debug(f"Failed to create span {name}: {e}")
+        logger.warning(f"Failed to create span {name}: {e}")
         return None
 
 

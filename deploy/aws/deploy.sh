@@ -96,7 +96,7 @@ REQUIRED ENVIRONMENT VARIABLES:
 
 OPTIONAL ENVIRONMENT VARIABLES:
     EXISTING_MONGODB_ENDPOINT  Existing MongoDB/DocumentDB endpoint (optional - provide to use existing MongoDB)
-    ARTHUR_BASE_URL            Base URL for Arthur API (optional - default: http://localhost:3030)
+    ARTHUR_BASE_URL            Base URL for Arthur API (optional - default: https://app.arthur.ai)
     ARTHUR_API_KEY             API key for Arthur authentication (optional - leave empty to disable telemetry)
     ARTHUR_TASK_ID             Task ID for Arthur (optional - leave empty to disable telemetry, must have is_agentic=True if provided)
     OTEL_SERVICE_NAME          OpenTelemetry service name (optional - default: marketing-tool)
@@ -440,7 +440,7 @@ fi
 PARAMETERS="$PARAMETERS ParameterKey=EncryptionKey,ParameterValue=$ENCRYPTION_KEY"
 
 # Telemetry parameters (optional)
-ARTHUR_BASE_URL="${ARTHUR_BASE_URL:-http://localhost:3030}"
+ARTHUR_BASE_URL="${ARTHUR_BASE_URL:-https://app.arthur.ai}"
 ARTHUR_API_KEY="${ARTHUR_API_KEY:-}"
 ARTHUR_TASK_ID="${ARTHUR_TASK_ID:-}"
 OTEL_SERVICE_NAME="${OTEL_SERVICE_NAME:-marketing-tool}"

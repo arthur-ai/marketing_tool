@@ -51,8 +51,9 @@ class SEOKeywordsPlugin(PipelineStepPlugin):
         prompt_context = super()._build_prompt_context(context)
 
         # Handle content analysis for seo_keywords step
-        if "content" in prompt_context:
-            content = prompt_context.get("content", {})
+        if "input_content" in prompt_context:
+            content = prompt_context.get("input_content", {})
+            prompt_context["content"] = content  # expose as {{ content }} in template
             if isinstance(content, dict):
                 content_str = content.get("content", "")
                 # Increase truncation limit from 2000 to 8000 characters
