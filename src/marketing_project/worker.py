@@ -1998,8 +1998,8 @@ async def startup(ctx):
                 f"✓ Telemetry initialized successfully (instance: {worker_instance_id})"
             )
         else:
-            logger.info(
-                "⚠ Telemetry not configured (missing ARTHUR_API_KEY or ARTHUR_TASK_ID)"
+            logger.warning(
+                "⚠ Telemetry not configured — check ARTHUR_API_KEY and ARTHUR_BASE_URL env vars"
             )
     except Exception as e:
         logger.warning(f"⚠ Failed to initialize telemetry: {e}")
