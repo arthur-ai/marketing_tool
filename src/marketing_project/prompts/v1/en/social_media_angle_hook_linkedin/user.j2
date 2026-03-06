@@ -1,0 +1,61 @@
+Generate engaging angles and hooks for a {{ platform }} post based on the marketing brief.
+
+───────────────────────────────────────
+PLATFORM
+───────────────────────────────────────
+
+Platform: {{ platform }}
+{% if email_type %}Email Type: {{ email_type }}{% endif %}
+
+───────────────────────────────────────
+MARKETING BRIEF CONTEXT
+───────────────────────────────────────
+
+- Target Audience: {{ brief_result.target_audience | join(', ') }}
+- Key Messages: {{ brief_result.key_messages | join('; ') }}
+- Tone and Voice: {{ brief_result.tone_and_voice }}
+- Content Strategy: {{ brief_result.content_strategy }}
+{% if brief_result.platform_specific_notes %}
+- Platform Notes: {{ brief_result.platform_specific_notes }}
+{% endif %}
+
+───────────────────────────────────────
+BLOG POST CONTEXT
+───────────────────────────────────────
+
+{% if input_content %}
+{% if input_content.title %}Title: {{ input_content.title }}{% endif %}
+{% if input_content.content %}Content Preview: {{ input_content.content[:300] }}...{% endif %}
+{% endif %}
+
+───────────────────────────────────────
+GENERATION TASK
+───────────────────────────────────────
+
+Generate the following for {{ platform }}:
+
+1. ANGLES (3–5 options) — different approaches to presenting this content
+   {% if platform == 'linkedin' %}- Consider: thought leadership, industry insights, career advice, business growth, case studies{% endif %}
+   {% if platform == 'hackernews' %}- Consider: technical innovation, problem-solving, open source, engineering challenges, architecture decisions{% endif %}
+   {% if platform == 'email' %}{% if email_type == 'newsletter' %}- Consider: educational content, industry updates, trend analysis, best practices{% else %}- Consider: value propositions, exclusive offers, limited-time content, clear benefits{% endif %}{% endif %}
+
+2. HOOKS (3–5 options) — attention-grabbing opening lines
+   {% if platform == 'linkedin' %}- Consider: questions, statistics, personal stories, provocative statements, industry trends{% endif %}
+   {% if platform == 'hackernews' %}- Consider: technical questions, interesting problems, contrarian views, deep technical insights{% endif %}
+   {% if platform == 'email' %}- Consider: subject line variations (50–60 chars), compelling previews, clear value statements{% endif %}
+
+3. RECOMMENDED ANGLE — select the best angle for {{ platform }} and explain why
+
+4. RECOMMENDED HOOK — select the best hook for {{ platform }} and explain why
+
+5. RATIONALE — explain how the recommended angle and hook work together to maximize engagement on {{ platform }}
+
+───────────────────────────────────────
+ALIGNMENT REQUIREMENTS
+───────────────────────────────────────
+
+Ensure all angles and hooks:
+- Align with target audience: {{ brief_result.target_audience | join(', ') }}
+- Match the tone: {{ brief_result.tone_and_voice }}
+- Support key messages: {{ brief_result.key_messages | join('; ') }}
+- Are platform-appropriate for {{ platform }}

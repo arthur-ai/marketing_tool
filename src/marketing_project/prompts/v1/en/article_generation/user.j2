@@ -1,0 +1,130 @@
+Generate a complete article from scratch. Main keyword: {{ all_keywords.main_keyword }} (HIGHEST PRIORITY — appears in title, intro, headings, conclusion).
+
+───────────────────────────────────────
+FROM STEP 1 — SEO KEYWORDS
+───────────────────────────────────────
+
+- Main Keyword: {{ all_keywords.main_keyword }}
+- Primary Keywords: {{ all_keywords.primary | join(', ') }}
+- Secondary Keywords: {{ all_keywords.secondary | join(', ') if all_keywords.secondary else 'None' }}
+- LSI Keywords: {{ all_keywords.lsi | join(', ') if all_keywords.lsi else 'None' }}
+- Long-tail Keywords: {{ all_keywords.long_tail | join(', ') if all_keywords.long_tail else 'None' }}
+{% if seo_result.keyword_clusters %}
+- Keyword Clusters: {{ seo_result.keyword_clusters | map(attribute='cluster_name') | join(', ') }}
+{% endif %}
+
+───────────────────────────────────────
+FROM STEP 2 — MARKETING BRIEF
+───────────────────────────────────────
+
+- Target Audience: {{ brief_result.target_audience | join(', ') }}
+- Key Messages: {{ brief_result.key_messages | join(', ') }}
+- Content Strategy: {{ brief_result.content_strategy }}
+- Tone and Voice: {{ brief_result.tone_and_voice or 'Professional and engaging' }}
+- Competitive Angle: {{ brief_result.competitive_angle or 'Not specified' }}
+- KPIs: {{ brief_result.kpis | join(', ') if brief_result.kpis else 'Not specified' }}
+- Distribution Channels: {{ brief_result.distribution_channels | join(', ') if brief_result.distribution_channels else 'Not specified' }}
+
+───────────────────────────────────────
+KEYWORD PLACEMENT REQUIREMENTS
+───────────────────────────────────────
+
+Main Keyword "{{ all_keywords.main_keyword }}":
+- Title: must appear, preferably in first 3 words
+- Introduction: must appear within first 100 words
+- Headings: must appear in at least 2 H2 headings
+- Conclusion: must appear in final paragraph
+- Target density: 1–2%
+
+Primary keywords: use in H2/H3 headings and first 3 paragraphs (density: 0.5–1% each)
+Secondary keywords: use as supporting variations throughout body (density: 0.3–0.5% each)
+LSI keywords: use for semantic depth; no specific density target
+Long-tail keywords: use in FAQ sections and question-based content
+{% if seo_result.keyword_clusters %}
+Organize content around keyword clusters for thematic depth.
+{% endif %}
+
+───────────────────────────────────────
+HEADER REQUIREMENTS
+───────────────────────────────────────
+
+ALL headers must be content-specific and keyword-rich — NEVER generic placeholders.
+
+NEVER USE: Introduction, Conclusion, Summary, Overview, Final Thoughts, Getting Started
+GOOD EXAMPLES:
+- "Implementing {{ all_keywords.main_keyword }} for Marketing Success"
+- "Key Takeaways for Your {{ all_keywords.main_keyword }} Strategy"
+
+───────────────────────────────────────
+ARTICLE DELIVERABLES
+───────────────────────────────────────
+
+- article_title: 50–60 chars, includes main_keyword (preferably first 3 words)
+- article_content: full article in markdown (not a summary)
+- outline: list of H2-level headers (content-specific, keyword-rich — NOT generic)
+- hook: 50–100 words opening hook; include main_keyword naturally
+- key_takeaways: 3–5 strings reinforcing main messages from marketing brief
+- call_to_action: 20–50 words aligned with marketing brief KPIs
+
+{% if design_kit_config %}
+───────────────────────────────────────
+BRAND KIT GUIDELINES (STRICTLY FOLLOW ALL)
+───────────────────────────────────────
+
+VOICE AND TONE
+- Voice Adjectives: {{ design_kit_config.voice_adjectives | join(', ') if design_kit_config.voice_adjectives else 'Not specified' }}
+- Point of View: {{ design_kit_config.point_of_view }}
+- Sentence Length/Tempo: {{ design_kit_config.sentence_length_tempo }}
+- Lexical Preferences: {{ design_kit_config.lexical_preferences | join(', ') if design_kit_config.lexical_preferences else 'None' }}
+
+STRUCTURE
+- Section Order: {{ design_kit_config.section_order | join(' → ') if design_kit_config.section_order else 'Not specified' }}
+- Heading Depth: Use {{ design_kit_config.heading_depth }} headings
+- List Usage: {{ design_kit_config.list_usage_preference }}
+- Paragraph Length: {{ design_kit_config.paragraph_length_range.min }}–{{ design_kit_config.paragraph_length_range.max }} words per paragraph
+{% if design_kit_config.include_tldr %}
+- Include TL;DR section
+{% endif %}
+{% if design_kit_config.include_summary %}
+- Include summary section
+{% endif %}
+
+CTA PATTERNS
+- CTA Language: {{ design_kit_config.cta_language | join(', ') if design_kit_config.cta_language else 'Not specified' }}
+- CTA Positions: {{ design_kit_config.cta_positions | join(', ') if design_kit_config.cta_positions else 'Not specified' }}
+- CTA Verbs: {{ design_kit_config.cta_verbs | join(', ') if design_kit_config.cta_verbs else 'Not specified' }}
+- Typical Link Targets: {{ design_kit_config.typical_link_targets | join(', ') if design_kit_config.typical_link_targets else 'Not specified' }}
+
+COMPLIANCE
+- Must Use Terms: {{ design_kit_config.must_use_names_terms | join(', ') if design_kit_config.must_use_names_terms else 'None' }}
+- Prohibited Phrases: {{ design_kit_config.prohibited_phrases | join(', ') if design_kit_config.prohibited_phrases else 'None' }}
+{% if design_kit_config.disclaimer_boilerplate %}
+- Disclaimer: {{ design_kit_config.disclaimer_boilerplate }}
+{% endif %}
+- Date Format: {{ design_kit_config.date_format }}
+
+QUANT TARGETS
+- Word Count Range: {{ design_kit_config.word_count_range.min }}–{{ design_kit_config.word_count_range.max }} words
+- Heading Density: {{ design_kit_config.heading_density }}
+- Keyword Density Band: {{ design_kit_config.keyword_density_band }}
+
+{% if design_kit_config.opening_lines %}
+REUSABLE SNIPPETS
+- Opening Lines: {{ design_kit_config.opening_lines | join(' | ') }}
+{% endif %}
+{% if design_kit_config.transition_sentences %}
+- Transition Sentences: {{ design_kit_config.transition_sentences | join(' | ') }}
+{% endif %}
+{% if design_kit_config.proof_statements %}
+- Proof Statements: {{ design_kit_config.proof_statements | join(' | ') }}
+{% endif %}
+{% if design_kit_config.conclusion_frames %}
+- Conclusion Frames: {{ design_kit_config.conclusion_frames | join(' | ') }}
+{% endif %}
+{% if design_kit_config.common_faqs %}
+COMMON FAQS
+{% for faq in design_kit_config.common_faqs %}
+- Q: {{ faq.question }} | A: {{ faq.answer }}
+{% endfor %}
+{% endif %}
+{% endif %}

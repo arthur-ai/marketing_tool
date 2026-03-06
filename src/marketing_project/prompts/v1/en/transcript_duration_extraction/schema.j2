@@ -1,0 +1,44 @@
+{
+  "type": "json_schema",
+  "json_schema": {
+    "name": "transcript_duration_extraction_response",
+    "description": "Duration extraction result from the Transcript Duration Extraction agent",
+    "strict": true,
+    "schema": {
+      "type": "object",
+      "properties": {
+        "duration": {
+          "type": "number",
+          "description": "Duration in seconds as a positive integer, or 0 if it cannot be determined"
+        },
+        "duration_validated": {
+          "type": "boolean",
+          "description": "True if duration is present, positive, and at least 60 seconds"
+        },
+        "validation_issues": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of issues found with duration extraction. Empty if duration is valid"
+        },
+        "confidence_score": {
+          "type": "number",
+          "description": "Confidence from 0.0 to 1.0: 0.8-1.0 from timestamps, 0.5-0.7 from word count, 0.3-0.5 estimated"
+        },
+        "extraction_method": {
+          "type": "string",
+          "description": "Method used: timestamps (calculated from last timestamp), word_count (estimated from words), provided (validated input), or estimated (content structure)"
+        }
+      },
+      "required": [
+        "duration",
+        "duration_validated",
+        "validation_issues",
+        "confidence_score",
+        "extraction_method"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

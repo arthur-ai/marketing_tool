@@ -1,0 +1,135 @@
+Validate and approve the following transcript preprocessing data before proceeding to SEO keywords extraction.
+
+───────────────────────────────────────
+TRANSCRIPT INFORMATION
+───────────────────────────────────────
+
+- Transcript ID: {{ transcript_id }}
+- Title: {{ transcript_title }}
+- Transcript Type: {{ transcript_type or 'Not specified' }}
+{% if detected_format %}
+- Detected Format: {{ detected_format }}
+{% endif %}
+{% if parsing_confidence is not none %}
+- Parsing Confidence: {{ (parsing_confidence * 100)|round(1) }}% ({{ 'High' if parsing_confidence >= 0.8 else 'Medium' if parsing_confidence >= 0.5 else 'Low' }})
+{% endif %}
+{% if parsing_warnings %}
+- Parsing Warnings ({{ parsing_warnings|length }}):
+{% for warning in parsing_warnings %}
+  - {{ warning }}
+{% endfor %}
+{% endif %}
+
+───────────────────────────────────────
+SPEAKERS
+───────────────────────────────────────
+
+{% if transcript_speakers %}
+Number of Speakers: {{ transcript_speakers|length }}
+Speaker List:
+{% for speaker in transcript_speakers %}
+- {{ speaker }}
+{% endfor %}
+{% else %}
+WARNING: No speakers found in transcript data.
+{% endif %}
+
+───────────────────────────────────────
+DURATION
+───────────────────────────────────────
+
+{% if transcript_duration %}
+Duration: {{ transcript_duration }} seconds ({{ (transcript_duration / 60)|round(1) }} minutes)
+{% else %}
+WARNING: Duration not specified.
+{% endif %}
+
+───────────────────────────────────────
+CONTENT PREVIEW
+───────────────────────────────────────
+
+Content Summary (first 500 characters):
+{{ content_summary }}
+
+Full Content Length: {{ transcript_content|length if transcript_content else 0 }} characters
+
+{% if transcript_content %}
+───────────────────────────────────────
+FULL TRANSCRIPT CONTENT
+───────────────────────────────────────
+
+IMPORTANT: Use the full content below to extract speakers, duration, and validate the transcript.
+
+{{ transcript_content }}
+{% endif %}
+
+───────────────────────────────────────
+ADDITIONAL INFORMATION
+───────────────────────────────────────
+
+Snippet: {{ transcript_snippet or 'No snippet available' }}
+
+{% if transcript_metadata %}
+Metadata:
+{{ transcript_metadata|tojson(indent=2) }}
+{% endif %}
+
+{% if quality_metrics %}
+Parsing Quality Metrics:
+{% for metric, value in quality_metrics.items() %}
+- {{ metric|replace('_', ' ')|title }}: {{ (value * 100)|round(1) if value <= 1 else value }}%
+{% endfor %}
+{% endif %}
+
+{% if speaking_time_per_speaker %}
+Speaking Time per Speaker:
+{% for speaker, seconds in speaking_time_per_speaker.items() %}
+- {{ speaker }}: {{ (seconds / 60)|round(1) }} minutes ({{ seconds }} seconds)
+{% endfor %}
+{% endif %}
+
+{% if detected_language %}
+Detected Language: {{ detected_language|upper }}
+{% endif %}
+
+{% if key_topics %}
+Key Topics Extracted:
+{% for topic in key_topics %}
+- {{ topic }}
+{% endfor %}
+{% endif %}
+
+{% if conversation_flow %}
+Conversation Flow: {{ conversation_flow.get('type', 'unknown')|title }}
+{% if conversation_flow.get('question_count') is not none %}Questions: {{ conversation_flow.get('question_count', 0) }}{% endif %}
+{% if conversation_flow.get('answer_count') is not none %}Answers: {{ conversation_flow.get('answer_count', 0) }}{% endif %}
+{% endif %}
+
+───────────────────────────────────────
+VALIDATION AND EXTRACTION TASK
+───────────────────────────────────────
+
+IMPORTANT: If any data is missing, you MUST attempt to extract it from the content before flagging as invalid.
+
+1. SPEAKERS — if missing or empty:
+   - Use the FULL transcript content to extract speaker names
+   - Look for: "Name:" format, standalone names after timestamps, "Name said:" patterns
+   - Extract ALL unique speaker names from the entire transcript
+   - Set speakers_validated: true if at least one valid speaker extracted
+
+2. DURATION — if missing or invalid:
+   - Use the FULL transcript content to find timestamps
+   - Look for: SRT-style ("00:02:12,730 --> 00:02:15,570"), simple formats ("00:02:12", "[1:23]")
+   - Calculate duration from the LAST timestamp found
+   - If no timestamps: estimate from word count (~150 words per minute)
+   - Set duration_validated: true if successfully extracted or calculated
+
+3. CONTENT — check readability and completeness
+   - IMPORTANT: Timestamps are EXPECTED and NORMAL — do NOT flag for containing timestamps
+   - Only flag if content is ONLY timestamps with no actual transcript text
+
+4. TITLE AND SNIPPET — only flag if completely generic or missing
+
+5. OVERALL QUALITY — calculate confidence score; only require approval if extraction failed for critical data
+
+Include in your response: what you extracted, how parsing confidence influenced your assessment, and your approval decision with reasoning.

@@ -44,6 +44,11 @@ class ContentAnalysis(BaseModel):
     typical_link_targets: List[str] = Field(default_factory=list)
     must_use_names_terms: List[str] = Field(default_factory=list)
     tag_conventions: List[str] = Field(default_factory=list)
+    # Brand intelligence signals extracted from content
+    competitors_mentioned: List[str] = Field(default_factory=list)
+    brand_signals: List[str] = Field(default_factory=list)
+    icp_signals: List[str] = Field(default_factory=list)
+    author_signals: List[str] = Field(default_factory=list)
 
 
 class BrandKitPlugin:
@@ -105,8 +110,9 @@ Focus on:
 - Snippets: Extract actual opening lines, transitions, proof statements, and conclusion patterns from the text
 - Terminology: What specific terms, product names, or brand language is used?
 - Links: What are the actual link targets mentioned?
+- Brand intelligence: What competitor names are mentioned? What phrases reveal the brand's positioning or mission? What phrases indicate who the target audience is? What phrases reveal the author's expertise or perspective?
 
-Be precise and extract only what you can observe in the content. Different content types may have different patterns - extract what's actually there."""
+Be precise and extract only what you can observe in the content. If a signal is not clearly present, use an empty list."""
 
             # Include more content for better analysis (first 5000 chars)
             content_preview = content[:5000] if content else ""
@@ -151,8 +157,13 @@ Extract and return ONLY patterns you can observe in the content above:
 - typical_link_targets: List of actual link destinations mentioned (URLs or page names)
 - must_use_names_terms: List of important product names, brand terms, or required terminology found
 - tag_conventions: List of any visible tagging patterns (if metadata/tags are visible)
+- competitors_mentioned: List of competitor names, products, or other brands mentioned by name (e.g., "unlike Datadog", "compared to MLflow")
+- brand_signals: Exact phrases that reveal brand positioning, mission, or differentiation (e.g., "the only platform that", "built specifically for", "unlike traditional approaches")
+- icp_signals: Phrases that reveal the target audience (e.g., "for data scientists", "if you manage models in production", "teams running ML at scale")
+- author_signals: Phrases that reveal the author's tone or expertise (e.g., "in our experience", "having deployed hundreds of models", "we've seen firsthand")
 
-If a pattern is not clearly present, use an empty list [] or null. Only include what you can extract from the actual content."""
+If a pattern is not clearly present, use an empty list [] or null. Only include what you can extract from the actual content.
+"""
 
             # Call LLM to analyze this content piece
             analysis = await pipeline._call_function(
@@ -407,15 +418,17 @@ Generate a complete BrandKitConfig JSON structure following these guidelines:
    - heading_density: Infer from heading patterns
    - keyword_density_band: Use "medium" as default
 
-9. BRAND INTELLIGENCE (infer from content or leave as null if not determinable):
-   - competitors: Infer any mentioned competitors or leave null
-   - brand_point_of_view: Infer brand's perspective from tone/messaging or leave null
-   - competitive_differentiation_angle: Infer positioning angle or leave null
-   - success_metrics: List any content KPIs mentioned or leave null
-   - author_persona: Describe the author persona based on writing style or leave null
-   - writing_samples: Leave null (to be filled by admin)
-   - about_the_brand: Infer brand description from content or leave null
-   - ideal_customer_profile: Infer target audience from content messaging or leave null
+9. BRAND INTELLIGENCE - use the extracted signals from analyses:
+   - competitors: Deduplicate all competitors_mentioned across analyses; keep the most frequently cited ones. Leave null if none found.
+   - brand_point_of_view: Synthesize brand_signals into a single coherent POV statement (1-2 sentences). Leave null if no signals found.
+   - competitive_differentiation_angle: Derive from brand_signals that describe "unlike X" or "only platform that" patterns. Leave null if absent.
+   - success_metrics: List any KPIs explicitly mentioned in the content, or leave null.
+   - author_persona: Synthesize author_signals + voice_adjectives into a description of the author's expertise and perspective. Leave null if insufficient signals.
+   - writing_samples: Leave null (admin fills this in manually).
+   - about_the_brand: Synthesize brand_signals and icp_signals into a 2-3 sentence brand description. Leave null if insufficient signals.
+   - ideal_customer_profile: Synthesize icp_signals into a description of the target audience. Leave null if no signals found.
+
+IMPORTANT: Prefer extracted signals over guessing. If signals are absent for a brand intelligence field, leave it null rather than fabricating content.
 
 Return a complete BrandKitConfig JSON structure with ALL fields populated. Use actual extracted patterns where available, and sensible defaults for missing fields."""
             else:

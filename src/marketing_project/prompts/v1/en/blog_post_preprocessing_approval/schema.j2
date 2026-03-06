@@ -1,0 +1,225 @@
+{
+  "type": "json_schema",
+  "json_schema": {
+    "name": "blog_post_preprocessing_approval_response",
+    "description": "Validation result and analysis from the Blog Post Preprocessing Approval agent",
+    "strict": true,
+    "schema": {
+      "type": "object",
+      "properties": {
+        "is_valid": {
+          "type": "boolean",
+          "description": "True if the blog post passed all critical validations"
+        },
+        "title_validated": {
+          "type": "boolean",
+          "description": "True if title is present, non-empty, and not a generic placeholder"
+        },
+        "content_validated": {
+          "type": "boolean",
+          "description": "True if content is present, non-empty, and meets the 100-word minimum"
+        },
+        "author_validated": {
+          "type": "boolean",
+          "description": "True if author was present or successfully extracted from content"
+        },
+        "category_validated": {
+          "type": "boolean",
+          "description": "True if category was present or successfully inferred from content"
+        },
+        "tags_validated": {
+          "type": "boolean",
+          "description": "True if tags were present or successfully extracted from content"
+        },
+        "author": {
+          "type": "string",
+          "description": "Confirmed author name \u2014 either from input or extracted from content"
+        },
+        "category": {
+          "type": "string",
+          "description": "Confirmed category \u2014 either from input or inferred from content topics"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Confirmed tags \u2014 either from input or extracted/generated from content"
+        },
+        "word_count": {
+          "type": "number",
+          "description": "Calculated word count of the blog post content"
+        },
+        "reading_time": {
+          "type": "number",
+          "description": "Estimated reading time in minutes (word_count / 200)"
+        },
+        "content_summary": {
+          "type": "string",
+          "description": "First 200 characters of content, used as a quick preview"
+        },
+        "confidence_score": {
+          "type": "number",
+          "description": "Overall confidence from 0.0 to 1.0. Below 0.5 requires approval"
+        },
+        "requires_approval": {
+          "type": "boolean",
+          "description": "True if human review is required before the post enters the SEO pipeline"
+        },
+        "approval_suggestions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Actionable suggestions for resolving issues or improving quality before pipeline entry"
+        },
+        "validation_issues": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of specific validation issues found. Empty if all fields are valid or extracted"
+        },
+        "overall_sentiment": {
+          "type": "string",
+          "description": "Overall sentiment classification: positive, negative, or neutral"
+        },
+        "sentiment_score": {
+          "type": "number",
+          "description": "Sentiment score from -1.0 (most negative) to 1.0 (most positive)"
+        },
+        "sentiment_confidence": {
+          "type": "number",
+          "description": "Confidence in the sentiment classification from 0.0 to 1.0"
+        },
+        "emotional_tone": {
+          "type": "string",
+          "description": "Dominant emotional tone: professional, casual, technical, friendly, formal, educational, persuasive, etc."
+        },
+        "readability_score": {
+          "type": "number",
+          "description": "Flesch Reading Ease score from 0 to 100"
+        },
+        "completeness_score": {
+          "type": "number",
+          "description": "Completeness score from 0 to 100 based on presence of intro, body, conclusion, and depth"
+        },
+        "content_type": {
+          "type": "string",
+          "description": "Inferred content type: tutorial, guide, article, opinion, news, review, how-to, list, case-study, etc."
+        },
+        "target_audience": {
+          "type": "string",
+          "description": "Inferred target audience level: beginner, intermediate, advanced, or general"
+        },
+        "headings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of H1, H2, H3 headings extracted from content"
+        },
+        "sections": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of section titles identified in the content"
+        },
+        "paragraph_count": {
+          "type": "number",
+          "description": "Number of paragraphs in the content"
+        },
+        "list_count": {
+          "type": "number",
+          "description": "Number of lists (bullet or numbered) in the content"
+        },
+        "link_count": {
+          "type": "number",
+          "description": "Number of links found in the content"
+        },
+        "potential_keywords": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "High-value terms and phrases extracted from content for SEO use"
+        },
+        "seo_opportunities": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Missing elements or structural improvements that would benefit SEO"
+        },
+        "engagement_potential": {
+          "type": "number",
+          "description": "Engagement potential score from 0 to 100 based on questions, interactivity, and CTAs"
+        },
+        "shareability_score": {
+          "type": "number",
+          "description": "Shareability score from 0 to 100 based on quotable content, stats, and emotional appeal"
+        },
+        "cta_detected": {
+          "type": "boolean",
+          "description": "True if a call-to-action was detected in the content"
+        },
+        "detected_format": {
+          "type": "string",
+          "description": "Format detected by the parser: webvtt, srt, json, csv, ttml, plain, or unknown"
+        },
+        "parsing_confidence": {
+          "type": "number",
+          "description": "Confidence score from the parser from 0.0 to 1.0"
+        },
+        "parsing_warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Warnings generated during the parsing process"
+        }
+      },
+      "required": [
+        "is_valid",
+        "title_validated",
+        "content_validated",
+        "author_validated",
+        "category_validated",
+        "tags_validated",
+        "author",
+        "category",
+        "tags",
+        "word_count",
+        "reading_time",
+        "content_summary",
+        "confidence_score",
+        "requires_approval",
+        "approval_suggestions",
+        "validation_issues",
+        "overall_sentiment",
+        "sentiment_score",
+        "sentiment_confidence",
+        "emotional_tone",
+        "readability_score",
+        "completeness_score",
+        "content_type",
+        "target_audience",
+        "headings",
+        "sections",
+        "paragraph_count",
+        "list_count",
+        "link_count",
+        "potential_keywords",
+        "seo_opportunities",
+        "engagement_potential",
+        "shareability_score",
+        "cta_detected",
+        "detected_format",
+        "parsing_confidence",
+        "parsing_warnings"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

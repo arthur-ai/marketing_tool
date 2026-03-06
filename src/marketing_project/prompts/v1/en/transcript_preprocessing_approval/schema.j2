@@ -1,0 +1,164 @@
+{
+  "type": "json_schema",
+  "json_schema": {
+    "name": "transcript_preprocessing_approval_response",
+    "description": "Validation and approval result from the Transcript Preprocessing Approval agent",
+    "strict": true,
+    "schema": {
+      "type": "object",
+      "properties": {
+        "is_valid": {
+          "type": "boolean",
+          "description": "True if the transcript passed all critical validations after extraction attempts"
+        },
+        "speakers_validated": {
+          "type": "boolean",
+          "description": "True if at least one valid speaker was found or extracted from content"
+        },
+        "duration_validated": {
+          "type": "boolean",
+          "description": "True if a valid duration was found or calculated from timestamps or word count"
+        },
+        "content_validated": {
+          "type": "boolean",
+          "description": "True if content is non-empty and contains actual transcript text"
+        },
+        "transcript_type_validated": {
+          "type": "boolean",
+          "description": "True if the transcript type is a known valid type"
+        },
+        "validation_issues": {
+          "type": "array",
+          "description": "List of validation issues found. Empty array if all fields are valid or successfully extracted",
+          "items": {
+            "type": "object",
+            "properties": {
+              "issue": {
+                "type": "string",
+                "description": "Description of the validation issue"
+              },
+              "severity": {
+                "type": "string",
+                "description": "Severity level: error, warning, or info \u2014 errors block pipeline entry, warnings may be resolved, info is advisory"
+              }
+            },
+            "required": [
+              "issue",
+              "severity"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "speakers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Confirmed list of speaker names after validation and auto-extraction"
+        },
+        "duration": {
+          "type": "number",
+          "description": "Confirmed duration in seconds after extraction or calculation"
+        },
+        "transcript_type": {
+          "type": "string",
+          "description": "Confirmed transcript type: podcast, meeting, interview, video, webinar, or other"
+        },
+        "content_summary": {
+          "type": "string",
+          "description": "First 500 characters of content for quick review"
+        },
+        "confidence_score": {
+          "type": "number",
+          "description": "Overall confidence from 0.0 to 1.0. Below 0.7 triggers approval requirement"
+        },
+        "requires_approval": {
+          "type": "boolean",
+          "description": "True if human review is required before the transcript enters the pipeline"
+        },
+        "approval_suggestions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Actionable notes about what was auto-extracted and what still needs human review"
+        },
+        "parsing_confidence": {
+          "type": "number",
+          "description": "Confidence score from the upstream parser from 0.0 to 1.0"
+        },
+        "detected_format": {
+          "type": "string",
+          "description": "Format detected by the parser: webvtt, srt, json, csv, ttml, plain, or unknown"
+        },
+        "parsing_warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Warnings generated during parsing"
+        },
+        "detected_language": {
+          "type": "string",
+          "description": "Detected language code, e.g. 'en', 'es', 'fr'"
+        },
+        "key_topics": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Key topics extracted from the transcript content"
+        },
+        "speaking_time_per_speaker": {
+          "type": "array",
+          "description": "Speaking time breakdown per speaker",
+          "items": {
+            "type": "object",
+            "properties": {
+              "speaker": {
+                "type": "string",
+                "description": "Speaker name"
+              },
+              "seconds": {
+                "type": "number",
+                "description": "Speaking time in seconds"
+              },
+              "percentage": {
+                "type": "number",
+                "description": "Percentage of total speaking time"
+              }
+            },
+            "required": [
+              "speaker",
+              "seconds",
+              "percentage"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "is_valid",
+        "speakers_validated",
+        "duration_validated",
+        "content_validated",
+        "transcript_type_validated",
+        "validation_issues",
+        "speakers",
+        "duration",
+        "transcript_type",
+        "content_summary",
+        "confidence_score",
+        "requires_approval",
+        "approval_suggestions",
+        "parsing_confidence",
+        "detected_format",
+        "parsing_warnings",
+        "detected_language",
+        "key_topics",
+        "speaking_time_per_speaker"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

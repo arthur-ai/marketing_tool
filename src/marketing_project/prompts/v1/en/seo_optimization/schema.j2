@@ -1,0 +1,238 @@
+{
+  "type": "json_schema",
+  "json_schema": {
+    "name": "seo_optimization_response",
+    "description": "SEO-optimized article output from the SEO Optimization agent with all technical and content optimizations applied",
+    "strict": true,
+    "schema": {
+      "type": "object",
+      "properties": {
+        "optimized_content": {
+          "type": "string",
+          "description": "Full article content with all SEO optimizations applied \u2014 complete markdown, not a summary"
+        },
+        "meta_title": {
+          "type": "string",
+          "description": "SEO title tag, 50-60 characters, includes primary keyword within first 60 characters"
+        },
+        "meta_description": {
+          "type": "string",
+          "description": "Meta description, 150-160 characters, includes primary keyword and a clear value proposition or CTA"
+        },
+        "url_slug": {
+          "type": "string",
+          "description": "URL slug: 3-5 words, lowercase, hyphen-separated, includes primary keyword"
+        },
+        "header_structure": {
+          "type": "object",
+          "description": "Optimized heading hierarchy for the article",
+          "properties": {
+            "h1": {
+              "type": "object",
+              "description": "The single H1 heading",
+              "properties": {
+                "text": {
+                  "type": "string",
+                  "description": "The H1 heading text"
+                },
+                "contains_main_keyword": {
+                  "type": "boolean",
+                  "description": "True if the H1 contains the main keyword"
+                }
+              },
+              "required": [
+                "text",
+                "contains_main_keyword"
+              ],
+              "additionalProperties": false
+            },
+            "h2s": {
+              "type": "array",
+              "description": "All H2 headings with their keyword annotations",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "description": "H2 heading text"
+                  },
+                  "keywords": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Keywords naturally incorporated in this H2"
+                  }
+                },
+                "required": [
+                  "text",
+                  "keywords"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "h3s": {
+              "type": "array",
+              "description": "All H3 headings with their keyword annotations",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "description": "H3 heading text"
+                  },
+                  "keywords": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Keywords naturally incorporated in this H3"
+                  }
+                },
+                "required": [
+                  "text",
+                  "keywords"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "h1",
+            "h2s",
+            "h3s"
+          ],
+          "additionalProperties": false
+        },
+        "keyword_map": {
+          "type": "array",
+          "description": "Mapping of each keyword to its placement locations in the article",
+          "items": {
+            "type": "object",
+            "properties": {
+              "keyword": {
+                "type": "string",
+                "description": "The keyword"
+              },
+              "locations": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Article sections where this keyword appears"
+              }
+            },
+            "required": [
+              "keyword",
+              "locations"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "readability_optimization": {
+          "type": "object",
+          "description": "Readability improvement results",
+          "properties": {
+            "score": {
+              "type": "number",
+              "description": "Final readability score after optimization (0-100)"
+            },
+            "grade_level": {
+              "type": "string",
+              "description": "Reading grade level, e.g. 'Grade 8' or '8th grade'"
+            },
+            "active_voice_percentage": {
+              "type": "number",
+              "description": "Percentage of sentences using active voice"
+            },
+            "changes_made": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "List of specific readability changes applied"
+            }
+          },
+          "required": [
+            "score",
+            "grade_level",
+            "active_voice_percentage",
+            "changes_made"
+          ],
+          "additionalProperties": false
+        },
+        "alt_texts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Keyword-optimized alt text suggestions for images in the article"
+        },
+        "schema_markup": {
+          "type": "string",
+          "description": "Valid JSON-LD BlogPosting schema markup block as a string"
+        },
+        "open_graph_tags": {
+          "type": "object",
+          "description": "Open Graph meta tags for social sharing",
+          "properties": {
+            "og_title": {
+              "type": "string",
+              "description": "Open Graph title"
+            },
+            "og_description": {
+              "type": "string",
+              "description": "Open Graph description"
+            },
+            "og_image": {
+              "type": "string",
+              "description": "Open Graph image URL or placeholder"
+            },
+            "og_type": {
+              "type": "string",
+              "description": "Open Graph type, typically 'article'"
+            }
+          },
+          "required": [
+            "og_title",
+            "og_description",
+            "og_image",
+            "og_type"
+          ],
+          "additionalProperties": false
+        },
+        "modification_report": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of specific changes made during SEO optimization"
+        },
+        "seo_score": {
+          "type": "number",
+          "description": "Overall SEO score from 0 to 100. Minimum target is 85"
+        },
+        "confidence_score": {
+          "type": "number",
+          "description": "Overall confidence from 0.0 to 1.0"
+        }
+      },
+      "required": [
+        "optimized_content",
+        "meta_title",
+        "meta_description",
+        "url_slug",
+        "header_structure",
+        "keyword_map",
+        "readability_optimization",
+        "alt_texts",
+        "schema_markup",
+        "open_graph_tags",
+        "modification_report",
+        "seo_score",
+        "confidence_score"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

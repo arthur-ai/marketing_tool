@@ -1,0 +1,201 @@
+{
+  "type": "json_schema",
+  "json_schema": {
+    "name": "brand_kit_response",
+    "description": "Brand-consistent design output from the Brand Kit agent for transforming content into visual marketing materials",
+    "strict": true,
+    "schema": {
+      "type": "object",
+      "properties": {
+        "visual_components": {
+          "type": "array",
+          "description": "Array of visual components with descriptions and alt text",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "description": "Component type: image, chart, infographic, callout, hero, icon, etc."
+              },
+              "description": {
+                "type": "string",
+                "description": "Description of the visual component and its purpose"
+              },
+              "alt_text": {
+                "type": "string",
+                "description": "Keyword-optimized alt text for this component"
+              }
+            },
+            "required": [
+              "type",
+              "description",
+              "alt_text"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "color_scheme": {
+          "type": "object",
+          "description": "Brand color palette for this content, aligned with target audience and content type",
+          "properties": {
+            "primary": {
+              "type": "string",
+              "description": "Primary brand color as hex code, e.g. '#1A2B3C'"
+            },
+            "secondary": {
+              "type": "string",
+              "description": "Secondary brand color as hex code"
+            },
+            "accent": {
+              "type": "string",
+              "description": "Accent color as hex code for CTAs and highlights"
+            }
+          },
+          "required": [
+            "primary",
+            "secondary",
+            "accent"
+          ],
+          "additionalProperties": false
+        },
+        "typography_recommendations": {
+          "type": "object",
+          "description": "Typography specifications for the content layout",
+          "properties": {
+            "font_family": {
+              "type": "string",
+              "description": "Recommended font family for headings and body text"
+            },
+            "heading_size": {
+              "type": "string",
+              "description": "Recommended heading font size, e.g. '2rem' or '32px'"
+            },
+            "body_size": {
+              "type": "string",
+              "description": "Recommended body font size, e.g. '1rem' or '16px'"
+            },
+            "line_height": {
+              "type": "string",
+              "description": "Recommended line height, e.g. '1.6'"
+            }
+          },
+          "required": [
+            "font_family",
+            "heading_size",
+            "body_size",
+            "line_height"
+          ],
+          "additionalProperties": false
+        },
+        "layout_suggestions": {
+          "type": "object",
+          "description": "Layout recommendations for section structure and visual flow",
+          "properties": {
+            "section_spacing": {
+              "type": "string",
+              "description": "Recommended spacing between sections, e.g. '48px' or '3rem'"
+            },
+            "column_structure": {
+              "type": "string",
+              "description": "Column layout recommendation, e.g. 'single column with sidebar' or 'full width'"
+            },
+            "visual_breaks": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Recommended positions for visual breaks, dividers, or callouts in the content"
+            }
+          },
+          "required": [
+            "section_spacing",
+            "column_structure",
+            "visual_breaks"
+          ],
+          "additionalProperties": false
+        },
+        "hero_image_concept": {
+          "type": "string",
+          "description": "Description of the hero image concept \u2014 aligned with content tone, target audience, and keywords"
+        },
+        "accessibility_considerations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Specific accessibility enhancements: alt text recommendations, contrast adjustments, heading structure notes"
+        },
+        "design_metadata": {
+          "type": "object",
+          "description": "Metadata about the design decisions made",
+          "properties": {
+            "template_used": {
+              "type": "string",
+              "description": "Name of the design template selected for this content type"
+            },
+            "components_applied": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "List of visual components applied from the brand kit"
+            },
+            "assets_integrated": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "List of assets integrated from the design kit configuration"
+            }
+          },
+          "required": [
+            "template_used",
+            "components_applied",
+            "assets_integrated"
+          ],
+          "additionalProperties": false
+        },
+        "compliance_report": {
+          "type": "object",
+          "description": "Design compliance validation results",
+          "properties": {
+            "wcag_score": {
+              "type": "number",
+              "description": "WCAG 2.1 AA compliance score from 0 to 100"
+            },
+            "brand_consistency_score": {
+              "type": "number",
+              "description": "Brand guideline adherence score from 0 to 100"
+            },
+            "performance_notes": {
+              "type": "string",
+              "description": "Notes on image sizes, load time estimates, and performance optimizations"
+            }
+          },
+          "required": [
+            "wcag_score",
+            "brand_consistency_score",
+            "performance_notes"
+          ],
+          "additionalProperties": false
+        },
+        "confidence_score": {
+          "type": "number",
+          "description": "Overall confidence from 0.0 to 1.0"
+        }
+      },
+      "required": [
+        "visual_components",
+        "color_scheme",
+        "typography_recommendations",
+        "layout_suggestions",
+        "hero_image_concept",
+        "accessibility_considerations",
+        "design_metadata",
+        "compliance_report",
+        "confidence_score"
+      ],
+      "additionalProperties": false
+    }
+  }
+}
