@@ -12,11 +12,38 @@ from typing import Any, Dict, Optional, Tuple, Type
 from pydantic import BaseModel
 
 from marketing_project.services.function_pipeline.litellm_client import (
+    PROVIDER_ANTHROPIC,
     build_litellm_model,
     normalize_provider,
 )
 
 logger = logging.getLogger("marketing_project.services.function_pipeline.providers")
+
+
+def _make_schema_anthropic_safe(schema: dict) -> dict:
+    """
+    Recursively add 'additionalProperties': false to all object-type nodes.
+    Required by Anthropic's API when using output_format with a JSON schema.
+    """
+    schema = dict(schema)
+    if schema.get("type") == "object":
+        schema["additionalProperties"] = False
+        if "properties" in schema:
+            schema["properties"] = {
+                k: _make_schema_anthropic_safe(v)
+                for k, v in schema["properties"].items()
+            }
+    if "items" in schema:
+        schema["items"] = _make_schema_anthropic_safe(schema["items"])
+    for key in ("$defs", "definitions"):
+        if key in schema:
+            schema[key] = {
+                k: _make_schema_anthropic_safe(v) for k, v in schema[key].items()
+            }
+    for key in ("anyOf", "allOf", "oneOf"):
+        if key in schema:
+            schema[key] = [_make_schema_anthropic_safe(s) for s in schema[key]]
+    return schema
 
 
 def _inject_json_schema(messages: list, response_model: Type[BaseModel]) -> list:
@@ -113,7 +140,18 @@ async def call_llm_structured(
 
     # Extra kwargs from Arthur prompt config (e.g. api_base override for vLLM)
     extra_kwargs: Dict[str, Any] = dict(model_config or {})
-    extra_kwargs.setdefault("response_format", {"type": "json_object"})
+    if effective_provider == PROVIDER_ANTHROPIC:
+        # Anthropic requires 'additionalProperties': false on every object schema node.
+        safe_schema = _make_schema_anthropic_safe(response_model.model_json_schema())
+        extra_kwargs.setdefault(
+            "response_format",
+            {
+                "type": "json_schema",
+                "json_schema": {"name": "response", "schema": safe_schema},
+            },
+        )
+    else:
+        extra_kwargs.setdefault("response_format", {"type": "json_object"})
 
     response = await llm_client.acompletion(
         model=litellm_model,
