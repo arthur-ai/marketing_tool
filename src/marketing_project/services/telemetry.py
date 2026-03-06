@@ -120,6 +120,29 @@ def setup_tracing(service_instance_id: Optional[str] = None) -> bool:
         except Exception as e:
             logger.warning(f"Could not inspect TracerProvider: {e}")
 
+        # Attach a ConsoleSpanExporter so every span is printed to stdout.
+        # The Arthur SDK hardcodes OTLPSpanExporter and has no built-in console support,
+        # so we add it ourselves here.
+        try:
+            from opentelemetry.sdk.trace.export import (
+                ConsoleSpanExporter,
+                SimpleSpanProcessor,
+            )
+
+            if (
+                _arthur_client
+                and hasattr(_arthur_client, "_tracer_provider")
+                and _arthur_client._tracer_provider
+            ):
+                _arthur_client._tracer_provider.add_span_processor(
+                    SimpleSpanProcessor(ConsoleSpanExporter())
+                )
+                logger.info("Console span exporter enabled")
+            else:
+                logger.warning("Console span exporter: no tracer provider available")
+        except Exception as e:
+            logger.warning(f"Failed to enable console span exporter: {e}")
+
         # Instrument LLM frameworks – spans flow into the Arthur-managed tracer provider
         try:
             _arthur_client.instrument_openai()
@@ -186,3 +209,29 @@ def cleanup_tracing():
         logger.warning(f"Error during telemetry cleanup: {e}")
     finally:
         _arthur_client = None
+
+
+def flush_telemetry(job_id: str = "") -> None:
+    """Force-flush pending spans to Arthur after a job completes.
+
+    Called from the worker's finally block so we can confirm spans
+    are exported without waiting for the BatchSpanProcessor's next
+    scheduled flush.
+    """
+    if _arthur_client is None:
+        return
+    if not (
+        hasattr(_arthur_client, "_tracer_provider") and _arthur_client._tracer_provider
+    ):
+        return
+    try:
+        flush_result = _arthur_client._tracer_provider.force_flush(timeout_millis=5000)
+        logger.info(
+            "Telemetry flushed after job%s: %s (True=success, False=timeout/error)",
+            f" {job_id}" if job_id else "",
+            flush_result,
+        )
+    except Exception as e:
+        logger.warning(
+            "Telemetry flush failed%s: %s", f" for job {job_id}" if job_id else "", e
+        )
