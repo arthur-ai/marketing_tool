@@ -127,29 +127,6 @@ def setup_tracing(service_instance_id: Optional[str] = None) -> bool:
         except Exception as e:
             logger.warning(f"Could not inspect TracerProvider: {e}")
 
-        # Attach a ConsoleSpanExporter so every span is printed to stdout.
-        # The Arthur SDK hardcodes OTLPSpanExporter and has no built-in console support,
-        # so we add it ourselves here.
-        try:
-            from opentelemetry.sdk.trace.export import (
-                ConsoleSpanExporter,
-                SimpleSpanProcessor,
-            )
-
-            if (
-                _arthur_client
-                and hasattr(_arthur_client, "_tracer_provider")
-                and _arthur_client._tracer_provider
-            ):
-                _arthur_client._tracer_provider.add_span_processor(
-                    SimpleSpanProcessor(ConsoleSpanExporter())
-                )
-                logger.info("Console span exporter enabled")
-            else:
-                logger.warning("Console span exporter: no tracer provider available")
-        except Exception as e:
-            logger.warning(f"Failed to enable console span exporter: {e}")
-
         # Instrument LLM frameworks – spans flow into the Arthur-managed tracer provider
         try:
             _arthur_client.instrument_openai()
