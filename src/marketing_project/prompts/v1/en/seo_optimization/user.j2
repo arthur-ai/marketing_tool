@@ -1,0 +1,83 @@
+Apply comprehensive SEO optimization to this article — validate and generate title, meta description, URL slug, heading structure, keyword placement, readability, schema markup, and Open Graph tags.
+
+───────────────────────────────────────
+ARTICLE CONTENT
+───────────────────────────────────────
+
+Title: {{ article_result.article_title }}
+Content: {{ article_result.article_content }}
+
+───────────────────────────────────────
+FROM STEP 1 — SEO KEYWORDS
+───────────────────────────────────────
+
+- Main Keyword: {{ seo_result.main_keyword }}
+- Primary Keywords: {{ seo_result.primary_keywords | join(', ') }}
+- Secondary Keywords: {{ seo_result.secondary_keywords | join(', ') if seo_result.secondary_keywords else 'None' }}
+- Long-tail Keywords: {{ seo_result.long_tail_keywords | join(', ') if seo_result.long_tail_keywords else 'None' }}
+- Search Intent: {{ seo_result.search_intent }}
+{% if seo_result.keyword_difficulty %}
+- Keyword Difficulty: available for {{ seo_result.keyword_difficulty | length }} keywords (target range: 20–70)
+{% endif %}
+{% if seo_result.keyword_density_analysis %}
+- Keyword Density Analysis: available for {{ seo_result.keyword_density_analysis | length }} keywords — use placement locations as guide
+{% endif %}
+{% if seo_result.optimization_recommendations %}
+- Optimization Recommendations: {{ seo_result.optimization_recommendations | join('; ') }}
+{% endif %}
+
+───────────────────────────────────────
+FROM STEP 2 — MARKETING BRIEF
+───────────────────────────────────────
+
+- Target Audience: {{ brief_result.target_audience | join(', ') }}
+- Tone and Voice: {{ brief_result.tone_and_voice or 'Professional and engaging' }}
+- Content Strategy: {{ brief_result.content_strategy }}
+- Competitive Angle: {{ brief_result.competitive_angle or 'Not specified' }}
+- Key Messages: {{ brief_result.key_messages | join(', ') }}
+
+───────────────────────────────────────
+FROM STEP 3 — ARTICLE GENERATION
+───────────────────────────────────────
+
+- Article Title: {{ article_result.article_title }}
+- Article Outline: {{ article_result.outline | join(', ') }}
+- Key Takeaways: {{ article_result.key_takeaways | join(', ') if article_result.key_takeaways else 'None' }}
+
+───────────────────────────────────────
+OPTIMIZATION WORKFLOW
+───────────────────────────────────────
+
+1. PARSE CONTENT — analyze structure, detect H1–H3 hierarchy, identify missing or duplicate elements
+
+2. KEYWORD MAPPING — confirm main_keyword ({{ seo_result.main_keyword }}) and related terms; align with search intent ({{ seo_result.search_intent }}); incorporate long-tail keywords naturally; use keyword difficulty scores to prioritize (target 20–70 range)
+
+3. TITLE OPTIMIZATION — validate includes main_keyword, is under 60 chars, and is compelling; regenerate if weak
+
+4. META DESCRIPTION — verify 140–160 chars, includes keyword once, has clear value or CTA; generate new one if missing using key messages from marketing brief
+
+5. URL SLUG — validate or generate: 3–5 words, lowercase, hyphen-separated, contains main_keyword
+
+6. HEADING STRUCTURE — ensure single H1; validate H2s represent logical sections with relevant keywords
+
+7. KEYWORD PLACEMENT — verify main_keyword appears in title, introduction, at least one H2, and conclusion; check secondary keyword distribution
+
+8. READABILITY — target Grade 8–9 reading level; rewrite for active voice and scan-friendly formatting (short paragraphs, bullet points, clear transitions)
+
+9. SCHEMA — generate or validate JSON-LD "BlogPosting" block including title, description, date, and keywords
+
+───────────────────────────────────────
+EXPECTED OUTPUT
+───────────────────────────────────────
+
+- optimized_content (full content, not truncated)
+- meta_title (50–60 chars)
+- meta_description (140–160 chars)
+- url_slug
+- alt_texts (keyword-optimized suggestions for all images)
+- schema_markup (JSON-LD as string)
+- open_graph_tags (dict)
+- header_structure (H1–H3 hierarchy with keyword annotations)
+- keyword_map (primary + related keywords with placement locations)
+- readability_optimization (score, grade level, active voice %, changes made)
+- modification_report (list of changes made, e.g., "Meta description regenerated")

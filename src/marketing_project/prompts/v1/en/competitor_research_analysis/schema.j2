@@ -1,0 +1,264 @@
+{
+  "type": "json_schema",
+  "json_schema": {
+    "name": "competitor_research_analysis_response",
+    "description": "Competitor content analysis result from the Competitor Research Analysis agent",
+    "strict": true,
+    "schema": {
+      "type": "object",
+      "properties": {
+        "overall_quality_score": {
+          "type": "number",
+          "description": "Overall quality score from 0.0 to 10.0. Reserve 9-10 for genuinely exceptional content \u2014 most content should score 4-7"
+        },
+        "performance_tier": {
+          "type": "string",
+          "description": "Performance tier: top, above_average, average, or below_average"
+        },
+        "tone_and_voice": {
+          "type": "string",
+          "description": "Description of the tone and voice used in the competitor content"
+        },
+        "target_audience": {
+          "type": "string",
+          "description": "The apparent target audience for this content"
+        },
+        "unique_angle": {
+          "type": "string",
+          "description": "The unique perspective or angle the competitor used \u2014 what makes this content distinctive"
+        },
+        "key_topics_covered": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Main topics and subjects covered in the competitor content"
+        },
+        "strength_factors": {
+          "type": "array",
+          "description": "2-5 specific strengths of the competitor content with impact ratings",
+          "items": {
+            "type": "object",
+            "properties": {
+              "factor": {
+                "type": "string",
+                "description": "Name of the strength factor"
+              },
+              "description": {
+                "type": "string",
+                "description": "Specific description of this strength"
+              },
+              "impact": {
+                "type": "string",
+                "description": "Impact level: high, medium, or low"
+              }
+            },
+            "required": [
+              "factor",
+              "description",
+              "impact"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "weakness_factors": {
+          "type": "array",
+          "description": "2-5 specific weaknesses of the competitor content with exploitation opportunities",
+          "items": {
+            "type": "object",
+            "properties": {
+              "factor": {
+                "type": "string",
+                "description": "Name of the weakness factor"
+              },
+              "description": {
+                "type": "string",
+                "description": "Specific description of this weakness"
+              },
+              "opportunity": {
+                "type": "string",
+                "description": "Concrete opportunity to exploit this weakness in your own content"
+              }
+            },
+            "required": [
+              "factor",
+              "description",
+              "opportunity"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "actionable_insights": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "3-7 specific, immediately executable recommendations for outperforming this content. Frame as direct actions, not generic advice"
+        },
+        "structure": {
+          "type": "object",
+          "description": "Structural analysis of the competitor content",
+          "properties": {
+            "format": {
+              "type": "string",
+              "description": "Content format: blog post, tutorial, case study, news, social post, etc."
+            },
+            "word_count": {
+              "type": "number",
+              "description": "Approximate word count of the content"
+            },
+            "heading_count": {
+              "type": "number",
+              "description": "Number of headings used"
+            },
+            "has_media": {
+              "type": "boolean",
+              "description": "True if the content includes images, video, or other media"
+            }
+          },
+          "required": [
+            "format",
+            "word_count",
+            "heading_count",
+            "has_media"
+          ],
+          "additionalProperties": false
+        },
+        "seo_signals": {
+          "type": "object",
+          "description": "SEO signals identified in the competitor content",
+          "properties": {
+            "primary_keyword": {
+              "type": "string",
+              "description": "The primary keyword this content appears optimized for"
+            },
+            "keyword_in_title": {
+              "type": "boolean",
+              "description": "True if the primary keyword appears in the title"
+            },
+            "keyword_in_first_paragraph": {
+              "type": "boolean",
+              "description": "True if the primary keyword appears in the first paragraph"
+            },
+            "meta_description_quality": {
+              "type": "string",
+              "description": "Meta description quality: excellent, good, fair, poor, or missing"
+            },
+            "internal_links_count": {
+              "type": "number",
+              "description": "Number of internal links in the content"
+            },
+            "external_links_count": {
+              "type": "number",
+              "description": "Number of external links in the content"
+            }
+          },
+          "required": [
+            "primary_keyword",
+            "keyword_in_title",
+            "keyword_in_first_paragraph",
+            "meta_description_quality",
+            "internal_links_count",
+            "external_links_count"
+          ],
+          "additionalProperties": false
+        },
+        "engagement_signals": {
+          "type": "object",
+          "description": "Engagement mechanics identified in the competitor content",
+          "properties": {
+            "cta_strength": {
+              "type": "string",
+              "description": "CTA strength: strong, moderate, weak, or none"
+            },
+            "emotional_hooks": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Emotional hooks used: curiosity, fear, aspiration, urgency, trust"
+            },
+            "social_proof": {
+              "type": "string",
+              "description": "Social proof elements used: testimonials, statistics, expert quotes, case studies, or none"
+            },
+            "personalization": {
+              "type": "string",
+              "description": "Personalization level: high (specific persona), medium (broad segment), or low (generic)"
+            }
+          },
+          "required": [
+            "cta_strength",
+            "emotional_hooks",
+            "social_proof",
+            "personalization"
+          ],
+          "additionalProperties": false
+        },
+        "social_signals": {
+          "type": "object",
+          "description": "Social media signals \u2014 only populated when content_type is social_media",
+          "properties": {
+            "hook_strength": {
+              "type": "string",
+              "description": "Hook strength: very_strong, strong, moderate, or weak"
+            },
+            "hook_text": {
+              "type": "string",
+              "description": "The opening line of the social post verbatim"
+            },
+            "media_type": {
+              "type": "string",
+              "description": "Media type used: none, image, video, carousel, poll, or document"
+            },
+            "post_length_category": {
+              "type": "string",
+              "description": "Post length: short (under 100 words), medium (100-300 words), or long (over 300 words)"
+            },
+            "engagement_format": {
+              "type": "string",
+              "description": "Format: question, story, tip, list, announcement, behind-scenes, or thought-leadership"
+            },
+            "hashtag_count": {
+              "type": "number",
+              "description": "Number of hashtags used"
+            },
+            "hashtags": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "List of hashtags used in the post"
+            }
+          },
+          "required": [
+            "hook_strength",
+            "hook_text",
+            "media_type",
+            "post_length_category",
+            "engagement_format",
+            "hashtag_count",
+            "hashtags"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "overall_quality_score",
+        "performance_tier",
+        "tone_and_voice",
+        "target_audience",
+        "unique_angle",
+        "key_topics_covered",
+        "strength_factors",
+        "weakness_factors",
+        "actionable_insights",
+        "structure",
+        "seo_signals",
+        "engagement_signals",
+        "social_signals"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

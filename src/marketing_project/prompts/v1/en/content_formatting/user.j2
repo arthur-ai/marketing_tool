@@ -1,0 +1,96 @@
+Format this SEO-optimized content for publication. Preserve ALL SEO work from prior pipeline steps.
+
+───────────────────────────────────────
+CONTENT TO FORMAT
+───────────────────────────────────────
+
+{{ seo_opt_result.optimized_content }}
+
+───────────────────────────────────────
+FROM STEP 3 — ARTICLE GENERATION
+───────────────────────────────────────
+
+- Article Outline: {{ article_result.outline | join(', ') }}
+
+───────────────────────────────────────
+FROM STEP 4 — SEO OPTIMIZATION (PRESERVE ALL)
+───────────────────────────────────────
+
+- Header Structure: {{ seo_opt_result.header_structure | string if seo_opt_result.header_structure else 'Not available' }}
+  IMPORTANT: Preserve this exact H1–H3 hierarchy; do NOT reorganize headings
+- Keyword Map: {{ seo_opt_result.keyword_map | string if seo_opt_result.keyword_map else 'Not available' }}
+  IMPORTANT: Keep all keywords in their optimized locations
+- Readability Optimization: {{ seo_opt_result.readability_optimization | string if seo_opt_result.readability_optimization else 'Not available' }}
+  IMPORTANT: Maintain grade level and active voice percentage
+- Meta Title: {{ seo_opt_result.meta_title }}
+- Meta Description: {{ seo_opt_result.meta_description }}
+- Schema Markup: {{ seo_opt_result.schema_markup if seo_opt_result.schema_markup else 'Not available' }}
+
+───────────────────────────────────────
+FORMATTING REQUIREMENTS
+───────────────────────────────────────
+
+1. PRESERVE SEO STRUCTURE — maintain exact H1/H2/H3 hierarchy from Step 4; do NOT modify headings
+
+2. PRESERVE KEYWORD PLACEMENT — use keyword_map to keep keywords in optimized locations
+
+3. MAINTAIN READABILITY — preserve grade level, active voice %, and scan-friendly formatting
+
+4. INCLUDE SEO METADATA IN HTML
+   - meta_title → <title> in <head>
+   - meta_description → <meta name="description"> in <head>
+   - schema_markup → JSON-LD <script> tag
+
+5. VALIDATE STRUCTURE — compare formatted structure against article outline; ensure all sections present
+
+6. GENERATE OUTPUT
+   - Clean, semantic HTML (preserving SEO structure)
+   - Markdown version (preserving SEO structure)
+   - Table of contents with anchor links (based on preserved header structure)
+   - Reading time estimation
+
+{% if design_kit_config %}
+───────────────────────────────────────
+BRAND KIT STRUCTURE GUIDELINES
+───────────────────────────────────────
+
+- Section Order: {{ design_kit_config.section_order | join(' → ') if design_kit_config.section_order else 'Not specified' }}
+- Heading Depth: Use {{ design_kit_config.heading_depth }} headings
+- List Usage: {{ design_kit_config.list_usage_preference }}
+- Paragraph Length: {{ design_kit_config.paragraph_length_range.min }}–{{ design_kit_config.paragraph_length_range.max }} words per paragraph
+{% if design_kit_config.include_tldr %}
+- Include TL;DR section if not already present
+{% endif %}
+{% if design_kit_config.include_summary %}
+- Include summary section if not already present
+{% endif %}
+{% endif %}
+
+{% if suggested_links_result %}
+───────────────────────────────────────
+FROM STEP 5 — SUGGESTED INTERNAL LINKS
+───────────────────────────────────────
+
+Apply the following links at their specified placement contexts. Use exact anchor text. Only include links with relevance_score > 0.6.
+
+{% for link in suggested_links_result.internal_links %}
+- Anchor: "{{ link.anchor_text }}"
+  URL: {{ link.target_url }}
+  Placement: {{ link.placement_context }}
+  Section: {{ link.section if link.section else 'Not specified' }}
+  Relevance: {{ "%.0f"|format(link.relevance_score * 100) if link.relevance_score else 'N/A' }}%
+{% endfor %}
+{% elif internal_docs_config %}
+───────────────────────────────────────
+INTERLINKING RULES (GENERAL)
+───────────────────────────────────────
+
+- Commonly Referenced Pages: {{ internal_docs_config.commonly_referenced_pages | join(', ') if internal_docs_config.commonly_referenced_pages else 'None' }}
+- Commonly Referenced Categories: {{ internal_docs_config.commonly_referenced_categories | join(', ') if internal_docs_config.commonly_referenced_categories else 'None' }}
+- Anchor Phrasing Patterns: {{ internal_docs_config.anchor_phrasing_patterns | join(', ') if internal_docs_config.anchor_phrasing_patterns else 'Natural language' }}
+{% endif %}
+
+CRITICAL: Do NOT break any SEO optimizations from Step 4 during formatting.
+{% if design_kit_config %}
+Apply Brand Kit structure guidelines while preserving all SEO work.
+{% endif %}

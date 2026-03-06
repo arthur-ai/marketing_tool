@@ -1,0 +1,62 @@
+{
+  "type": "json_schema",
+  "json_schema": {
+    "name": "social_media_marketing_brief_linkedin_response",
+    "description": "LinkedIn-specific marketing brief with professional B2B messaging strategy",
+    "strict": true,
+    "schema": {
+      "type": "object",
+      "properties": {
+        "platform": {
+          "type": "string",
+          "description": "The social media platform: linkedin, hackernews, or email"
+        },
+        "target_audience": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Platform-specific audience personas aligned with the main_keyword and platform demographics"
+        },
+        "key_messages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "3-5 core messaging points aligned with main_keyword and optimized for the platform audience"
+        },
+        "tone_and_voice": {
+          "type": "string",
+          "description": "Platform-appropriate tone and voice description"
+        },
+        "content_strategy": {
+          "type": "string",
+          "description": "Platform-specific content approach describing format, depth, and engagement tactics"
+        },
+        "distribution_strategy": {
+          "type": "string",
+          "description": "Platform-specific posting strategy including timing, frequency, and engagement approach"
+        },
+        "platform_specific_notes": {
+          "type": "string",
+          "description": "Additional platform-specific recommendations such as hashtag strategy, technical angle, or email subject line approach"
+        },
+        "confidence_score": {
+          "type": "number",
+          "description": "Overall confidence from 0.0 to 1.0"
+        }
+      },
+      "required": [
+        "platform",
+        "target_audience",
+        "key_messages",
+        "tone_and_voice",
+        "content_strategy",
+        "distribution_strategy",
+        "platform_specific_notes",
+        "confidence_score"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

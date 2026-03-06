@@ -1,0 +1,57 @@
+{
+  "type": "json_schema",
+  "json_schema": {
+    "name": "social_media_angle_hook_hackernews_response",
+    "description": "HackerNews-specific content angles and hooks for technically substantive developer engagement",
+    "strict": true,
+    "schema": {
+      "type": "object",
+      "properties": {
+        "platform": {
+          "type": "string",
+          "description": "The platform this content is targeted for: linkedin, hackernews, or email"
+        },
+        "angles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "3-5 distinct content angles appropriate for the platform \u2014 each must be meaningfully different"
+        },
+        "hooks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "3-5 attention-grabbing opening lines or subject lines optimized for the platform"
+        },
+        "recommended_angle": {
+          "type": "string",
+          "description": "The single best angle for this platform and content \u2014 the one most likely to drive engagement"
+        },
+        "recommended_hook": {
+          "type": "string",
+          "description": "The single best hook for this platform \u2014 the opening line or subject line most likely to capture attention"
+        },
+        "rationale": {
+          "type": "string",
+          "description": "Clear explanation of why the recommended angle and hook work together for this platform's audience"
+        },
+        "confidence_score": {
+          "type": "number",
+          "description": "Overall confidence from 0.0 to 1.0"
+        }
+      },
+      "required": [
+        "platform",
+        "angles",
+        "hooks",
+        "recommended_angle",
+        "recommended_hook",
+        "rationale",
+        "confidence_score"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,77 @@
+{
+  "type": "json_schema",
+  "json_schema": {
+    "name": "competitor_research_summary_response",
+    "description": "Cross-competitor content strategy synthesis from the Competitor Research Summary agent",
+    "strict": true,
+    "schema": {
+      "type": "object",
+      "properties": {
+        "recommended_content_strategy": {
+          "type": "string",
+          "description": "2-4 sentence cohesive content strategy tailored to the niche and goals, based on observed patterns and gaps"
+        },
+        "quick_wins": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "3-5 specific, immediately actionable wins that can be executed this week \u2014 must be high-leverage and evidence-based, not generic"
+        },
+        "top_content_patterns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Recurring patterns from top-performing competitor content (score 7+) \u2014 each must be observable in at least 2 analyzed pieces"
+        },
+        "winning_content_formats": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Most effective content formats identified across the competitive landscape"
+        },
+        "common_topics": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Topics competitors consistently cover well \u2014 use to ensure coverage parity"
+        },
+        "content_gaps": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Topics, formats, or angles competitors are missing \u2014 genuine absences, not just areas covered less thoroughly"
+        },
+        "seo_opportunities": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "SEO tactics or keyword opportunities to leverage or improve upon based on competitor analysis"
+        },
+        "social_media_tactics": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Effective social media tactics observed \u2014 only populated when social content was included in the analysis"
+        }
+      },
+      "required": [
+        "recommended_content_strategy",
+        "quick_wins",
+        "top_content_patterns",
+        "winning_content_formats",
+        "common_topics",
+        "content_gaps",
+        "seo_opportunities",
+        "social_media_tactics"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

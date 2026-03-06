@@ -1,0 +1,91 @@
+Analyze this article and suggest specific internal links to add, with exact anchor text and placement context.
+
+───────────────────────────────────────
+ARTICLE TO ANALYZE
+───────────────────────────────────────
+
+Title: {{ article_result.article_title }}
+Full Content: {{ seo_opt_result.optimized_content }}
+
+- Outline: {{ article_result.outline | join(', ') }}
+- Key Takeaways: {{ article_result.key_takeaways | join(', ') if article_result.key_takeaways else 'None' }}
+- Header Structure: {{ seo_opt_result.header_structure | string if seo_opt_result.header_structure else 'Not available' }}
+
+───────────────────────────────────────
+FROM STEP 1 — SEO KEYWORDS
+───────────────────────────────────────
+
+- Main Keyword: {{ seo_result.main_keyword }}
+- Primary Keywords: {{ seo_result.primary_keywords | join(', ') }}
+- Secondary Keywords: {{ seo_result.secondary_keywords | join(', ') if seo_result.secondary_keywords else 'None' }}
+- Long-tail Keywords: {{ seo_result.long_tail_keywords | join(', ') if seo_result.long_tail_keywords else 'None' }}
+- Search Intent: {{ seo_result.search_intent }}
+
+{% if relevant_documents %}
+───────────────────────────────────────
+RELEVANT INTERNAL DOCUMENTS
+───────────────────────────────────────
+
+{% for doc in relevant_documents %}
+- {{ doc.title }} ({{ doc.url }})
+  Summary: {{ doc.metadata.content_summary[:150] if doc.metadata.content_summary else 'No summary' }}...
+  Topics: {{ doc.metadata.topics | join(', ') if doc.metadata.topics else 'None' }}
+  Keywords: {{ doc.metadata.extracted_keywords[:5] | join(', ') if doc.metadata.extracted_keywords else 'None' }}
+{% endfor %}
+{% endif %}
+
+{% if internal_docs_config %}
+───────────────────────────────────────
+INTERNAL DOCS CONFIG
+───────────────────────────────────────
+
+{% if internal_docs_config.scanned_documents %}
+Scanned Documents ({{ internal_docs_config.scanned_documents | length }}):
+{% for doc in internal_docs_config.scanned_documents %}
+- {{ doc.title }} ({{ doc.url }})
+{% endfor %}
+{% endif %}
+
+{% if internal_docs_config.commonly_referenced_pages %}
+Commonly Referenced Pages:
+{% for page in internal_docs_config.commonly_referenced_pages %}
+- {{ page }}
+{% endfor %}
+{% endif %}
+
+{% if internal_docs_config.commonly_referenced_categories %}
+Commonly Referenced Categories:
+{% for category in internal_docs_config.commonly_referenced_categories %}
+- {{ category }}
+{% endfor %}
+{% endif %}
+
+{% if internal_docs_config.anchor_phrasing_patterns %}
+Anchor Text Patterns:
+{% for pattern in internal_docs_config.anchor_phrasing_patterns %}
+- {{ pattern }}
+{% endfor %}
+{% endif %}
+{% elif not relevant_documents %}
+NOTE: No InternalDocsConfig or relevant documents found. Suggest links using logical URL paths based on content context.
+{% endif %}
+
+───────────────────────────────────────
+LINKING TASK
+───────────────────────────────────────
+
+For each suggestion provide:
+1. anchor_text — natural, keyword-optimized, follows anchor phrasing patterns if provided
+2. target_url — specific page from InternalDocsConfig (if available) or logical URL path
+3. placement_context — snippet of surrounding text or section name where link should be placed
+4. section — which article section (from outline)
+5. relevance_score — 0.0–1.0
+6. reasoning — brief explanation of why this link adds value
+
+STRATEGY
+- Match article content and keywords to available pages/categories
+- Place links contextually where they add value (not just at the end)
+- Focus on high-relevance matches (relevance > 0.6)
+- Suggest 3–8 links total; include at least one in the first 30% of the article
+- Do NOT cluster multiple links in the same paragraph or section
+- Only suggest links that exist in InternalDocsConfig when provided

@@ -85,10 +85,25 @@ def setup_tracing(service_instance_id: Optional[str] = None) -> bool:
         )
         if arthur_task_id:
             arthur_kwargs["task_id"] = arthur_task_id
+            logger.info(f"Telemetry: passing task_id={arthur_task_id!r} to Arthur")
+        else:
+            logger.warning(
+                "Telemetry: ARTHUR_TASK_ID is not set — traces may not be routed to a task"
+            )
 
-        _arthur_client = Arthur(**arthur_kwargs)
         logger.info(
-            f"Arthur client created, telemetry_active={_arthur_client.telemetry_active}"
+            f"Telemetry: creating Arthur client with kwargs keys={list(arthur_kwargs.keys())}"
+        )
+        _arthur_client = Arthur(**arthur_kwargs)
+        logger.info("Telemetry: Arthur() constructor completed successfully")
+
+        # Log exactly what the Arthur client resolved internally
+        logger.info(
+            f"Arthur client created: "
+            f"telemetry_active={_arthur_client.telemetry_active}, "
+            f"resolved_task_id={_arthur_client.task_id!r}, "
+            f"otlp_endpoint={getattr(_arthur_client, '_otlp_endpoint', 'unknown')}, "
+            f"base_url={getattr(_arthur_client, '_base_url', 'unknown')}"
         )
 
         # Verify the global TracerProvider was set (not a no-op proxy)
@@ -96,7 +111,12 @@ def setup_tracing(service_instance_id: Optional[str] = None) -> bool:
             from opentelemetry import trace as otel_trace
 
             provider = otel_trace.get_tracer_provider()
-            logger.info(f"Global TracerProvider: {type(provider).__name__}")
+            provider_type = type(provider).__name__
+            logger.info(f"Global TracerProvider: {provider_type}")
+            if "Proxy" in provider_type or "NoOp" in provider_type:
+                logger.warning(
+                    f"TracerProvider is a no-op ({provider_type}) — spans will not be exported!"
+                )
         except Exception as e:
             logger.warning(f"Could not inspect TracerProvider: {e}")
 
@@ -113,7 +133,9 @@ def setup_tracing(service_instance_id: Optional[str] = None) -> bool:
         except Exception as e:
             logger.warning(f"Failed to instrument LiteLLM: {e}")
 
-        # Emit a test span to verify the export pipeline is working
+        logger.info("Telemetry: instrumentation phase complete — emitting startup span")
+
+        # Emit a test span and force-flush to verify the export pipeline is working
         try:
             from opentelemetry import trace as otel_trace
 
@@ -121,9 +143,26 @@ def setup_tracing(service_instance_id: Optional[str] = None) -> bool:
             with tracer.start_as_current_span("telemetry.startup_check") as span:
                 span.set_attribute("service.name", service_name)
                 span.set_attribute("deployment.environment", deployment_env)
-            logger.info("Startup telemetry check span emitted")
+            logger.info("Startup telemetry check span emitted — flushing...")
+
+            # Force-flush so we can detect export failures at startup
+            if (
+                _arthur_client
+                and hasattr(_arthur_client, "_tracer_provider")
+                and _arthur_client._tracer_provider
+            ):
+                flush_result = _arthur_client._tracer_provider.force_flush(
+                    timeout_millis=10000
+                )
+                logger.info(
+                    f"Telemetry flush result: {flush_result} (True=success, False=timeout/error)"
+                )
+            else:
+                logger.warning("No tracer provider on Arthur client — cannot flush")
         except Exception as e:
-            logger.warning(f"Failed to emit startup check span: {e}")
+            logger.warning(
+                f"Failed to emit/flush startup check span: {e}", exc_info=True
+            )
 
         logger.info("✓ Telemetry initialised successfully")
         return True

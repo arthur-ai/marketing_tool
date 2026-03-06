@@ -1,0 +1,194 @@
+{
+  "type": "json_schema",
+  "json_schema": {
+    "name": "content_formatting_response",
+    "description": "Publication-ready formatted content output from the Content Formatting agent",
+    "strict": true,
+    "schema": {
+      "type": "object",
+      "properties": {
+        "formatted_content": {
+          "type": "string",
+          "description": "Article content with all formatting applied \u2014 semantic HTML with internal links inserted"
+        },
+        "publication_ready_html": {
+          "type": "string",
+          "description": "Complete HTML document including head section with title, meta description, schema markup JSON-LD, and formatted body"
+        },
+        "content_metadata": {
+          "type": "object",
+          "description": "Metadata about the formatted content",
+          "properties": {
+            "title": {
+              "type": "string",
+              "description": "Article title from meta_title"
+            },
+            "description": {
+              "type": "string",
+              "description": "Meta description"
+            },
+            "tags": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Content tags"
+            },
+            "publication_info": {
+              "type": "string",
+              "description": "Publication details: author, date, category"
+            }
+          },
+          "required": [
+            "title",
+            "description",
+            "tags",
+            "publication_info"
+          ],
+          "additionalProperties": false
+        },
+        "table_of_contents": {
+          "type": "array",
+          "description": "Table of contents with anchor links for each section",
+          "items": {
+            "type": "object",
+            "properties": {
+              "section": {
+                "type": "string",
+                "description": "Section title"
+              },
+              "anchor": {
+                "type": "string",
+                "description": "HTML anchor link for this section, e.g. '#section-title'"
+              }
+            },
+            "required": [
+              "section",
+              "anchor"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "reading_time": {
+          "type": "number",
+          "description": "Estimated reading time in minutes"
+        },
+        "visual_elements": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Descriptions of image placements and callout boxes applied to the content"
+        },
+        "readability_analysis": {
+          "type": "object",
+          "description": "Readability analysis of the formatted content",
+          "properties": {
+            "score": {
+              "type": "number",
+              "description": "Flesch-Kincaid readability score (0-100). Minimum 60"
+            },
+            "grade_level": {
+              "type": "string",
+              "description": "Reading grade level"
+            },
+            "recommendations": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Remaining readability improvement suggestions"
+            }
+          },
+          "required": [
+            "score",
+            "grade_level",
+            "recommendations"
+          ],
+          "additionalProperties": false
+        },
+        "formatting_compliance": {
+          "type": "object",
+          "description": "Compliance validation results against the style guide",
+          "properties": {
+            "compliance_percentage": {
+              "type": "number",
+              "description": "Percentage compliance with the design kit and style guide. Target 95%+"
+            },
+            "issues": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "List of any remaining formatting issues"
+            }
+          },
+          "required": [
+            "compliance_percentage",
+            "issues"
+          ],
+          "additionalProperties": false
+        },
+        "mobile_optimization": {
+          "type": "object",
+          "description": "Mobile responsiveness validation results",
+          "properties": {
+            "is_responsive": {
+              "type": "boolean",
+              "description": "True if the content is fully responsive for mobile, tablet, and desktop"
+            },
+            "notes": {
+              "type": "string",
+              "description": "Notes on responsive formatting decisions made"
+            }
+          },
+          "required": [
+            "is_responsive",
+            "notes"
+          ],
+          "additionalProperties": false
+        },
+        "accessibility_score": {
+          "type": "number",
+          "description": "WCAG 2.1 AA compliance score from 0 to 100. Minimum target is 90"
+        },
+        "seo_optimization": {
+          "type": "object",
+          "description": "SEO formatting validation results",
+          "properties": {
+            "score": {
+              "type": "number",
+              "description": "SEO formatting score from 0 to 100. Minimum target is 85"
+            },
+            "notes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "SEO formatting validation notes and any issues found"
+            }
+          },
+          "required": [
+            "score",
+            "notes"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "formatted_content",
+        "publication_ready_html",
+        "content_metadata",
+        "table_of_contents",
+        "reading_time",
+        "visual_elements",
+        "readability_analysis",
+        "formatting_compliance",
+        "mobile_optimization",
+        "accessibility_score",
+        "seo_optimization"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

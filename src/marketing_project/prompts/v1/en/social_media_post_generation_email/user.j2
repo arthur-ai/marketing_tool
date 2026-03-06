@@ -1,0 +1,91 @@
+Generate a {{ platform }}-specific social media post using the recommended angle and hook.
+
+───────────────────────────────────────
+PLATFORM
+───────────────────────────────────────
+
+Platform: {{ platform }}
+{% if email_type %}Email Type: {{ email_type }}{% endif %}
+
+───────────────────────────────────────
+ANGLE AND HOOK CONTEXT
+───────────────────────────────────────
+
+- Recommended Angle: {{ angle_hook_result.recommended_angle }}
+- Recommended Hook: {{ angle_hook_result.recommended_hook }}
+- Rationale: {{ angle_hook_result.rationale }}
+- Available Angles: {{ angle_hook_result.angles | join('; ') }}
+- Available Hooks: {{ angle_hook_result.hooks | join('; ') }}
+
+───────────────────────────────────────
+MARKETING BRIEF CONTEXT
+───────────────────────────────────────
+
+{% if brief_result %}
+- Target Audience: {{ brief_result.target_audience | join(', ') }}
+- Key Messages: {{ brief_result.key_messages | join('; ') }}
+- Tone and Voice: {{ brief_result.tone_and_voice }}
+- Content Strategy: {{ brief_result.content_strategy }}
+{% endif %}
+
+───────────────────────────────────────
+BLOG POST CONTEXT
+───────────────────────────────────────
+
+{% if input_content %}
+{% if input_content.title %}Title: {{ input_content.title }}{% endif %}
+{% if input_content.content %}Content: {{ input_content.content }}{% endif %}
+{% endif %}
+
+───────────────────────────────────────
+POST REQUIREMENTS
+───────────────────────────────────────
+
+1. OPENING HOOK — start with: "{{ angle_hook_result.recommended_hook }}"
+
+2. ANGLE — present content from: "{{ angle_hook_result.recommended_angle }}"
+
+3. PLATFORM-SPECIFIC REQUIREMENTS
+   {% if platform == 'linkedin' %}
+   - Length: 300–3000 characters
+   - Include 3–5 relevant hashtags
+   - Professional, thought-leadership tone
+   - Engagement-focused: questions, insights, stories
+   - Clear call-to-action
+   {% endif %}
+   {% if platform == 'hackernews' %}
+   - Length: 500–2000 characters
+   - Technical, substantive content
+   - No marketing language
+   - Discussion-oriented
+   - Include technical details and insights
+   {% endif %}
+   {% if platform == 'email' %}
+   {% if email_type == 'newsletter' %}
+   - Newsletter style: informative, educational
+   - Well-structured, scannable format
+   - Subject line: compelling, value-focused (50–60 characters)
+   - Regular update tone
+   {% else %}
+   - Promotional style: CTA-focused, conversion-oriented
+   - Clear value proposition
+   - Subject line: action-oriented (50–60 characters)
+   - Prominent call-to-action
+   {% endif %}
+   {% endif %}
+
+4. CONTENT ALIGNMENT
+   - Valuable and engaging for {{ platform }} audience
+   - Aligned with key messages: {{ brief_result.key_messages | join('; ') if brief_result else 'N/A' }}
+   - Matching tone: {{ brief_result.tone_and_voice if brief_result else 'Platform-appropriate' }}
+   - Clear call-to-action
+
+5. PLATFORM-SPECIFIC ELEMENTS
+   {% if platform == 'linkedin' %}
+   - Include 3–5 relevant hashtags at end
+   - Consider mentions if appropriate
+   {% endif %}
+   {% if platform == 'email' %}
+   - Generate a compelling subject line (50–60 characters)
+   - Structure content for email readability
+   {% endif %}

@@ -1,0 +1,42 @@
+{
+  "type": "json_schema",
+  "json_schema": {
+    "name": "transcript_speakers_extraction_response",
+    "description": "Speaker extraction result from the Transcript Speakers Extraction agent",
+    "strict": true,
+    "schema": {
+      "type": "object",
+      "properties": {
+        "speakers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Deduplicated list of all unique speaker names extracted from the transcript"
+        },
+        "speakers_validated": {
+          "type": "boolean",
+          "description": "True if at least one valid speaker name was found \u2014 not just whitespace or random text"
+        },
+        "validation_issues": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Issues found during extraction. Note generic placeholders here but still include them in speakers. Empty if all speakers are valid proper names"
+        },
+        "confidence_score": {
+          "type": "number",
+          "description": "Confidence from 0.0 to 1.0: 0.9+ for clear proper names, 0.5-0.7 for generic placeholders, 0.0-0.5 if speakers cannot be identified"
+        }
+      },
+      "required": [
+        "speakers",
+        "speakers_validated",
+        "validation_issues",
+        "confidence_score"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

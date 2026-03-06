@@ -1,0 +1,100 @@
+{
+  "type": "json_schema",
+  "json_schema": {
+    "name": "suggested_links_response",
+    "description": "Internal link suggestions from the Suggested Links agent, with relevance scores and anchor text recommendations",
+    "strict": true,
+    "schema": {
+      "type": "object",
+      "properties": {
+        "internal_links": {
+          "type": "array",
+          "description": "Array of 3-8 internal link suggestions ordered by relevance score descending",
+          "items": {
+            "type": "object",
+            "properties": {
+              "anchor_text": {
+                "type": "string",
+                "description": "Natural, keyword-optimized anchor text that flows with surrounding content"
+              },
+              "target_url": {
+                "type": "string",
+                "description": "URL of the target internal page"
+              },
+              "target_title": {
+                "type": "string",
+                "description": "Title of the target page"
+              },
+              "placement_context": {
+                "type": "string",
+                "description": "Exact sentence or phrase in the article where the link should be inserted"
+              },
+              "section": {
+                "type": "string",
+                "description": "Article section (e.g. 'introduction', 'body paragraph 2', 'conclusion') where the link is placed"
+              },
+              "relevance_score": {
+                "type": "number",
+                "description": "Relevance score from 0.0 to 1.0 \u2014 links below 0.6 should not be included"
+              },
+              "reasoning": {
+                "type": "string",
+                "description": "Explanation of why this link is relevant and valuable in this placement"
+              }
+            },
+            "required": [
+              "anchor_text",
+              "target_url",
+              "target_title",
+              "placement_context",
+              "section",
+              "relevance_score",
+              "reasoning"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "total_suggestions": {
+          "type": "number",
+          "description": "Total number of link suggestions provided"
+        },
+        "high_confidence_links": {
+          "type": "number",
+          "description": "Number of links with relevance_score above 0.7"
+        },
+        "matched_pages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "URLs of all internal pages that were matched during analysis"
+        },
+        "matched_categories": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Content categories that were matched during analysis"
+        },
+        "average_relevance": {
+          "type": "number",
+          "description": "Average relevance score across all suggestions from 0.0 to 1.0"
+        },
+        "confidence_score": {
+          "type": "number",
+          "description": "Overall confidence from 0.0 to 1.0"
+        }
+      },
+      "required": [
+        "internal_links",
+        "total_suggestions",
+        "high_confidence_links",
+        "matched_pages",
+        "matched_categories",
+        "average_relevance",
+        "confidence_score"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

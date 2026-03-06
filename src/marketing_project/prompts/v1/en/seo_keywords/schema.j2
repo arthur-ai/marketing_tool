@@ -1,0 +1,290 @@
+{
+  "type": "json_schema",
+  "json_schema": {
+    "name": "seo_keywords_response",
+    "description": "Comprehensive keyword strategy output from the SEO Keywords agent",
+    "strict": true,
+    "schema": {
+      "type": "object",
+      "properties": {
+        "main_keyword": {
+          "type": "string",
+          "description": "The single most important keyword for this content, selected for search volume > 100/month and achievable difficulty (20-70)"
+        },
+        "primary_keywords": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Array of 3-5 primary keywords that support the main_keyword"
+        },
+        "primary_keywords_metadata": {
+          "type": "array",
+          "description": "Metadata for each primary keyword including search volume, difficulty, and relevance scores",
+          "items": {
+            "type": "object",
+            "properties": {
+              "keyword": {
+                "type": "string",
+                "description": "The primary keyword"
+              },
+              "search_volume": {
+                "type": "number",
+                "description": "Estimated monthly search volume"
+              },
+              "difficulty_score": {
+                "type": "number",
+                "description": "Keyword difficulty from 0 to 100"
+              },
+              "relevance_score": {
+                "type": "number",
+                "description": "Relevance score from 0 to 100 \u2014 must be 80+ for primary keywords"
+              }
+            },
+            "required": [
+              "keyword",
+              "search_volume",
+              "difficulty_score",
+              "relevance_score"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "secondary_keywords": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Array of 5-10 secondary keywords \u2014 supporting variations and synonyms"
+        },
+        "secondary_keywords_metadata": {
+          "type": "array",
+          "description": "Metadata for each secondary keyword",
+          "items": {
+            "type": "object",
+            "properties": {
+              "keyword": {
+                "type": "string",
+                "description": "The secondary keyword"
+              },
+              "search_volume": {
+                "type": "number",
+                "description": "Estimated monthly search volume"
+              },
+              "difficulty_score": {
+                "type": "number",
+                "description": "Keyword difficulty from 0 to 100"
+              }
+            },
+            "required": [
+              "keyword",
+              "search_volume",
+              "difficulty_score"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "lsi_keywords": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Array of 5-10 LSI (latent semantic indexing) keywords for semantic depth"
+        },
+        "long_tail_keywords": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Array of 5-8 long-tail keyword phrases for FAQ and question-based content"
+        },
+        "long_tail_keywords_metadata": {
+          "type": "array",
+          "description": "Metadata for each long-tail keyword",
+          "items": {
+            "type": "object",
+            "properties": {
+              "keyword": {
+                "type": "string",
+                "description": "The long-tail keyword phrase"
+              },
+              "search_volume": {
+                "type": "number",
+                "description": "Estimated monthly search volume"
+              },
+              "difficulty_score": {
+                "type": "number",
+                "description": "Keyword difficulty from 0 to 100"
+              }
+            },
+            "required": [
+              "keyword",
+              "search_volume",
+              "difficulty_score"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "search_intent": {
+          "type": "string",
+          "description": "Primary search intent classification: informational, transactional, navigational, or commercial"
+        },
+        "keyword_difficulty": {
+          "type": "array",
+          "description": "Difficulty score for each keyword in the strategy",
+          "items": {
+            "type": "object",
+            "properties": {
+              "keyword": {
+                "type": "string",
+                "description": "The keyword"
+              },
+              "score": {
+                "type": "number",
+                "description": "Difficulty score from 0 to 100"
+              }
+            },
+            "required": [
+              "keyword",
+              "score"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "keyword_density_analysis": {
+          "type": "array",
+          "description": "Current vs optimal density analysis for each keyword",
+          "items": {
+            "type": "object",
+            "properties": {
+              "keyword": {
+                "type": "string",
+                "description": "The keyword"
+              },
+              "current_density": {
+                "type": "number",
+                "description": "Current density percentage in the content"
+              },
+              "optimal_density": {
+                "type": "number",
+                "description": "Optimal target density percentage"
+              },
+              "occurrences": {
+                "type": "number",
+                "description": "Number of times the keyword appears"
+              },
+              "placement_locations": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Sections where the keyword appears or should appear"
+              }
+            },
+            "required": [
+              "keyword",
+              "current_density",
+              "optimal_density",
+              "occurrences",
+              "placement_locations"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "keyword_clusters": {
+          "type": "array",
+          "description": "Keywords grouped by topic or theme clusters",
+          "items": {
+            "type": "object",
+            "properties": {
+              "cluster_name": {
+                "type": "string",
+                "description": "Name of this topic cluster"
+              },
+              "keywords": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Keywords in this cluster"
+              },
+              "primary_keyword": {
+                "type": "string",
+                "description": "The leading keyword for this cluster"
+              },
+              "topic_theme": {
+                "type": "string",
+                "description": "The unifying theme or topic of this cluster"
+              }
+            },
+            "required": [
+              "cluster_name",
+              "keywords",
+              "primary_keyword",
+              "topic_theme"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "search_volume_summary": {
+          "type": "object",
+          "description": "Aggregated search volume totals by keyword tier",
+          "properties": {
+            "primary_total": {
+              "type": "number",
+              "description": "Sum of estimated monthly search volumes for primary keywords"
+            },
+            "secondary_total": {
+              "type": "number",
+              "description": "Sum of estimated monthly search volumes for secondary keywords"
+            },
+            "long_tail_total": {
+              "type": "number",
+              "description": "Sum of estimated monthly search volumes for long-tail keywords"
+            }
+          },
+          "required": [
+            "primary_total",
+            "secondary_total",
+            "long_tail_total"
+          ],
+          "additionalProperties": false
+        },
+        "optimization_recommendations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Specific, actionable recommendations for keyword optimization"
+        },
+        "confidence_score": {
+          "type": "number",
+          "description": "Overall confidence from 0.0 to 1.0"
+        },
+        "relevance_score": {
+          "type": "number",
+          "description": "Overall relevance score from 0 to 100"
+        }
+      },
+      "required": [
+        "main_keyword",
+        "primary_keywords",
+        "primary_keywords_metadata",
+        "secondary_keywords",
+        "secondary_keywords_metadata",
+        "lsi_keywords",
+        "long_tail_keywords",
+        "long_tail_keywords_metadata",
+        "search_intent",
+        "keyword_difficulty",
+        "keyword_density_analysis",
+        "keyword_clusters",
+        "search_volume_summary",
+        "optimization_recommendations",
+        "confidence_score",
+        "relevance_score"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

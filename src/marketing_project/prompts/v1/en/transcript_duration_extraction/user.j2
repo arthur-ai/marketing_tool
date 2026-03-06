@@ -1,0 +1,63 @@
+Extract or calculate the duration of the following transcript content.
+
+───────────────────────────────────────
+TRANSCRIPT INFORMATION
+───────────────────────────────────────
+
+- Transcript ID: {{ transcript_id }}
+- Title: {{ transcript_title }}
+
+───────────────────────────────────────
+TRANSCRIPT CONTENT
+───────────────────────────────────────
+
+IMPORTANT: Scan the ENTIRE transcript content below for timestamps. Calculate duration from the last timestamp, or estimate from word count if no timestamps are available.
+
+Content Length: {{ extracted_content|length if extracted_content else (transcript_content|length if transcript_content else 0) }} characters
+
+{% if extracted_content %}
+{{ extracted_content }}
+{% elif transcript_content %}
+{{ transcript_content }}
+{% else %}
+WARNING: No content provided for duration extraction.
+{% endif %}
+
+───────────────────────────────────────
+EXISTING DURATION INFORMATION
+───────────────────────────────────────
+
+{% if transcript_duration %}
+Current Duration: {{ transcript_duration }} seconds ({{ (transcript_duration / 60)|round(1) }} minutes)
+Note: This duration may be incorrect or missing. Please extract/calculate from the content above.
+{% else %}
+WARNING: Duration not specified. Please extract/calculate from content.
+{% endif %}
+
+───────────────────────────────────────
+EXTRACTION TASK
+───────────────────────────────────────
+
+1. FIND TIMESTAMPS
+   Scan the ENTIRE transcript content for timestamps:
+   - SRT-style: "00:02:12,730 --> 00:02:15,570"
+   - WebVTT-style: "00:02:12.730 --> 00:02:15.570"
+   - Simple formats: "00:02:12", "[1:23]", "(5:30)", "2:15"
+   - Any time-like patterns
+
+2. CALCULATE DURATION
+   - If timestamps found: calculate from the LAST timestamp (hours×3600 + minutes×60 + seconds + ms/1000)
+   - If no timestamps: estimate from word count (~150 words per minute; round to nearest integer)
+
+3. VALIDATE DURATION
+   - Must be a positive integer representing seconds
+   - Minimum: 60 seconds (1 minute)
+   - Flag if unreasonably long (> 10 hours)
+
+4. SPECIFY EXTRACTION METHOD
+   - "timestamps": calculated from timestamps
+   - "word_count": estimated from word count
+   - "provided": validated from provided duration
+   - "estimated": rough estimation
+
+Return: duration in seconds, validation status, confidence score, extraction method, and any issues found.

@@ -1,0 +1,79 @@
+{
+  "type": "json_schema",
+  "json_schema": {
+    "name": "transcript_content_extraction_response",
+    "description": "Extracted and validated transcript content from the Transcript Content Extraction agent",
+    "strict": true,
+    "schema": {
+      "type": "object",
+      "properties": {
+        "extracted_content": {
+          "type": "string",
+          "description": "The main transcript text extracted from raw input \u2014 timestamps removed, speaker labels preserved, dialogue cleaned"
+        },
+        "content_validated": {
+          "type": "boolean",
+          "description": "True if extracted content meets quality criteria: at least 100 characters of actual dialogue"
+        },
+        "content_summary": {
+          "type": "string",
+          "description": "First 500 characters of the extracted content for quick preview"
+        },
+        "validation_issues": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of critical issues found. Empty if content is valid. Do not flag timestamps as issues"
+        },
+        "quality_metrics": {
+          "type": "object",
+          "description": "Quality scores for the extracted content",
+          "properties": {
+            "completeness": {
+              "type": "number",
+              "description": "How complete the transcript appears from 0.0 to 1.0"
+            },
+            "content_quality": {
+              "type": "number",
+              "description": "Quality and readability of the extracted content from 0.0 to 1.0"
+            },
+            "speaker_clarity": {
+              "type": "number",
+              "description": "How clearly speakers are identified from 0.0 to 1.0"
+            },
+            "timestamp_accuracy": {
+              "type": "number",
+              "description": "Accuracy of timestamps if present from 0.0 to 1.0 \u2014 set to 0 if no timestamps"
+            }
+          },
+          "required": [
+            "completeness",
+            "content_quality",
+            "speaker_clarity",
+            "timestamp_accuracy"
+          ],
+          "additionalProperties": false
+        },
+        "confidence_score": {
+          "type": "number",
+          "description": "Overall confidence from 0.0 to 1.0"
+        },
+        "transcript_type": {
+          "type": "string",
+          "description": "Detected transcript type: podcast, meeting, interview, video, webinar, or other"
+        }
+      },
+      "required": [
+        "extracted_content",
+        "content_validated",
+        "content_summary",
+        "validation_issues",
+        "quality_metrics",
+        "confidence_score",
+        "transcript_type"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

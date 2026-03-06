@@ -1,0 +1,35 @@
+Based on the following analyses of {{ count }} competitor content piece{{ 's' if count != 1 else '' }}, create a strategic content summary.
+
+───────────────────────────────────────
+USER CONTEXT
+───────────────────────────────────────
+
+- Niche / Industry: {{ niche | default('general') }}
+- Content Goals: {{ goals | default('increase engagement and organic traffic') }}
+
+───────────────────────────────────────
+INDIVIDUAL ANALYSES
+───────────────────────────────────────
+
+{{ analyses_json }}
+
+───────────────────────────────────────
+SUMMARY INSTRUCTIONS
+───────────────────────────────────────
+
+Synthesise the above analyses to identify:
+
+1. TOP CONTENT PATTERNS — recurring elements in competitor content that drive performance (look across all pieces for commonalities)
+2. WINNING CONTENT FORMATS — which formats (listicle, how-to, case study, etc.) appear most effective in this niche
+3. COMMON TOPICS — subject matter areas competitors consistently cover and that the audience clearly values
+4. CONTENT GAPS — topics, angles, or audience segments that competitors are missing or covering poorly — these are the user's best opportunities
+5. SEO OPPORTUNITIES — keyword and technical SEO patterns observed that the user can leverage or do better
+{% if has_social %}
+6. SOCIAL MEDIA TACTICS — effective social techniques observed across the social content analysed
+{% endif %}
+7. RECOMMENDED CONTENT STRATEGY — a 2–4 sentence strategic recommendation for the user given their niche "{{ niche | default('general') }}" and goal "{{ goals | default('increase engagement and organic traffic') }}", based directly on what you observed
+8. QUICK WINS — 3–5 specific actions the user can execute this week to immediately gain a competitive edge, derived directly from the gaps and weaknesses you found
+
+Focus on insights that are specific to what you observed in these analyses, not generic content marketing advice. Every recommendation should trace back to evidence from the data above.
+
+Respond with a valid JSON object matching the required schema. Do not include markdown formatting or code fences.

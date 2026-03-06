@@ -1,0 +1,104 @@
+Create a comprehensive marketing brief for a {{ content_type }} focused on the keyword: {{ seo_result.main_keyword }}
+
+───────────────────────────────────────
+FROM STEP 1 — SEO KEYWORDS
+───────────────────────────────────────
+
+- Main Keyword: {{ seo_result.main_keyword }} (HIGHEST PRIORITY — must drive all brief decisions)
+- Primary Keywords: {{ seo_result.primary_keywords | join(', ') }}
+- Search Intent: {{ seo_result.search_intent }}
+{% if seo_result.long_tail_keywords %}
+- Long-tail Opportunities: {{ seo_result.long_tail_keywords | join(', ') }}
+{% endif %}
+{% if seo_result.keyword_clusters %}
+- Keyword Clusters: {{ seo_result.keyword_clusters | map(attribute='cluster_name') | join(', ') }}
+{% endif %}
+
+───────────────────────────────────────
+BRIEF REQUIREMENTS
+───────────────────────────────────────
+
+Every element of this brief must align with the main keyword "{{ seo_result.main_keyword }}":
+
+- Target audience: who searches for "{{ seo_result.main_keyword }}"?
+- Key messages: how do they align with "{{ seo_result.main_keyword }}" themes?
+- Content strategy: how does it optimize for "{{ seo_result.main_keyword }}"?
+- KPIs: how do they measure "{{ seo_result.main_keyword }}" performance?
+- Distribution channels: where do "{{ seo_result.main_keyword }}" searchers spend time?
+
+Also align with search intent ({{ seo_result.search_intent }}), keyword clusters, and long-tail opportunities for specific targeting.
+
+{% if content_type == "transcript" %}
+───────────────────────────────────────
+TRANSCRIPT CONTEXT
+───────────────────────────────────────
+{% if transcript_title %}
+- Title: {{ transcript_title }}
+{% endif %}
+{% if transcript_speakers %}
+- Speakers: {{ transcript_speakers | join(', ') }}
+{% endif %}
+{% if transcript_duration %}
+- Duration: {{ transcript_duration }} seconds ({{ (transcript_duration / 60) | round(1) }} minutes)
+{% endif %}
+{% if transcript_type %}
+- Transcript Type: {{ transcript_type }}
+{% endif %}
+{% if key_topics %}
+- Key Topics: {{ key_topics | join(', ') }}
+{% endif %}
+{% if detected_language %}
+- Language: {{ detected_language }}
+{% endif %}
+{% if transcript_snippet %}
+- Content Preview: {{ transcript_snippet }}
+{% endif %}
+{% if word_count %}
+- Word Count: {{ word_count }}
+{% endif %}
+{% endif %}
+
+{% if content_type == "blog_post" %}
+───────────────────────────────────────
+BLOG POST CONTEXT
+───────────────────────────────────────
+{% if blog_post_title %}
+- Title: {{ blog_post_title }}
+{% endif %}
+{% if blog_post_author %}
+- Author: {{ blog_post_author }}
+{% endif %}
+{% if blog_post_category %}
+- Category: {{ blog_post_category }}
+{% endif %}
+{% if blog_post_tags %}
+- Tags: {{ blog_post_tags | join(', ') }}
+{% endif %}
+{% if blog_post_headings %}
+- Content Headings:
+{% for heading in blog_post_headings %}
+  - {{ heading }}
+{% endfor %}
+{% endif %}
+{% if blog_post_word_count %}
+- Word Count: {{ blog_post_word_count }}
+{% endif %}
+{% if blog_post_snippet %}
+- Content Preview: {{ blog_post_snippet }}
+{% endif %}
+{% endif %}
+
+{% if design_kit_config %}
+───────────────────────────────────────
+BRAND KIT GUIDELINES
+───────────────────────────────────────
+
+- Voice Adjectives: {{ design_kit_config.voice_adjectives | join(', ') if design_kit_config.voice_adjectives else 'Not specified' }}
+- Point of View: {{ design_kit_config.point_of_view }}
+- Sentence Length/Tempo: {{ design_kit_config.sentence_length_tempo }}
+- Lexical Preferences: {{ design_kit_config.lexical_preferences | join(', ') if design_kit_config.lexical_preferences else 'None' }}
+- CTA Patterns: {{ design_kit_config.cta_language | join(', ') if design_kit_config.cta_language else 'Not specified' }}
+- CTA Positions: {{ design_kit_config.cta_positions | join(', ') if design_kit_config.cta_positions else 'Not specified' }}
+
+Ensure all brief elements align with the brand voice, CTA patterns, and structural preferences above.
+{% endif %}

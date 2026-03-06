@@ -1,0 +1,95 @@
+Validate and approve the following blog post preprocessing data before it proceeds to SEO keywords extraction.
+
+───────────────────────────────────────
+BLOG POST OVERVIEW
+───────────────────────────────────────
+
+- ID: {{ blog_post_id }}
+- Title: {{ blog_post_title }}
+- Author: {{ blog_post_author or 'Not specified' }}
+- Category: {{ blog_post_category or 'Not specified' }}
+{% if detected_format %}
+- Detected Format: {{ detected_format }}
+{% endif %}
+{% if parsing_confidence is not none %}
+- Parsing Confidence: {{ (parsing_confidence * 100)|round(1) }}% ({{ 'High' if parsing_confidence >= 0.8 else 'Medium' if parsing_confidence >= 0.5 else 'Low' }})
+{% endif %}
+
+───────────────────────────────────────
+TAGS AND CONTENT METRICS
+───────────────────────────────────────
+
+{% if blog_post_tags %}
+Tags ({{ blog_post_tags|length }}): {% for tag in blog_post_tags %}{{ tag }}{% if not loop.last %}, {% endif %}{% endfor %}
+{% else %}
+WARNING: No tags found.
+{% endif %}
+
+{% if blog_post_word_count %}
+Word Count: {{ blog_post_word_count }} words
+{% else %}
+WARNING: Word count not specified.
+{% endif %}
+
+{% if blog_post_reading_time %}
+Reading Time: {{ blog_post_reading_time }} minutes
+{% else %}
+WARNING: Reading time not specified.
+{% endif %}
+
+{% if parsing_warnings %}
+Parsing Warnings:
+{% for warning in parsing_warnings %}
+- {{ warning }}
+{% endfor %}
+{% endif %}
+
+───────────────────────────────────────
+CONTENT
+───────────────────────────────────────
+
+Content Preview (first 500 characters):
+{{ content_summary }}
+
+Full Content Length: {{ blog_post_content|length if blog_post_content else 0 }} characters
+
+{% if blog_post_content %}
+Full Blog Post Content (use for extraction and analysis):
+
+{{ blog_post_content }}
+{% endif %}
+
+Snippet: {{ blog_post_snippet or 'No snippet available' }}
+
+{% if blog_post_metadata %}
+Metadata:
+{{ blog_post_metadata|tojson(indent=2) }}
+{% endif %}
+
+{% if quality_metrics %}
+Parsing Quality Metrics:
+{% for metric, value in quality_metrics.items() %}
+- {{ metric|replace('_', ' ')|title }}: {{ (value * 100)|round(1) if value <= 1 else value }}%
+{% endfor %}
+{% endif %}
+
+───────────────────────────────────────
+VALIDATION AND EXTRACTION TASK
+───────────────────────────────────────
+
+IMPORTANT: Before flagging any field as invalid, attempt to extract it from the full content above. Only require approval if critical data (title, content) cannot be recovered.
+
+1. TITLE — validate length (10–200 chars) and descriptiveness; flag if generic or missing
+2. CONTENT — check minimum 100 words, readability, and completeness
+3. AUTHOR — if missing, extract using "by Author", "Written by", "Author:" patterns; check metadata
+4. CATEGORY — if missing, infer from content topics (technology, business, lifestyle, etc.)
+5. TAGS — if missing, extract hashtags or generate from key topics
+6. WORD COUNT — calculate from content if missing (count actual words)
+7. READING TIME — calculate: word_count ÷ 200 minutes
+8. SNIPPET — generate from first paragraph if missing (100–200 chars)
+9. SENTIMENT ANALYSIS — required: classify overall_sentiment, sentiment_score (-1.0–1.0), sentiment_confidence, emotional_tone, sentiment_by_section
+10. CONTENT ANALYSIS — required: readability_score, completeness_score, content_type, target_audience, headings, sections, paragraph_count, list_count, link_count
+11. SEO AND MARKETING — required: potential_keywords, seo_opportunities, engagement_potential, shareability_score, cta_detected
+12. LANGUAGE AND TOPICS — required: detected_language, key_topics (3–10), inferred_categories
+
+Provide all extracted values, validation status, sentiment analysis, content analysis, SEO analysis, and approval decision in your structured response.

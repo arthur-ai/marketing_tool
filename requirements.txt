@@ -59,9 +59,9 @@ beautifulsoup4==4.14.3
     # via -r requirements.in
 bertopic==0.17.4
     # via -r requirements.in
-boto3==1.42.61
+boto3==1.42.62
     # via -r requirements.in
-botocore==1.42.61
+botocore==1.42.62
     # via
     #   boto3
     #   s3transfer
@@ -74,7 +74,7 @@ certifi==2026.2.25
     #   sentry-sdk
 cffi==2.0.0
     # via cryptography
-charset-normalizer==3.4.4
+charset-normalizer==3.4.5
     # via requests
 click==8.3.1
     # via
@@ -165,6 +165,7 @@ httptools==0.7.1
     # via uvicorn
 httpx==0.28.1
     # via
+    #   -r requirements.in
     #   anthropic
     #   any-llm-sdk
     #   fastapi
@@ -181,7 +182,7 @@ httpx-sse==0.4.3
     # via
     #   langchain-community
     #   mcp
-huggingface-hub==1.5.0
+huggingface-hub==1.6.0
     # via
     #   sentence-transformers
     #   tokenizers
@@ -273,7 +274,7 @@ langgraph-prebuilt==1.0.8
     # via langgraph
 langgraph-sdk==0.3.9
     # via langgraph
-langsmith==0.7.12
+langsmith==0.7.13
     # via
     #   langchain-classic
     #   langchain-community
@@ -337,31 +338,25 @@ numpy==2.4.2
     #   transformers
     #   umap-learn
     #   yake
-openai==2.24.0
+openai==2.26.0
     # via
     #   -r requirements.in
     #   any-llm-sdk
     #   langchain-openai
     #   litellm
 openinference-instrumentation==0.1.46
-    # via
-    #   openinference-instrumentation-langchain
-    #   openinference-instrumentation-openai
-openinference-instrumentation-langchain==0.1.61
-    # via -r requirements.in
+    # via openinference-instrumentation-openai
 openinference-instrumentation-openai==0.1.41
     # via -r requirements.in
 openinference-semantic-conventions==0.1.27
     # via
     #   openinference-instrumentation
-    #   openinference-instrumentation-langchain
     #   openinference-instrumentation-openai
 openresponses-types==2.3.0.post1
     # via any-llm-sdk
 opentelemetry-api==1.40.0
     # via
     #   openinference-instrumentation
-    #   openinference-instrumentation-langchain
     #   openinference-instrumentation-openai
     #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-exporter-otlp-proto-http
@@ -379,9 +374,7 @@ opentelemetry-exporter-otlp-proto-grpc==1.40.0
 opentelemetry-exporter-otlp-proto-http==1.40.0
     # via opentelemetry-exporter-otlp
 opentelemetry-instrumentation==0.61b0
-    # via
-    #   openinference-instrumentation-langchain
-    #   openinference-instrumentation-openai
+    # via openinference-instrumentation-openai
 opentelemetry-proto==1.40.0
     # via
     #   opentelemetry-exporter-otlp-proto-common
@@ -395,7 +388,6 @@ opentelemetry-sdk==1.40.0
     #   opentelemetry-exporter-otlp-proto-http
 opentelemetry-semantic-conventions==0.61b0
     # via
-    #   openinference-instrumentation-langchain
     #   openinference-instrumentation-openai
     #   opentelemetry-instrumentation
     #   opentelemetry-sdk
@@ -760,7 +752,6 @@ websockets==16.0
 wrapt==1.17.3
     # via
     #   openinference-instrumentation
-    #   openinference-instrumentation-langchain
     #   openinference-instrumentation-openai
     #   opentelemetry-instrumentation
     #   smart-open
