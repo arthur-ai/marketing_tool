@@ -48,16 +48,14 @@ class SuggestedLinksPlugin(PipelineStepPlugin):
         Build prompt context for internal linking suggestions step.
 
         Converts context values to models for template rendering and includes
-        InternalDocsConfig if available.
+        InternalDocsConfig if available. Relevant documents are pre-fetched
+        asynchronously in _execute_step and injected as "_db_relevant_documents".
         """
         from marketing_project.models.internal_docs_config import InternalDocsConfig
         from marketing_project.models.pipeline_steps import (
             ArticleGenerationResult,
             SEOKeywordsResult,
             SEOOptimizationResult,
-        )
-        from marketing_project.services.scanned_document_db import (
-            get_scanned_document_db,
         )
 
         # Get and convert context values to models
@@ -86,30 +84,10 @@ class SuggestedLinksPlugin(PipelineStepPlugin):
                 "No internal docs configuration found - linking suggestions will be limited"
             )
 
-        # Query database for relevant documents based on keywords
-        relevant_documents = []
-        try:
-            db = get_scanned_document_db()
-            # Extract keywords from SEO result
-            keywords = []
-            if seo_result:
-                if seo_result.main_keyword:
-                    keywords.append(seo_result.main_keyword)
-                if seo_result.primary_keywords:
-                    keywords.extend(
-                        seo_result.primary_keywords[:5]
-                    )  # Top 5 primary keywords
+        # Relevant documents were pre-fetched asynchronously in _execute_step
+        relevant_documents = context.get("_db_relevant_documents", [])
 
-            if keywords:
-                relevant_documents = db.search_by_keywords(keywords, limit=20)
-                logger.info(
-                    f"Found {len(relevant_documents)} relevant documents from database for link suggestions"
-                )
-        except Exception as e:
-            logger.warning(f"Failed to query database for relevant documents: {e}")
-
-        # Build prompt context
-        prompt_context = {
+        return {
             "content": content,
             "article_result": article_result,
             "seo_result": seo_result,
@@ -122,7 +100,42 @@ class SuggestedLinksPlugin(PipelineStepPlugin):
             ),
         }
 
-        return prompt_context
+    async def _execute_step(
+        self,
+        context: Dict[str, Any],
+        pipeline: Any,
+        job_id: Optional[str] = None,
+    ) -> SuggestedLinksResult:
+        """Pre-fetch relevant documents from DB (async), then run the common step."""
+        from marketing_project.models.pipeline_steps import SEOKeywordsResult
+        from marketing_project.services.scanned_document_db import (
+            get_scanned_document_db,
+        )
+
+        try:
+            seo_result = self._get_context_model(
+                context, "seo_keywords", SEOKeywordsResult
+            )
+            keywords = []
+            if seo_result:
+                if seo_result.main_keyword:
+                    keywords.append(seo_result.main_keyword)
+                if seo_result.primary_keywords:
+                    keywords.extend(seo_result.primary_keywords[:5])
+
+            relevant_documents = []
+            if keywords:
+                db = get_scanned_document_db()
+                relevant_documents = await db.search_by_keywords(keywords, limit=20)
+                logger.info(
+                    f"Found {len(relevant_documents)} relevant documents from database for link suggestions"
+                )
+        except Exception as e:
+            logger.warning(f"Failed to query database for relevant documents: {e}")
+            relevant_documents = []
+
+        enriched_context = {**context, "_db_relevant_documents": relevant_documents}
+        return await super()._execute_step(enriched_context, pipeline, job_id)
 
     async def execute(
         self, context: Dict[str, Any], pipeline: Any, job_id: Optional[str] = None
@@ -138,5 +151,4 @@ class SuggestedLinksPlugin(PipelineStepPlugin):
         Returns:
             SuggestedLinksResult with link suggestions
         """
-        # Use the common execution pattern
         return await self._execute_step(context, pipeline, job_id)

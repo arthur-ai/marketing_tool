@@ -496,10 +496,10 @@ async def list_scanned_documents(
     try:
         db = get_scanned_document_db()
         if active_only:
-            documents = db.get_all_active_documents()
+            documents = await db.get_all_active_documents()
         else:
             # For now, we only have active documents method
-            documents = db.get_all_active_documents()
+            documents = await db.get_all_active_documents()
         return documents
     except Exception as e:
         logger.error(f"Error listing scanned documents: {e}")
@@ -521,7 +521,7 @@ async def get_scanned_document(url: str):
     """
     try:
         db = get_scanned_document_db()
-        document = db.get_document_by_url(url)
+        document = await db.get_document_by_url(url)
         if not document:
             raise HTTPException(status_code=404, detail=f"Document not found: {url}")
         return document
@@ -556,7 +556,7 @@ async def search_documents_by_keywords(
             )
 
         db = get_scanned_document_db()
-        documents = db.search_by_keywords(keyword_list, limit=limit)
+        documents = await db.search_by_keywords(keyword_list, limit=limit)
         return documents
     except HTTPException:
         raise
@@ -583,7 +583,7 @@ async def search_documents_with_filters(
     """
     try:
         db = get_scanned_document_db()
-        documents = db.search_with_filters(filters, limit=limit)
+        documents = await db.search_with_filters(filters, limit=limit)
         return documents
     except Exception as e:
         logger.error(f"Error in filtered search: {e}")
@@ -607,7 +607,7 @@ async def get_documents_by_category(
     """
     try:
         db = get_scanned_document_db()
-        documents = db.get_documents_by_category(category)
+        documents = await db.get_documents_by_category(category)
         return documents
     except Exception as e:
         logger.error(f"Error getting documents by category: {e}")
@@ -628,7 +628,7 @@ async def get_anchor_text_patterns(
     """
     try:
         db = get_scanned_document_db()
-        patterns = db.get_anchor_text_patterns()
+        patterns = await db.get_anchor_text_patterns()
         return patterns
     except Exception as e:
         logger.error(f"Error getting anchor text patterns: {e}")
@@ -650,7 +650,7 @@ async def get_commonly_referenced_pages(min_links: int = 2):
     """
     try:
         db = get_scanned_document_db()
-        pages = db.get_commonly_referenced_pages(min_links=min_links)
+        pages = await db.get_commonly_referenced_pages(min_links=min_links)
         return pages
     except Exception as e:
         logger.error(f"Error getting commonly referenced pages: {e}")
@@ -669,7 +669,7 @@ async def get_database_stats(user: UserContext = Depends(get_current_user)):
     """
     try:
         db = get_scanned_document_db()
-        all_docs = db.get_all_active_documents()
+        all_docs = await db.get_all_active_documents()
 
         # Calculate statistics
         total_docs = len(all_docs)
@@ -685,7 +685,7 @@ async def get_database_stats(user: UserContext = Depends(get_current_user)):
             content_types[content_type] = content_types.get(content_type, 0) + 1
 
         # Get anchor patterns count
-        anchor_patterns = db.get_anchor_text_patterns()
+        anchor_patterns = await db.get_anchor_text_patterns()
 
         return {
             "total_documents": total_docs,
@@ -695,7 +695,7 @@ async def get_database_stats(user: UserContext = Depends(get_current_user)):
             "categories": sorted(list(categories_set)),
             "content_types": content_types,
             "unique_anchor_patterns": len(anchor_patterns),
-            "database_path": db.db_path,
+            "database_backend": "postgresql",
         }
     except Exception as e:
         logger.error(f"Error getting database stats: {e}")
@@ -727,7 +727,7 @@ async def rescan_document(url: str, user: UserContext = Depends(get_current_user
 
         # Get the updated document from database
         db = get_scanned_document_db()
-        updated_doc = db.get_document_by_url(url)
+        updated_doc = await db.get_document_by_url(url)
 
         if not updated_doc:
             raise HTTPException(
@@ -761,7 +761,7 @@ async def full_text_search_documents(
     """
     try:
         db = get_scanned_document_db()
-        documents = db.full_text_search(q, limit=limit)
+        documents = await db.full_text_search(q, limit=limit)
         return documents
     except Exception as e:
         logger.error(f"Error in full-text search: {e}")
@@ -785,7 +785,7 @@ async def get_related_documents(
     """
     try:
         db = get_scanned_document_db()
-        document = db.get_document_by_url(url)
+        document = await db.get_document_by_url(url)
 
         if not document:
             raise HTTPException(status_code=404, detail=f"Document not found: {url}")
@@ -794,20 +794,20 @@ async def get_related_documents(
         related_urls = document.related_documents or []
         related_docs = []
         for related_url in related_urls[:10]:
-            related_doc = db.get_document_by_url(related_url)
+            related_doc = await db.get_document_by_url(related_url)
             if related_doc and related_doc.is_active:
                 related_docs.append(related_doc)
 
         # If we have fewer than expected, try to recalculate relationships
         if len(related_docs) < len(related_urls[:10]):
             # Recalculate relationships to ensure we have fresh data
-            document = db.update_relationships(document)
-            db.save_document(document)
+            document = await db.update_relationships(document)
+            await db.save_document(document)
             # Get updated related documents
             related_urls = document.related_documents or []
             related_docs = []
             for related_url in related_urls[:10]:
-                related_doc = db.get_document_by_url(related_url)
+                related_doc = await db.get_document_by_url(related_url)
                 if related_doc and related_doc.is_active:
                     related_docs.append(related_doc)
 
@@ -884,7 +884,7 @@ async def bulk_delete_documents(
     """
     try:
         db = get_scanned_document_db()
-        deleted_count = db.bulk_delete_documents(request.urls)
+        deleted_count = await db.bulk_delete_documents(request.urls)
 
         return {
             "message": f"Deleted {deleted_count} document(s)",
@@ -914,7 +914,9 @@ async def bulk_update_categories(
     """
     try:
         db = get_scanned_document_db()
-        updated_count = db.bulk_update_categories(request.urls, request.categories)
+        updated_count = await db.bulk_update_categories(
+            request.urls, request.categories
+        )
 
         return {
             "message": f"Updated categories for {updated_count} document(s)",
@@ -992,7 +994,7 @@ async def bulk_upload_documents(
                             )
                             if scanned_doc:
                                 # Get the scanned document with full metadata from database
-                                scanned_db_doc = db.get_document_by_url(doc.url)
+                                scanned_db_doc = await db.get_document_by_url(doc.url)
                                 if scanned_db_doc:
                                     # Use the scanned version with full metadata
                                     doc = scanned_db_doc
@@ -1079,7 +1081,7 @@ async def bulk_upload_documents(
                             )
                             if scanned_doc:
                                 # Get the scanned document with full metadata from database
-                                scanned_db_doc = db.get_document_by_url(doc.url)
+                                scanned_db_doc = await db.get_document_by_url(doc.url)
                                 if scanned_db_doc:
                                     # Use the scanned version with full metadata
                                     doc = scanned_db_doc
@@ -1105,8 +1107,8 @@ async def bulk_upload_documents(
         for doc in documents_to_save:
             try:
                 # Calculate relationships
-                doc = db.update_relationships(doc)
-                db.save_document(doc)
+                doc = await db.update_relationships(doc)
+                await db.save_document(doc)
                 success_count += 1
             except Exception as e:
                 failed_count += 1

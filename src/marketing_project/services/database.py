@@ -200,6 +200,26 @@ class DatabaseManager:
             )
             """,
             "CREATE INDEX IF NOT EXISTS idx_provider_credentials_provider ON provider_credentials (provider)",
+            # Scanned documents table (migrated from SQLite to PostgreSQL)
+            """
+            CREATE TABLE IF NOT EXISTS scanned_documents (
+                id SERIAL PRIMARY KEY,
+                title TEXT NOT NULL,
+                url TEXT UNIQUE NOT NULL,
+                scanned_at TIMESTAMPTZ NOT NULL,
+                last_scanned_at TIMESTAMPTZ,
+                metadata_json JSONB NOT NULL DEFAULT '{}',
+                is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                scan_count INTEGER NOT NULL DEFAULT 1,
+                relevance_score FLOAT,
+                related_documents JSONB NOT NULL DEFAULT '[]',
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+            """,
+            "CREATE INDEX IF NOT EXISTS idx_scanned_documents_url ON scanned_documents (url)",
+            "CREATE INDEX IF NOT EXISTS idx_scanned_documents_is_active ON scanned_documents (is_active)",
+            "CREATE INDEX IF NOT EXISTS idx_scanned_documents_scanned_at ON scanned_documents (scanned_at)",
         ]
         try:
             async with self._engine.begin() as conn:

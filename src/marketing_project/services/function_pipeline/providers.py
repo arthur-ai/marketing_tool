@@ -145,28 +145,15 @@ async def call_llm_structured(
     # Extra kwargs from Arthur prompt config (e.g. api_base override for vLLM)
     extra_kwargs: Dict[str, Any] = dict(model_config or {})
     if effective_provider == PROVIDER_ANTHROPIC:
-        # Anthropic requires 'additionalProperties': false on every object schema node.
-        # Apply this regardless of whether response_format came from Arthur or our default,
-        # since setdefault would be a no-op when Arthur already supplies response_format.
-        rf = extra_kwargs.get("response_format")
-        if (
-            rf
-            and rf.get("type") == "json_schema"
-            and isinstance(rf.get("json_schema"), dict)
-        ):
-            # Arthur-supplied schema — patch it in place
-            inner = rf["json_schema"]
-            if "schema" in inner:
-                inner["schema"] = _make_schema_anthropic_safe(inner["schema"])
-        else:
-            # No schema from Arthur — build one from the Pydantic response model
-            safe_schema = _make_schema_anthropic_safe(
-                response_model.model_json_schema()
-            )
-            extra_kwargs["response_format"] = {
-                "type": "json_schema",
-                "json_schema": {"name": "response", "schema": safe_schema},
-            }
+        # Always build response_format from the Pydantic model for Anthropic calls.
+        # Arthur-supplied schemas are not used here because Arthur strips nested
+        # object `properties` on write (UP-4007), which causes Anthropic's structured
+        # output mode to enforce empty objects for all nested fields.
+        safe_schema = _make_schema_anthropic_safe(response_model.model_json_schema())
+        extra_kwargs["response_format"] = {
+            "type": "json_schema",
+            "json_schema": {"name": "response", "schema": safe_schema},
+        }
     else:
         extra_kwargs.setdefault("response_format", {"type": "json_object"})
 

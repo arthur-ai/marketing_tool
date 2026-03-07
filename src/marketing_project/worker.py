@@ -861,7 +861,7 @@ async def refresh_brand_kit_job(
 
             try:
                 db = get_scanned_document_db()
-                all_docs = db.get_all_active_documents()
+                all_docs = await db.get_all_active_documents()
 
                 logger.info(
                     f"Found {len(all_docs)} total active documents in internal_docs"

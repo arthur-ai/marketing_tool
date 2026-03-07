@@ -213,8 +213,8 @@ class InternalDocsScanner:
                             metadata=metadata,
                         )
                         # Calculate relationships before saving
-                        db_doc = db.update_relationships(db_doc)
-                        db.save_document(db_doc)
+                        db_doc = await db.update_relationships(db_doc)
+                        await db.save_document(db_doc)
                         logger.info(f"Saved scanned document to database: {url}")
                     except Exception as e:
                         logger.warning(f"Failed to save to database: {e}")
@@ -709,13 +709,15 @@ class InternalDocsScanner:
             db = get_scanned_document_db()
 
             # Get commonly referenced pages from database
-            commonly_referenced_pages = db.get_commonly_referenced_pages(min_links=2)
+            commonly_referenced_pages = await db.get_commonly_referenced_pages(
+                min_links=2
+            )
 
             # Get anchor text patterns from database
-            anchor_patterns = db.get_anchor_text_patterns()
+            anchor_patterns = await db.get_anchor_text_patterns()
 
             # Extract categories from database documents
-            all_docs = db.get_all_active_documents()
+            all_docs = await db.get_all_active_documents()
             categories_set = set()
             for doc in all_docs:
                 categories_set.update(doc.metadata.categories)

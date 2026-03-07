@@ -243,7 +243,9 @@ class HeaderStructure(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    h1_count: Optional[int] = Field(None, description="Number of H1 headings found")
+    h1_count: Optional[int] = Field(
+        None, description="Number of H1 headings found (should be 1)"
+    )
     h2_count: Optional[int] = Field(None, description="Number of H2 headings found")
     h3_count: Optional[int] = Field(None, description="Number of H3 headings found")
     h1_headings: Optional[List[str]] = Field(
@@ -285,7 +287,9 @@ class KeywordMap(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     primary_keyword: Optional[str] = Field(None, description="The primary keyword")
-    related_keywords: Optional[List[str]] = Field(None, description="Related keywords")
+    related_keywords: Optional[List[str]] = Field(
+        None, description="Related keywords included in the article"
+    )
     placements: Optional[List[KeywordPlacement]] = Field(
         None, description="Detailed placement information for each keyword"
     )
@@ -300,9 +304,11 @@ class ReadabilityOptimization(BaseModel):
         None,
         ge=0.0,
         le=100.0,
-        description="Readability score (0-100, higher is easier)",
+        description="Readability score after optimization (0-100, higher is easier)",
     )
-    grade_level: Optional[float] = Field(None, description="Flesch-Kincaid grade level")
+    grade_level: Optional[float] = Field(
+        None, description="Flesch-Kincaid grade level (numeric)"
+    )
     active_voice_percentage: Optional[float] = Field(
         None,
         ge=0.0,
@@ -315,6 +321,17 @@ class ReadabilityOptimization(BaseModel):
     recommendations: Optional[List[str]] = Field(
         None, description="Readability improvement recommendations"
     )
+
+
+class OGTags(BaseModel):
+    """Open Graph meta tags for social sharing."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    og_title: str = Field(description="Open Graph title")
+    og_description: str = Field(description="Open Graph description")
+    og_image: str = Field(description="Open Graph image URL or placeholder")
+    og_type: str = Field(description="Open Graph type, typically 'article'")
 
 
 class SEOOptimizationResult(BaseModel):
@@ -331,7 +348,8 @@ class SEOOptimizationResult(BaseModel):
     )
     slug: str = Field(description="URL-friendly slug")
     alt_texts: Optional[Dict[str, str]] = Field(
-        description="Alt text suggestions for images", default=None
+        description="Alt text suggestions for images (keyed by image identifier)",
+        default=None,
     )
     schema_markup: Optional[str] = Field(
         description="JSON-LD schema markup as JSON string", default=None
@@ -339,19 +357,18 @@ class SEOOptimizationResult(BaseModel):
     canonical_url: Optional[str] = Field(
         description="Recommended canonical URL", default=None
     )
-    og_tags: Optional[Dict[str, str]] = Field(
-        description="Open Graph tags for social sharing", default=None
-    )
+    og_tags: OGTags = Field(description="Open Graph tags for social sharing")
 
     # Quality and confidence metrics
-    confidence_score: Optional[float] = Field(
-        None,
+    confidence_score: float = Field(
         ge=0.0,
         le=1.0,
         description="Model's confidence in SEO optimization quality (0-1)",
     )
-    seo_score: Optional[float] = Field(
-        None, ge=0.0, le=100.0, description="Overall SEO optimization score (0-100)"
+    seo_score: float = Field(
+        ge=0.0,
+        le=100.0,
+        description="Overall SEO optimization score (0-100, target ≥ 85)",
     )
     keyword_optimization_score: Optional[float] = Field(
         None,
@@ -361,20 +378,17 @@ class SEOOptimizationResult(BaseModel):
     )
 
     # SEO Workflow Analysis Fields
-    header_structure: Optional[HeaderStructure] = Field(
-        None, description="H1-H3 hierarchy analysis with validation results"
+    header_structure: HeaderStructure = Field(
+        description="H1-H3 hierarchy analysis with validation results"
     )
-    keyword_map: Optional[KeywordMap] = Field(
-        None,
+    keyword_map: KeywordMap = Field(
         description="Primary and related keywords with placement locations in content",
     )
-    readability_optimization: Optional[ReadabilityOptimization] = Field(
-        None,
+    readability_optimization: ReadabilityOptimization = Field(
         description="Readability analysis including score, grade level, and active voice percentage",
     )
-    modification_report: Optional[List[str]] = Field(
-        None,
-        description="Summary of changes made during SEO optimization (e.g., 'Meta description regenerated', 'H2 hierarchy corrected')",
+    modification_report: List[str] = Field(
+        description="List of changes made during SEO optimization (e.g., 'Meta description regenerated', 'H2 hierarchy corrected')",
     )
 
     @field_validator("schema_markup", mode="before")
