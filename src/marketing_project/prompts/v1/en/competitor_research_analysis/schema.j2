@@ -99,9 +99,9 @@
           "type": "object",
           "description": "Structural analysis of the competitor content",
           "properties": {
-            "format": {
+            "content_format": {
               "type": "string",
-              "description": "Content format: blog post, tutorial, case study, news, social post, etc."
+              "description": "Content format: article, listicle, how-to, case-study, news, opinion, etc."
             },
             "word_count": {
               "type": "number",
@@ -111,16 +111,21 @@
               "type": "number",
               "description": "Number of headings used"
             },
-            "has_media": {
+            "has_images": {
               "type": "boolean",
-              "description": "True if the content includes images, video, or other media"
+              "description": "True if the content includes images"
+            },
+            "has_video": {
+              "type": "boolean",
+              "description": "True if the content includes video"
             }
           },
           "required": [
-            "format",
+            "content_format",
             "word_count",
             "heading_count",
-            "has_media"
+            "has_images",
+            "has_video"
           ],
           "additionalProperties": false
         },
@@ -167,9 +172,9 @@
           "type": "object",
           "description": "Engagement mechanics identified in the competitor content",
           "properties": {
-            "cta_strength": {
+            "call_to_action_quality": {
               "type": "string",
-              "description": "CTA strength: strong, moderate, weak, or none"
+              "description": "CTA quality: strong, moderate, weak, or none"
             },
             "emotional_hooks": {
               "type": "array",
@@ -178,20 +183,20 @@
               },
               "description": "Emotional hooks used: curiosity, fear, aspiration, urgency, trust"
             },
-            "social_proof": {
-              "type": "string",
-              "description": "Social proof elements used: testimonials, statistics, expert quotes, case studies, or none"
+            "social_proof_present": {
+              "type": "boolean",
+              "description": "True if social proof elements are present (testimonials, statistics, expert quotes, case studies)"
             },
-            "personalization": {
+            "personalization_level": {
               "type": "string",
               "description": "Personalization level: high (specific persona), medium (broad segment), or low (generic)"
             }
           },
           "required": [
-            "cta_strength",
+            "call_to_action_quality",
             "emotional_hooks",
-            "social_proof",
-            "personalization"
+            "social_proof_present",
+            "personalization_level"
           ],
           "additionalProperties": false
         },

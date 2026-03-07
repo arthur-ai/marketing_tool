@@ -24,10 +24,14 @@ def _make_schema_anthropic_safe(schema: dict) -> dict:
     """
     Recursively add 'additionalProperties': false to all object-type nodes.
     Required by Anthropic's API when using output_format with a JSON schema.
+    Preserves existing additionalProperties when it is already a schema dict
+    (e.g. {type: number} for Dict[str, float] fields).
     """
     schema = dict(schema)
     if schema.get("type") == "object":
-        schema["additionalProperties"] = False
+        # Don't overwrite if already set to a schema dict (Dict[str, X] pattern)
+        if not isinstance(schema.get("additionalProperties"), dict):
+            schema["additionalProperties"] = False
         if "properties" in schema:
             schema["properties"] = {
                 k: _make_schema_anthropic_safe(v)

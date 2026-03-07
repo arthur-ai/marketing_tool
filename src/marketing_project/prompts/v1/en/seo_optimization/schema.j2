@@ -19,115 +19,103 @@
           "type": "string",
           "description": "Meta description, 150-160 characters, includes primary keyword and a clear value proposition or CTA"
         },
-        "url_slug": {
+        "slug": {
           "type": "string",
           "description": "URL slug: 3-5 words, lowercase, hyphen-separated, includes primary keyword"
         },
         "header_structure": {
           "type": "object",
-          "description": "Optimized heading hierarchy for the article",
+          "description": "H1-H3 heading hierarchy analysis and validation",
           "properties": {
-            "h1": {
-              "type": "object",
-              "description": "The single H1 heading",
-              "properties": {
-                "text": {
-                  "type": "string",
-                  "description": "The H1 heading text"
-                },
-                "contains_main_keyword": {
-                  "type": "boolean",
-                  "description": "True if the H1 contains the main keyword"
-                }
-              },
-              "required": [
-                "text",
-                "contains_main_keyword"
-              ],
-              "additionalProperties": false
+            "h1_count": {
+              "type": "number",
+              "description": "Number of H1 headings in the article (should be 1)"
             },
-            "h2s": {
-              "type": "array",
-              "description": "All H2 headings with their keyword annotations",
-              "items": {
-                "type": "object",
-                "properties": {
-                  "text": {
-                    "type": "string",
-                    "description": "H2 heading text"
-                  },
-                  "keywords": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    },
-                    "description": "Keywords naturally incorporated in this H2"
-                  }
-                },
-                "required": [
-                  "text",
-                  "keywords"
-                ],
-                "additionalProperties": false
-              }
+            "h2_count": {
+              "type": "number",
+              "description": "Number of H2 headings in the article"
             },
-            "h3s": {
+            "h3_count": {
+              "type": "number",
+              "description": "Number of H3 headings in the article"
+            },
+            "h1_headings": {
               "type": "array",
-              "description": "All H3 headings with their keyword annotations",
-              "items": {
-                "type": "object",
-                "properties": {
-                  "text": {
-                    "type": "string",
-                    "description": "H3 heading text"
-                  },
-                  "keywords": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    },
-                    "description": "Keywords naturally incorporated in this H3"
-                  }
-                },
-                "required": [
-                  "text",
-                  "keywords"
-                ],
-                "additionalProperties": false
-              }
+              "items": { "type": "string" },
+              "description": "List of H1 heading text"
+            },
+            "h2_headings": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "List of H2 heading text"
+            },
+            "h3_headings": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "List of H3 heading text"
+            },
+            "hierarchy_valid": {
+              "type": "boolean",
+              "description": "True if the header hierarchy is valid (single H1, proper nesting)"
+            },
+            "validation_notes": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Notes about header structure validation"
             }
           },
           "required": [
-            "h1",
-            "h2s",
-            "h3s"
+            "h1_count",
+            "h2_count",
+            "h3_count",
+            "h1_headings",
+            "h2_headings",
+            "h3_headings",
+            "hierarchy_valid",
+            "validation_notes"
           ],
           "additionalProperties": false
         },
         "keyword_map": {
-          "type": "array",
-          "description": "Mapping of each keyword to its placement locations in the article",
-          "items": {
-            "type": "object",
-            "properties": {
-              "keyword": {
-                "type": "string",
-                "description": "The keyword"
-              },
-              "locations": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "description": "Article sections where this keyword appears"
-              }
+          "type": "object",
+          "description": "Primary and related keywords with placement locations in the article",
+          "properties": {
+            "primary_keyword": {
+              "type": "string",
+              "description": "The primary keyword"
             },
-            "required": [
-              "keyword",
-              "locations"
-            ],
-            "additionalProperties": false
-          }
+            "related_keywords": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Related keywords included in the article"
+            },
+            "placements": {
+              "type": "array",
+              "description": "Detailed placement information for each keyword",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "keyword": {
+                    "type": "string",
+                    "description": "The keyword"
+                  },
+                  "locations": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "Locations where the keyword appears, e.g. 'title', 'intro', 'h2-1'"
+                  },
+                  "count": {
+                    "type": "number",
+                    "description": "Number of times the keyword appears"
+                  }
+                },
+                "required": ["keyword", "locations", "count"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": ["primary_keyword", "related_keywords", "placements"],
+          "additionalProperties": false
         },
         "readability_optimization": {
           "type": "object",
@@ -138,41 +126,53 @@
               "description": "Final readability score after optimization (0-100)"
             },
             "grade_level": {
-              "type": "string",
-              "description": "Reading grade level, e.g. 'Grade 8' or '8th grade'"
+              "type": "number",
+              "description": "Flesch-Kincaid grade level (numeric)"
             },
             "active_voice_percentage": {
               "type": "number",
               "description": "Percentage of sentences using active voice"
             },
-            "changes_made": {
+            "recommendations": {
               "type": "array",
               "items": {
                 "type": "string"
               },
-              "description": "List of specific readability changes applied"
+              "description": "List of readability improvement recommendations"
             }
           },
           "required": [
             "score",
             "grade_level",
             "active_voice_percentage",
-            "changes_made"
+            "recommendations"
           ],
           "additionalProperties": false
         },
         "alt_texts": {
           "type": "array",
+          "description": "Keyword-optimized alt text suggestions for images in the article",
           "items": {
-            "type": "string"
-          },
-          "description": "Keyword-optimized alt text suggestions for images in the article"
+            "type": "object",
+            "properties": {
+              "image_identifier": {
+                "type": "string",
+                "description": "Image identifier or positional label, e.g. 'hero-image', 'figure-1'"
+              },
+              "alt_text": {
+                "type": "string",
+                "description": "Keyword-optimized alt text for this image"
+              }
+            },
+            "required": ["image_identifier", "alt_text"],
+            "additionalProperties": false
+          }
         },
         "schema_markup": {
           "type": "string",
           "description": "Valid JSON-LD BlogPosting schema markup block as a string"
         },
-        "open_graph_tags": {
+        "og_tags": {
           "type": "object",
           "description": "Open Graph meta tags for social sharing",
           "properties": {
@@ -221,13 +221,13 @@
         "optimized_content",
         "meta_title",
         "meta_description",
-        "url_slug",
+        "slug",
         "header_structure",
         "keyword_map",
         "readability_optimization",
         "alt_texts",
         "schema_markup",
-        "open_graph_tags",
+        "og_tags",
         "modification_report",
         "seo_score",
         "confidence_score"

@@ -98,6 +98,27 @@ class SEOKeywordsResult(BaseModel):
         description="Keyword difficulty scores per keyword (0-100 scale)", default=None
     )
 
+    @field_validator("keyword_difficulty", mode="before")
+    @classmethod
+    def coerce_keyword_difficulty(cls, v):
+        """Accept list-of-dicts format from LLMs that return [{keyword, score}, ...]."""
+        if isinstance(v, list):
+            result = {}
+            for item in v:
+                if isinstance(item, dict):
+                    keyword = (
+                        item.get("keyword") or item.get("name") or item.get("term")
+                    )
+                    score = (
+                        item.get("score")
+                        or item.get("difficulty")
+                        or item.get("difficulty_score")
+                    )
+                    if keyword and score is not None:
+                        result[keyword] = float(score)
+            return result or None
+        return v
+
     # Keyword metadata
     primary_keywords_metadata: Optional[List[KeywordMetadata]] = Field(
         description="Metadata for primary keywords (search volume, difficulty, trends)",
@@ -359,20 +380,34 @@ class SEOOptimizationResult(BaseModel):
     @field_validator("schema_markup", mode="before")
     @classmethod
     def convert_schema_markup_to_string(cls, v: Any) -> Optional[str]:
-        """
-        Convert schema_markup from dict to JSON string if needed.
-
-        The LLM may return schema_markup as a dict (JSON-LD object), but the model
-        expects it as a JSON string. This validator handles the conversion.
-        """
+        """Convert schema_markup from dict to JSON string if needed."""
         if v is None:
             return None
         if isinstance(v, str):
             return v
         if isinstance(v, dict):
             return json.dumps(v)
-        # If it's already a string or something else, try to convert it
         return str(v) if v else None
+
+    @field_validator("alt_texts", mode="before")
+    @classmethod
+    def coerce_alt_texts(cls, v: Any) -> Optional[Dict[str, str]]:
+        """Accept list-of-{image_identifier, alt_text} dicts from schema, or plain list of strings."""
+        if v is None:
+            return None
+        if isinstance(v, dict):
+            return v
+        if isinstance(v, list):
+            result = {}
+            for i, item in enumerate(v):
+                if isinstance(item, dict):
+                    key = item.get("image_identifier") or item.get("id") or f"image_{i}"
+                    text = item.get("alt_text") or item.get("text") or ""
+                    result[str(key)] = str(text)
+                elif isinstance(item, str):
+                    result[f"image_{i}"] = item
+            return result or None
+        return v
 
 
 class InternalLinkSuggestion(BaseModel):
@@ -579,6 +614,24 @@ class SocialMediaMarketingBriefResult(BaseModel):
         description="Model's confidence in marketing brief quality (0-1)",
     )
 
+    @field_validator("platform_specific_notes", mode="before")
+    @classmethod
+    def coerce_platform_specific_notes(cls, v: Any) -> Optional[Dict[str, Any]]:
+        """Accept a plain string from schema — wrap it in a dict."""
+        if v is None:
+            return None
+        if isinstance(v, dict):
+            return v
+        if isinstance(v, str):
+            try:
+                parsed = json.loads(v)
+                if isinstance(parsed, dict):
+                    return parsed
+            except (json.JSONDecodeError, ValueError):
+                pass
+            return {"notes": v}
+        return v
+
 
 class AngleHookResult(BaseModel):
     """Result from Angle & Hook Generation step."""
@@ -630,6 +683,24 @@ class SocialMediaPostResult(BaseModel):
     metadata: Optional[Dict[str, Any]] = Field(
         description="Additional platform-specific metadata", default=None
     )
+
+    @field_validator("metadata", mode="before")
+    @classmethod
+    def coerce_metadata(cls, v: Any) -> Optional[Dict[str, Any]]:
+        """Accept a plain string from schema — wrap it in a dict."""
+        if v is None:
+            return None
+        if isinstance(v, dict):
+            return v
+        if isinstance(v, str):
+            try:
+                parsed = json.loads(v)
+                if isinstance(parsed, dict):
+                    return parsed
+            except (json.JSONDecodeError, ValueError):
+                pass
+            return {"notes": v}
+        return v
 
     # Quality and confidence metrics
     confidence_score: Optional[float] = Field(
@@ -870,6 +941,37 @@ class TranscriptPreprocessingApprovalResult(BaseModel):
         None,
         description="Speaking time in seconds per speaker",
     )
+
+    @field_validator("validation_issues", mode="before")
+    @classmethod
+    def coerce_validation_issues(cls, v: Any) -> List[str]:
+        """Accept list-of-{issue, severity} dicts from schema — extract issue string."""
+        if not isinstance(v, list):
+            return v
+        result = []
+        for item in v:
+            if isinstance(item, dict):
+                result.append(item.get("issue") or item.get("message") or str(item))
+            elif isinstance(item, str):
+                result.append(item)
+        return result
+
+    @field_validator("speaking_time_per_speaker", mode="before")
+    @classmethod
+    def coerce_speaking_time(cls, v: Any) -> Optional[Dict[str, int]]:
+        """Accept list-of-{speaker, seconds, percentage} dicts from schema."""
+        if v is None:
+            return None
+        if isinstance(v, dict):
+            return v
+        if isinstance(v, list):
+            return {
+                item["speaker"]: int(item.get("seconds", 0))
+                for item in v
+                if isinstance(item, dict) and "speaker" in item
+            } or None
+        return v
+
     detected_language: Optional[str] = Field(
         None,
         description="Detected language code (e.g., 'en')",
