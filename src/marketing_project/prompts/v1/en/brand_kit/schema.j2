@@ -58,7 +58,7 @@
           ],
           "additionalProperties": false
         },
-        "typography_recommendations": {
+        "typography": {
           "type": "object",
           "description": "Typography specifications for the content layout",
           "properties": {
@@ -88,96 +88,30 @@
           "additionalProperties": false
         },
         "layout_suggestions": {
-          "type": "object",
-          "description": "Layout recommendations for section structure and visual flow",
-          "properties": {
-            "section_spacing": {
-              "type": "string",
-              "description": "Recommended spacing between sections, e.g. '48px' or '3rem'"
-            },
-            "column_structure": {
-              "type": "string",
-              "description": "Column layout recommendation, e.g. 'single column with sidebar' or 'full width'"
-            },
-            "visual_breaks": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              },
-              "description": "Recommended positions for visual breaks, dividers, or callouts in the content"
-            }
+          "type": "array",
+          "items": {
+            "type": "string"
           },
-          "required": [
-            "section_spacing",
-            "column_structure",
-            "visual_breaks"
-          ],
-          "additionalProperties": false
+          "description": "Layout and spacing recommendations, e.g. 'Use 48px section spacing', 'Single column with sidebar', 'Add visual break after intro'"
         },
         "hero_image_concept": {
           "type": "string",
           "description": "Description of the hero image concept \u2014 aligned with content tone, target audience, and keywords"
         },
-        "accessibility_considerations": {
+        "accessibility_notes": {
           "type": "array",
           "items": {
             "type": "string"
           },
           "description": "Specific accessibility enhancements: alt text recommendations, contrast adjustments, heading structure notes"
         },
-        "design_metadata": {
-          "type": "object",
-          "description": "Metadata about the design decisions made",
-          "properties": {
-            "template_used": {
-              "type": "string",
-              "description": "Name of the design template selected for this content type"
-            },
-            "components_applied": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              },
-              "description": "List of visual components applied from the brand kit"
-            },
-            "assets_integrated": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              },
-              "description": "List of assets integrated from the design kit configuration"
-            }
-          },
-          "required": [
-            "template_used",
-            "components_applied",
-            "assets_integrated"
-          ],
-          "additionalProperties": false
+        "brand_consistency_score": {
+          "type": "number",
+          "description": "Brand guideline adherence score from 0 to 100"
         },
-        "compliance_report": {
-          "type": "object",
-          "description": "Design compliance validation results",
-          "properties": {
-            "wcag_score": {
-              "type": "number",
-              "description": "WCAG 2.1 AA compliance score from 0 to 100"
-            },
-            "brand_consistency_score": {
-              "type": "number",
-              "description": "Brand guideline adherence score from 0 to 100"
-            },
-            "performance_notes": {
-              "type": "string",
-              "description": "Notes on image sizes, load time estimates, and performance optimizations"
-            }
-          },
-          "required": [
-            "wcag_score",
-            "brand_consistency_score",
-            "performance_notes"
-          ],
-          "additionalProperties": false
+        "design_quality_score": {
+          "type": "number",
+          "description": "Overall design quality assessment from 0 to 100"
         },
         "confidence_score": {
           "type": "number",
@@ -187,12 +121,12 @@
       "required": [
         "visual_components",
         "color_scheme",
-        "typography_recommendations",
+        "typography",
         "layout_suggestions",
         "hero_image_concept",
-        "accessibility_considerations",
-        "design_metadata",
-        "compliance_report",
+        "accessibility_notes",
+        "brand_consistency_score",
+        "design_quality_score",
         "confidence_score"
       ],
       "additionalProperties": false

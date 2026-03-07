@@ -130,25 +130,10 @@
           "description": "Primary search intent classification: informational, transactional, navigational, or commercial"
         },
         "keyword_difficulty": {
-          "type": "array",
-          "description": "Difficulty score for each keyword in the strategy",
-          "items": {
-            "type": "object",
-            "properties": {
-              "keyword": {
-                "type": "string",
-                "description": "The keyword"
-              },
-              "score": {
-                "type": "number",
-                "description": "Difficulty score from 0 to 100"
-              }
-            },
-            "required": [
-              "keyword",
-              "score"
-            ],
-            "additionalProperties": false
+          "type": "object",
+          "description": "Difficulty score for each keyword in the strategy. Keys are keyword strings, values are difficulty scores from 0 to 100.",
+          "additionalProperties": {
+            "type": "number"
           }
         },
         "keyword_density_analysis": {

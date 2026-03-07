@@ -9,46 +9,10 @@
       "properties": {
         "target_audience": {
           "type": "array",
-          "description": "Array of 3+ detailed audience personas, each aligned with the main_keyword search intent",
           "items": {
-            "type": "object",
-            "properties": {
-              "name": {
-                "type": "string",
-                "description": "Persona name"
-              },
-              "role": {
-                "type": "string",
-                "description": "Job role or life role of this persona"
-              },
-              "pain_points": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "description": "Key pain points and challenges this persona faces"
-              },
-              "search_behavior": {
-                "type": "string",
-                "description": "How this persona searches for information related to the main_keyword"
-              },
-              "decision_drivers": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "description": "Factors that drive this persona's decisions"
-              }
-            },
-            "required": [
-              "name",
-              "role",
-              "pain_points",
-              "search_behavior",
-              "decision_drivers"
-            ],
-            "additionalProperties": false
-          }
+            "type": "string"
+          },
+          "description": "Array of 3+ target audience descriptions, e.g. 'Senior ML engineers at enterprise companies who need to manage prompt versions across teams'"
         },
         "key_messages": {
           "type": "array",
@@ -83,38 +47,6 @@
           },
           "description": "Channels best suited to reach main_keyword searchers and target personas"
         },
-        "content_calendar": {
-          "type": "array",
-          "description": "Structured content calendar with specific topics, types, and channels per time period",
-          "items": {
-            "type": "object",
-            "properties": {
-              "week": {
-                "type": "string",
-                "description": "Week or time period label"
-              },
-              "content_type": {
-                "type": "string",
-                "description": "Type of content (blog post, social media, email, etc.)"
-              },
-              "topic": {
-                "type": "string",
-                "description": "Specific topic or angle for this piece"
-              },
-              "channel": {
-                "type": "string",
-                "description": "Distribution channel for this content"
-              }
-            },
-            "required": [
-              "week",
-              "content_type",
-              "topic",
-              "channel"
-            ],
-            "additionalProperties": false
-          }
-        },
         "confidence_score": {
           "type": "number",
           "description": "Overall confidence from 0.0 to 1.0"
@@ -128,7 +60,6 @@
         "competitive_angle",
         "kpis",
         "distribution_channels",
-        "content_calendar",
         "confidence_score"
       ],
       "additionalProperties": false
