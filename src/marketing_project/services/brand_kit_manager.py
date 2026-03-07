@@ -251,7 +251,7 @@ class BrandKitManager:
                 db = get_scanned_document_db()
 
                 # Get commonly referenced pages from database (more accurate)
-                db_pages = db.get_commonly_referenced_pages(min_links=2)
+                db_pages = await db.get_commonly_referenced_pages(min_links=2)
                 if db_pages:
                     # Merge with config pages, avoiding duplicates
                     existing_pages = set(config.commonly_referenced_pages or [])
@@ -259,7 +259,7 @@ class BrandKitManager:
                     config.commonly_referenced_pages = list(existing_pages)
 
                 # Get anchor text patterns from database
-                db_patterns = db.get_anchor_text_patterns()
+                db_patterns = await db.get_anchor_text_patterns()
                 if db_patterns:
                     # Merge with config patterns, avoiding duplicates
                     existing_patterns = set(config.anchor_phrasing_patterns or [])
@@ -267,7 +267,7 @@ class BrandKitManager:
                     config.anchor_phrasing_patterns = list(existing_patterns)
 
                 # Get categories from database documents
-                all_docs = db.get_all_active_documents()
+                all_docs = await db.get_all_active_documents()
                 db_categories = set()
                 for doc in all_docs:
                     db_categories.update(doc.metadata.categories)

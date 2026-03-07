@@ -581,6 +581,38 @@ class StepResultModel(Base):
     )
 
 
+class ScannedDocumentModel(Base):
+    """Database model for scanned internal documents (migrated from SQLite)."""
+
+    __tablename__ = "scanned_documents"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    title = Column(Text, nullable=False)
+    url = Column(Text, nullable=False, unique=True)
+    scanned_at = Column(DateTime(timezone=True), nullable=False)
+    last_scanned_at = Column(DateTime(timezone=True), nullable=True)
+    metadata_json = Column(JSONB, nullable=False, default={})
+    is_active = Column(Boolean, default=True, nullable=False)
+    scan_count = Column(Integer, default=1, nullable=False)
+    relevance_score = Column(Float, nullable=True)
+    related_documents = Column(JSONB, nullable=False, default=[])
+    created_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        Index("idx_scanned_documents_url", "url"),
+        Index("idx_scanned_documents_is_active", "is_active"),
+        Index("idx_scanned_documents_scanned_at", "scanned_at"),
+    )
+
+
 class ProviderCredentialsModel(Base):
     """Stores encrypted LLM provider credentials (one row per provider)."""
 

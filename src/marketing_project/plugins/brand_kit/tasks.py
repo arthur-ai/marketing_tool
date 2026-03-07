@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
 from marketing_project.models.brand_kit_config import BrandKitConfig
+from marketing_project.services.arthur_prompt_client import fetch_arthur_prompt
 from marketing_project.services.function_pipeline import FunctionPipeline
 from marketing_project.services.scanned_document_db import get_scanned_document_db
 
@@ -65,6 +66,9 @@ class BrandKitPlugin:
         content_doc: Dict[str, Any],
         index: int,
         total: int,
+        model_override: Optional[str] = None,
+        provider_override: Optional[str] = None,
+        model_config: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Analyze a single content piece to extract brand kit patterns.
@@ -175,6 +179,9 @@ If a pattern is not clearly present, use an empty list [] or null. Only include 
                 context=None,
                 max_retries=1,
                 job_id=None,
+                model_override=model_override,
+                provider_override=provider_override,
+                model_config=model_config,
             )
 
             # Convert Pydantic model to dict
@@ -222,9 +229,20 @@ If a pattern is not clearly present, use an empty list [] or null. Only include 
 
             await update_progress(40, "Initializing AI pipeline")
 
+            # Fetch model/provider routing from Arthur (falls back gracefully if not configured)
+            arthur_result = await fetch_arthur_prompt("brand_kit")
+            arthur_model = arthur_result.model_name if arthur_result else None
+            arthur_provider = arthur_result.model_provider if arthur_result else None
+            arthur_model_config = arthur_result.model_config if arthur_result else None
+
+            # Resolve effective model: explicit arg > Arthur > env var > default
+            effective_model = (
+                model or arthur_model or os.getenv("OPENAI_MODEL", "gpt-5.1")
+            )
+
             # Use FunctionPipeline infrastructure for consistency
             pipeline = FunctionPipeline(
-                model=model or os.getenv("OPENAI_MODEL", "gpt-5.1"),
+                model=effective_model,
                 temperature=temperature,
             )
 
@@ -236,7 +254,7 @@ If a pattern is not clearly present, use an empty list [] or null. Only include 
                 try:
                     db = get_scanned_document_db()
                     # Get all active documents from internal_docs (all content types)
-                    all_docs = db.get_all_active_documents()
+                    all_docs = await db.get_all_active_documents()
 
                     # Filter to only content that has text content (exclude empty or metadata-only docs)
                     content_docs = [
@@ -295,6 +313,9 @@ If a pattern is not clearly present, use an empty list [] or null. Only include 
                                 content_doc.model_dump(),
                                 idx,
                                 len(content_docs),
+                                model_override=arthur_model,
+                                provider_override=arthur_provider,
+                                model_config=arthur_model_config,
                             )
                             if analysis:
                                 content_analyses.append(analysis)
@@ -490,7 +511,8 @@ Return a complete BrandKitConfig JSON structure with all fields populated."""
             # Step 4: Final synthesis call
             await update_progress(80, "Calling AI to generate final brand kit config")
             logger.info(
-                "Calling OpenAI API to generate final brand kit configuration..."
+                f"Calling AI to generate final brand kit configuration "
+                f"(model={effective_model}, provider={arthur_provider or 'openai'})..."
             )
 
             generated_config = await pipeline._call_function(
@@ -502,6 +524,9 @@ Return a complete BrandKitConfig JSON structure with all fields populated."""
                 context=None,
                 max_retries=2,
                 job_id=job_id,
+                model_override=arthur_model,
+                provider_override=arthur_provider,
+                model_config=arthur_model_config,
             )
 
             await update_progress(95, "Brand kit config generated successfully")
@@ -519,6 +544,9 @@ Return a complete BrandKitConfig JSON structure with all fields populated."""
         pipeline: FunctionPipeline,
         content_analyses: List[Dict[str, Any]],
         job_id: Optional[str] = None,
+        model_override: Optional[str] = None,
+        provider_override: Optional[str] = None,
+        model_config: Optional[Dict[str, Any]] = None,
     ) -> BrandKitConfig:
         """
         Synthesize multiple content analyses into a unified brand kit config.
@@ -701,7 +729,7 @@ Generate a complete BrandKitConfig JSON structure following these guidelines:
 Return a complete BrandKitConfig JSON structure with ALL fields populated. Use actual extracted patterns where available, and sensible defaults for missing fields."""
 
             await update_progress(80, "Calling AI to generate final brand kit config")
-            logger.info("Calling OpenAI API to synthesize brand kit configuration...")
+            logger.info("Calling AI to synthesize brand kit configuration...")
 
             generated_config = await pipeline._call_function(
                 prompt=user_prompt,
@@ -712,6 +740,9 @@ Return a complete BrandKitConfig JSON structure with ALL fields populated. Use a
                 context=None,
                 max_retries=2,
                 job_id=job_id,
+                model_override=model_override,
+                provider_override=provider_override,
+                model_config=model_config,
             )
 
             await update_progress(95, "Brand kit config synthesized successfully")

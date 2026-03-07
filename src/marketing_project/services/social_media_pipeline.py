@@ -16,7 +16,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import yaml
-from openai import AsyncOpenAI
 
 
 def _json_serializer(obj: Any) -> Any:
@@ -84,7 +83,6 @@ class SocialMediaPipeline:
             lang: Language for prompts (default: "en")
             pipeline_config: Optional PipelineConfig for per-step model configuration
         """
-        self.client = AsyncOpenAI()
         self.lang = lang
         self.step_info: list[PipelineStepInfo] = []
         self._platform_config: Optional[Dict[str, Any]] = None
@@ -592,12 +590,16 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
         step_number: int,
         context: Dict[str, Any],
         job_id: Optional[str] = None,
+        model_override: Optional[str] = None,
+        provider_override: Optional[str] = None,
+        model_config: Optional[Dict[str, Any]] = None,
     ) -> Any:
         """
-        Call OpenAI API with structured output.
+        Call LLM with structured output via LiteLLM.
 
         Integrates with approval system for human-in-the-loop review when enabled.
-        Uses model and temperature from pipeline_config for this step.
+        Uses model and temperature from pipeline_config for this step; Arthur overrides
+        (model_override, provider_override, model_config) take precedence when provided.
 
         Args:
             prompt: User prompt
@@ -607,16 +609,23 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
             step_number: Step number
             context: Execution context
             job_id: Optional job ID for tracking
+            model_override: Model name from Arthur (overrides pipeline config)
+            provider_override: Provider from Arthur (e.g. "anthropic", "openai")
+            model_config: Extra LiteLLM kwargs from Arthur (e.g. api_base)
 
         Returns:
             Instance of response_model
 
         Returns ApprovalRequiredSentinel if approval is required (pipeline should stop).
         """
+        from marketing_project.services.function_pipeline.providers import (
+            call_llm_structured,
+        )
+
         start_time = time.time()
 
-        # Get step-specific model and temperature from pipeline config
-        step_model = self._get_step_model(step_name)
+        # Arthur override takes precedence over pipeline config
+        step_model = model_override or self._get_step_model(step_name)
         step_temperature = self._get_step_temperature(step_name)
 
         messages = [
@@ -650,44 +659,19 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                 logger.debug(f"Failed to add trend context to prompt: {e}")
 
         try:
-            # Generate JSON schema and fix additionalProperties for OpenAI compatibility
-            schema = response_model.model_json_schema()
-            schema = self._fix_schema_additional_properties(schema)
-
-            # Call OpenAI API with structured output using step-specific model
             logger.debug(
-                f"Calling {step_model} for step {step_name} with temperature {step_temperature}"
+                f"Calling {step_model} (provider={provider_override or 'openai'}) "
+                f"for step {step_name} with temperature {step_temperature}"
             )
 
-            # Initialize parsed_result for all code paths
-            parsed_result = None
-
-            response = await self.client.chat.completions.create(
-                model=step_model,
+            parsed_result, response = await call_llm_structured(
                 messages=messages,
-                response_format={
-                    "type": "json_schema",
-                    "json_schema": {
-                        "name": step_name,
-                        "strict": True,
-                        "schema": schema,
-                    },
-                },
+                response_model=response_model,
+                model=step_model,
                 temperature=step_temperature,
+                provider=provider_override,
+                model_config=model_config,
             )
-
-            # Parse response
-            if response:
-                content = response.choices[0].message.content
-                if not content:
-                    raise ValueError("Empty response from OpenAI API")
-
-                # Parse JSON and validate against model
-                result_data = json.loads(content)
-                parsed_result = response_model(**result_data)
-
-            if not parsed_result:
-                raise ValueError("Failed to parse response from OpenAI API")
 
             execution_time = time.time() - start_time
             tokens_used = response.usage.total_tokens if response.usage else None
