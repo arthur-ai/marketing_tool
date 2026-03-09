@@ -403,6 +403,16 @@ class SEOOptimizationResult(BaseModel):
             return json.dumps(v)
         return str(v) if v else None
 
+    @field_validator("og_tags", mode="before")
+    @classmethod
+    def coerce_og_tags(cls, v: Any) -> Optional[Dict[str, str]]:
+        """Accept nested OGTags dict or plain dict; coerce empty dict to None."""
+        if not v:
+            return None
+        if isinstance(v, dict):
+            return {str(k): str(val) for k, val in v.items()}
+        return v
+
     @field_validator("alt_texts", mode="before")
     @classmethod
     def coerce_alt_texts(cls, v: Any) -> Optional[Dict[str, str]]:
