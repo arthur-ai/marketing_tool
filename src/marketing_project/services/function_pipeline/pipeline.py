@@ -197,7 +197,22 @@ class FunctionPipeline:
         )
         if step_span and job_id:
             set_span_attribute(step_span, "job_id", job_id)
+        # Add model/provider attributes from step config upfront (available immediately).
+        if step_span:
+            try:
+                set_span_attribute(
+                    step_span, "llm.model", self._get_step_model(step_name)
+                )
+                set_span_attribute(
+                    step_span, "llm.temperature", self._get_step_temperature(step_name)
+                )
+            except Exception:
+                pass
 
+        # Track step_info count before execution so we can attribute token usage.
+        _step_info_before = len(self.step_info)
+
+        _step_exc = None
         try:
             registry = get_plugin_registry()
             plugin = registry.get_plugin(step_name)
@@ -272,13 +287,11 @@ class FunctionPipeline:
                     f"Pipeline execution stopped at step {step_name} due to approval requirement. "
                     f"Approval ID: {result.approval_result.approval_id}"
                 )
-                # Close span and return the sentinel to propagate up
                 if step_span:
                     set_span_status(step_span, StatusCode.OK)
-                    close_span(step_span)
                 return result
 
-            # Set step output and close span on success
+            # Set step output and token usage on success
             if step_span:
                 try:
                     if hasattr(result, "model_dump"):
@@ -290,16 +303,33 @@ class FunctionPipeline:
                     set_span_output(step_span, output_data)
                 except Exception:
                     pass
+                try:
+                    step_tokens = sum(
+                        s.tokens_used or 0 for s in self.step_info[_step_info_before:]
+                    )
+                    if step_tokens:
+                        set_span_attribute(
+                            step_span, "llm.usage.total_tokens", step_tokens
+                        )
+                except Exception:
+                    pass
                 set_span_status(step_span, StatusCode.OK)
-                close_span(step_span)
 
             return result
         except Exception as e:
+            _step_exc = e
             if step_span:
                 record_span_exception(step_span, e)
                 set_span_status(step_span, StatusCode.ERROR, str(e))
-                close_span(step_span, type(e), e, None)
             raise
+        finally:
+            # Always close the span — catches CancelledError and other BaseException cases
+            # that bypass `except Exception`, preventing generator leaks across task contexts.
+            if step_span:
+                if _step_exc is not None:
+                    close_span(step_span, type(_step_exc), _step_exc, None)
+                else:
+                    close_span(step_span)
 
     async def _call_function(
         self,
@@ -542,6 +572,7 @@ class FunctionPipeline:
                     job_type="pipeline",
                     input_value=content_json,
                     job=job,
+                    attributes={"job.content_type": content_type},
                 )
             except Exception as e:
                 logger.debug(f"Failed to create job root span: {e}")
@@ -554,7 +585,17 @@ class FunctionPipeline:
             raise ValueError(f"Invalid JSON input: {e}")
 
         pipeline_span = (
-            create_span("pipeline.execute") if is_tracing_available() else None
+            create_span(
+                "pipeline.execute",
+                attributes={
+                    "pipeline.job_id": job_id or "",
+                    "pipeline.content_type": content_type,
+                    "pipeline.model": self.model,
+                    "pipeline.temperature": self.temperature,
+                },
+            )
+            if is_tracing_available()
+            else None
         )
 
         # Store input content in job metadata if job_id is provided
@@ -820,6 +861,13 @@ class FunctionPipeline:
             # Close pipeline span
             if pipeline_span:
                 try:
+                    total_tokens = sum(s.tokens_used or 0 for s in self.step_info)
+                    set_span_attribute(
+                        pipeline_span, "pipeline.steps_executed", len(self.step_info)
+                    )
+                    set_span_attribute(
+                        pipeline_span, "pipeline.total_tokens", total_tokens
+                    )
                     set_span_status(pipeline_span, StatusCode.OK)
                     close_span(pipeline_span)
                 except Exception as e:
@@ -918,6 +966,20 @@ class FunctionPipeline:
                     ],
                 },
             }
+        finally:
+            # Safety net: close spans on any BaseException (e.g. CancelledError) that
+            # bypasses `except Exception`. Double-close is safe — __exit__ on an already
+            # exhausted generator raises StopIteration which contextlib catches silently.
+            if pipeline_span:
+                try:
+                    close_span(pipeline_span)
+                except Exception:
+                    pass
+            if job_root_span:
+                try:
+                    close_span(job_root_span)
+                except Exception:
+                    pass
 
     async def resume_pipeline(
         self,

@@ -1258,11 +1258,38 @@ async def resume_pipeline_job(
                     f"Failed to persist resume metadata for job {job_id}: {_e}"
                 )
 
-    # Create root job span for this job execution
+    # Create root job span for this job execution.
+    # If the original job saved a traceparent into context_data, restore it so
+    # this span becomes a child of the original job's span — keeping the full
+    # pipeline run in one coherent trace across the approval gate.
     job_span = None
     if is_tracing_available():
+        _parent_ctx = None
+        _traceparent = context_data.get("traceparent")
+        if _traceparent:
+            try:
+                from opentelemetry.trace.propagation.tracecontext import (
+                    TraceContextTextMapPropagator,
+                )
+
+                _parent_ctx = TraceContextTextMapPropagator().extract(
+                    {"traceparent": _traceparent}
+                )
+            except Exception as _tp_err:
+                logger.debug(f"Could not restore traceparent for resume job: {_tp_err}")
+
         job_span = create_job_root_span(
-            job_id=job_id, job_type="resume_pipeline", input_value=context_data, job=job
+            job_id=job_id,
+            job_type="resume_pipeline",
+            input_value=context_data,
+            job=job,
+            parent_context=_parent_ctx,
+            attributes={
+                "resume.original_job_id": original_job_id,
+                "resume.from_step": context_data.get("last_step_number", 0),
+                "resume.from_step_name": context_data.get("last_step", ""),
+                "job.content_type": context_data.get("content_type", ""),
+            },
         )
 
     try:

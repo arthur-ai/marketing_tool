@@ -224,6 +224,7 @@ class ApprovalManager:
         step_number: int,
         step_result: Dict,
         original_content: Optional[Dict] = None,
+        traceparent: Optional[str] = None,
     ):
         """
         Save pipeline context to Redis for resuming after approval.
@@ -235,6 +236,10 @@ class ApprovalManager:
             step_number: Step number that requires approval
             step_result: Result from the step that requires approval
             original_content: Original content JSON (for resume)
+            traceparent: W3C traceparent string of the currently active span.
+                         Stored so resume_pipeline_job can link its root span
+                         back to this trace, keeping the full pipeline run in
+                         one coherent trace across the approval gate.
         """
         try:
             context_data = {
@@ -251,6 +256,7 @@ class ApprovalManager:
                 ),  # Save output_content_type
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "job_id": job_id,
+                "traceparent": traceparent,  # May be None when tracing is disabled
             }
 
             context_json = json.dumps(context_data, default=_json_serializer)

@@ -201,11 +201,23 @@ async def check_and_create_approval_request(
         f"Pipeline will stop and wait for approval."
     )
 
-    # Save pipeline context to Redis for resume
-    # Extract original content from input_data if available
+    # Save pipeline context to Redis for resume.
+    # Capture the current traceparent so resume_pipeline_job can link its
+    # root span back to this trace, producing one coherent trace across
+    # the approval gate.
     original_content = input_data.get("original_content") or context.get(
         "input_content"
     )
+    _traceparent: Optional[str] = None
+    try:
+        from marketing_project.services.function_pipeline.tracing import (
+            get_current_traceparent,
+        )
+
+        _traceparent = get_current_traceparent()
+    except Exception:
+        pass
+
     await manager.save_pipeline_context(
         job_id=job_id,
         context=context,
@@ -213,6 +225,7 @@ async def check_and_create_approval_request(
         step_number=step_number,
         step_result=output_data,
         original_content=original_content,
+        traceparent=_traceparent,
     )
 
     # Return result indicating approval is required
