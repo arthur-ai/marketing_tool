@@ -12,9 +12,19 @@ import re
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
-from sklearn.cluster import AgglomerativeClustering, KMeans
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
+
+try:
+    from sklearn.cluster import AgglomerativeClustering, KMeans
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.metrics.pairwise import cosine_similarity
+
+    HAS_SKLEARN = True
+except ImportError:  # pragma: no cover — sklearn optional, guards below
+    HAS_SKLEARN = False
+    AgglomerativeClustering = None  # type: ignore[assignment,misc]
+    KMeans = None  # type: ignore[assignment,misc]
+    TfidfVectorizer = None  # type: ignore[assignment,misc]
+    cosine_similarity = None  # type: ignore[assignment]
 
 try:
     from marketing_project.services.nlp_processor import NLPProcessor, get_nlp_processor

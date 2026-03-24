@@ -53,6 +53,14 @@ except ImportError:
     Status = None
     StatusCode = None
 
+# Imported at module level so tests can patch worker.TraceContextTextMapPropagator.
+try:
+    from opentelemetry.trace.propagation.tracecontext import (
+        TraceContextTextMapPropagator,
+    )
+except ImportError:  # pragma: no cover
+    TraceContextTextMapPropagator = None  # type: ignore[assignment,misc]
+
 # Configure Python root logger to INFO so marketing_project.* logs are visible in CloudWatch.
 # ARQ only configures its own 'arq' logger; without this, all our INFO logs are swallowed.
 logging.basicConfig(
@@ -1268,13 +1276,10 @@ async def resume_pipeline_job(
         _traceparent = context_data.get("traceparent")
         if _traceparent:
             try:
-                from opentelemetry.trace.propagation.tracecontext import (
-                    TraceContextTextMapPropagator,
-                )
-
-                _parent_ctx = TraceContextTextMapPropagator().extract(
-                    {"traceparent": _traceparent}
-                )
+                if TraceContextTextMapPropagator is not None:
+                    _parent_ctx = TraceContextTextMapPropagator().extract(
+                        {"traceparent": _traceparent}
+                    )
             except Exception as _tp_err:
                 logger.debug(f"Could not restore traceparent for resume job: {_tp_err}")
 
