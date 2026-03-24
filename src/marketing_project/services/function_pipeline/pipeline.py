@@ -84,6 +84,7 @@ from marketing_project.services.function_pipeline.tracing import (
     create_job_root_span,
     create_span,
     create_step_span,
+    get_current_traceparent,
     is_tracing_available,
     record_span_exception,
     set_job_output,
@@ -320,7 +321,6 @@ class FunctionPipeline:
             _step_exc = e
             if step_span:
                 record_span_exception(step_span, e)
-                set_span_status(step_span, StatusCode.ERROR, str(e))
             raise
         finally:
             # Always close the span — catches CancelledError and other BaseException cases
@@ -577,6 +577,17 @@ class FunctionPipeline:
             except Exception as e:
                 logger.debug(f"Failed to create job root span: {e}")
 
+        # Capture job-root-level traceparent now (while job.pipeline is the current
+        # context, before pipeline.execute is attached). Stored in pipeline_context so
+        # the approval helper uses it instead of the step-span traceparent — ensuring
+        # the resume job appears under job.pipeline, not under a step span.
+        _job_root_traceparent: Optional[str] = None
+        if job_root_span:
+            try:
+                _job_root_traceparent = get_current_traceparent()
+            except Exception:
+                pass
+
         # Parse input content
         try:
             content = json.loads(content_json)
@@ -640,6 +651,10 @@ class FunctionPipeline:
             internal_docs_config=internal_docs_config,
             brand_kit_config=brand_kit_config,
         )
+        # Stash job-root traceparent so the approval helper can pick it up and
+        # link the resume job under job.pipeline (not under a step span).
+        if _job_root_traceparent:
+            pipeline_context["__job_root_traceparent__"] = _job_root_traceparent
 
         results = {}
         quality_warnings = []
@@ -728,6 +743,21 @@ class FunctionPipeline:
                         # Approval required - stop pipeline execution
                         pipeline_end = time.time()
                         execution_time = pipeline_end - pipeline_start
+
+                        # Mark spans as OK before the finally block closes them so they
+                        # don't appear with UNSET status in the trace viewer.
+                        if pipeline_span:
+                            set_span_status(
+                                pipeline_span,
+                                StatusCode.OK,
+                                "waiting_for_approval",
+                            )
+                        if job_root_span:
+                            set_span_status(
+                                job_root_span,
+                                StatusCode.OK,
+                                "waiting_for_approval",
+                            )
 
                         # Return early with approval status
                         from marketing_project.services.job_manager import (
@@ -870,6 +900,7 @@ class FunctionPipeline:
                     )
                     set_span_status(pipeline_span, StatusCode.OK)
                     close_span(pipeline_span)
+                    pipeline_span = None  # prevent double-close in finally
                 except Exception as e:
                     logger.debug(f"Failed to close pipeline span: {e}")
 
@@ -887,6 +918,7 @@ class FunctionPipeline:
                     set_job_output(job_root_span, result)
                     set_span_status(job_root_span, StatusCode.OK)
                     close_span(job_root_span)
+                    job_root_span = None  # prevent double-close in finally
                 except Exception as e:
                     logger.debug(f"Failed to close job root span: {e}")
 
@@ -927,6 +959,7 @@ class FunctionPipeline:
                     record_span_exception(pipeline_span, e)
                     set_span_status(pipeline_span, StatusCode.ERROR, str(e))
                     close_span(pipeline_span, type(e), e, None)
+                    pipeline_span = None  # prevent double-close in finally
                 except Exception:
                     pass
 
@@ -936,6 +969,7 @@ class FunctionPipeline:
                     record_span_exception(job_root_span, e)
                     set_span_status(job_root_span, StatusCode.ERROR, str(e))
                     close_span(job_root_span, type(e), e, None)
+                    job_root_span = None  # prevent double-close in finally
                 except Exception as span_err:
                     logger.debug(f"Failed to close job root span: {span_err}")
 
@@ -968,8 +1002,9 @@ class FunctionPipeline:
             }
         finally:
             # Safety net: close spans on any BaseException (e.g. CancelledError) that
-            # bypasses `except Exception`. Double-close is safe — __exit__ on an already
-            # exhausted generator raises StopIteration which contextlib catches silently.
+            # bypasses `except Exception`. In the normal success/error paths the spans are
+            # already closed; close_span() is idempotent — span.end() is a no-op if already
+            # ended, and context_api.detach() swallows the double-detach warning internally.
             if pipeline_span:
                 try:
                     close_span(pipeline_span)
@@ -1137,6 +1172,16 @@ class FunctionPipeline:
                     brand_kit_config.model_dump() if brand_kit_config else None
                 ),
             }
+            # Re-propagate job-root traceparent so a second approval gate in this
+            # resumed run uses the original job.pipeline span, not a step span.
+            # The traceparent is stored in context_data["traceparent"] by
+            # approval_manager.save_pipeline_context and in the saved context under
+            # "__job_root_traceparent__" from the first pipeline execution.
+            _resumed_traceparent = context_data.get("traceparent") or saved_context.get(
+                "__job_root_traceparent__"
+            )
+            if _resumed_traceparent:
+                pipeline_context["__job_root_traceparent__"] = _resumed_traceparent
             # Add all saved step results to context
             for step_name in all_step_names:
                 if step_name in results:

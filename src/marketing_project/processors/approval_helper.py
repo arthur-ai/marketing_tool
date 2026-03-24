@@ -13,6 +13,15 @@ from typing import Any, Dict, Optional
 
 from marketing_project.services.approval_manager import get_approval_manager
 
+# Imported at module level so tests can patch approval_helper.get_current_traceparent.
+# Lazy guard handles environments where opentelemetry is not installed.
+try:
+    from marketing_project.services.function_pipeline.tracing import (
+        get_current_traceparent,
+    )
+except ImportError:  # pragma: no cover
+    get_current_traceparent = None  # type: ignore[assignment]
+
 logger = logging.getLogger(__name__)
 
 
@@ -208,15 +217,26 @@ async def check_and_create_approval_request(
     original_content = input_data.get("original_content") or context.get(
         "input_content"
     )
-    _traceparent: Optional[str] = None
-    try:
-        from marketing_project.services.function_pipeline.tracing import (
-            get_current_traceparent,
-        )
-
-        _traceparent = get_current_traceparent()
-    except Exception:
-        pass
+    # Use the job-root traceparent, NOT the live get_current_traceparent().
+    #
+    # Why: at the point this code runs, an active step span (e.g. seo_keywords) may be
+    # current. If we captured the traceparent now, the resumed job would appear as a
+    # child of that already-ended step span in the trace — making the trace hierarchy
+    # wrong and debugging approval-gated jobs hard.
+    #
+    # Instead, pipeline.py captures the traceparent immediately after job_root_span is
+    # created (before any step span attaches) and stores it as "__job_root_traceparent__"
+    # in the pipeline context. This ensures the resumed job is always a child of
+    # job.pipeline — the correct parent — regardless of which span was active at
+    # approval time.
+    _traceparent: Optional[str] = context.get("__job_root_traceparent__")
+    if not _traceparent:
+        try:
+            _traceparent = (
+                get_current_traceparent() if get_current_traceparent else None
+            )
+        except Exception:
+            pass
 
     await manager.save_pipeline_context(
         job_id=job_id,
