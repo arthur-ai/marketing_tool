@@ -22,6 +22,7 @@ from marketing_project.api.health import router as health_router
 from marketing_project.api.internal_docs import router as internal_docs_router
 from marketing_project.api.jobs import router as jobs_router
 from marketing_project.api.processors import router as processors_router
+from marketing_project.api.profound_settings import router as profound_settings_router
 from marketing_project.api.provider_settings import router as provider_settings_router
 from marketing_project.api.settings import router as settings_router
 from marketing_project.api.social_media import router as social_media_router
@@ -182,6 +183,15 @@ def register_routes() -> APIRouter:
     # PUT    /api/v1/settings/providers/{provider}   - Upsert credentials
     # DELETE /api/v1/settings/providers/{provider}   - Remove credentials
     api_router.include_router(provider_settings_router, tags=["Provider Settings"])
+
+    # ========================================
+    # PROFOUND SETTINGS ROUTES
+    # ========================================
+    # GET    /api/v1/settings/profound        - Get settings
+    # PUT    /api/v1/settings/profound        - Upsert settings
+    # DELETE /api/v1/settings/profound        - Remove settings
+    # POST   /api/v1/settings/profound/test   - Test connection
+    api_router.include_router(profound_settings_router, tags=["Profound Settings"])
 
     # ========================================
     # ADMIN USER MANAGEMENT ROUTES
