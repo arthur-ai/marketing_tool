@@ -39,9 +39,7 @@ def sample_design_kit_config():
 @pytest.mark.asyncio
 async def test_get_design_kit_config(client, sample_design_kit_config):
     """Test get design kit config endpoint."""
-    with patch(
-        "marketing_project.api.design_kit.get_design_kit_manager"
-    ) as mock_manager:
+    with patch("marketing_project.api.brand_kit.get_brand_kit_manager") as mock_manager:
         mock_mgr = AsyncMock()
         mock_mgr.get_active_config = AsyncMock(return_value=sample_design_kit_config)
         mock_manager.return_value = mock_mgr
@@ -54,9 +52,7 @@ async def test_get_design_kit_config(client, sample_design_kit_config):
 @pytest.mark.asyncio
 async def test_get_design_kit_config_not_found(client):
     """Test get design kit config when not found."""
-    with patch(
-        "marketing_project.api.design_kit.get_design_kit_manager"
-    ) as mock_manager:
+    with patch("marketing_project.api.brand_kit.get_brand_kit_manager") as mock_manager:
         mock_mgr = AsyncMock()
         mock_mgr.get_active_config = AsyncMock(return_value=None)
         mock_manager.return_value = mock_mgr
@@ -69,11 +65,9 @@ async def test_get_design_kit_config_not_found(client):
 @pytest.mark.asyncio
 async def test_get_design_kit_config_refresh(client, sample_design_kit_config):
     """Test get design kit config with refresh."""
-    with patch(
-        "marketing_project.api.design_kit.get_design_kit_manager"
-    ) as mock_manager:
+    with patch("marketing_project.api.brand_kit.get_brand_kit_manager") as mock_manager:
         with patch(
-            "marketing_project.api.design_kit.get_job_manager"
+            "marketing_project.api.brand_kit.get_job_manager"
         ) as mock_job_manager:
             mock_mgr = AsyncMock()
             mock_mgr.get_active_config = AsyncMock(
@@ -96,9 +90,7 @@ async def test_get_design_kit_config_refresh(client, sample_design_kit_config):
 @pytest.mark.asyncio
 async def test_update_design_kit_config(client, sample_design_kit_config):
     """Test update design kit config endpoint."""
-    with patch(
-        "marketing_project.api.design_kit.get_design_kit_manager"
-    ) as mock_manager:
+    with patch("marketing_project.api.brand_kit.get_brand_kit_manager") as mock_manager:
         mock_mgr = AsyncMock()
         mock_mgr.update_config = AsyncMock(return_value=sample_design_kit_config)
         mock_manager.return_value = mock_mgr
@@ -114,9 +106,7 @@ async def test_update_design_kit_config(client, sample_design_kit_config):
 @pytest.mark.asyncio
 async def test_get_design_kit_templates(client):
     """Test get design kit templates endpoint."""
-    with patch(
-        "marketing_project.api.design_kit.get_design_kit_manager"
-    ) as mock_manager:
+    with patch("marketing_project.api.brand_kit.get_brand_kit_manager") as mock_manager:
         mock_mgr = AsyncMock()
         mock_mgr.list_templates = AsyncMock(return_value=["template1", "template2"])
         mock_manager.return_value = mock_mgr
@@ -129,9 +119,7 @@ async def test_get_design_kit_templates(client):
 @pytest.mark.asyncio
 async def test_get_design_kit_assets(client):
     """Test get design kit assets endpoint."""
-    with patch(
-        "marketing_project.api.design_kit.get_design_kit_manager"
-    ) as mock_manager:
+    with patch("marketing_project.api.brand_kit.get_brand_kit_manager") as mock_manager:
         mock_mgr = AsyncMock()
         mock_mgr.list_assets = AsyncMock(return_value=["asset1", "asset2"])
         mock_manager.return_value = mock_mgr
