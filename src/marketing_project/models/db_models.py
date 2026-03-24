@@ -651,3 +651,24 @@ class ProviderCredentialsModel(Base):
     )
 
     __table_args__ = (Index("idx_provider_credentials_provider", "provider"),)
+
+
+class ProfoundSettingsModel(Base):
+    """Stores encrypted Profound API settings (singleton row, id=1)."""
+
+    __tablename__ = "profound_settings"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    is_enabled = Column(Boolean, default=True, nullable=False)
+    api_key = Column(EncryptedText, nullable=True)
+    default_category_id = Column(String, nullable=True)
+
+    created_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )

@@ -220,6 +220,17 @@ class DatabaseManager:
             "CREATE INDEX IF NOT EXISTS idx_scanned_documents_url ON scanned_documents (url)",
             "CREATE INDEX IF NOT EXISTS idx_scanned_documents_is_active ON scanned_documents (is_active)",
             "CREATE INDEX IF NOT EXISTS idx_scanned_documents_scanned_at ON scanned_documents (scanned_at)",
+            # Profound settings table (encrypted API key, default category ID)
+            """
+            CREATE TABLE IF NOT EXISTS profound_settings (
+                id SERIAL PRIMARY KEY,
+                is_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                api_key TEXT,
+                default_category_id VARCHAR,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+            """,
         ]
         try:
             async with self._engine.begin() as conn:
