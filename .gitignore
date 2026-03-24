@@ -139,6 +139,9 @@ uploads/
 bandit-report.json
 security_audit.log
 
+# Claude Code local config (user-specific, not project code)
+.claude/
+
 # OS specific
 .DS_Store
 .DS_Store?
