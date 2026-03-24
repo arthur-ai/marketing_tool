@@ -8,6 +8,8 @@ import pytest
 
 from marketing_project.processors.approval_helper import (
     ApprovalRequiredException,
+    ApprovalResult,
+    ApprovalStatus,
     check_and_create_approval_request,
     extract_confidence_score,
     prepare_approval_data,
@@ -52,7 +54,9 @@ async def test_check_and_create_approval_request_approvals_disabled():
             context={},
         )
 
-        assert result is False
+        assert isinstance(result, ApprovalResult)
+        assert result.status == ApprovalStatus.NOT_REQUIRED
+        assert result.can_continue
 
 
 @pytest.mark.asyncio
@@ -77,7 +81,9 @@ async def test_check_and_create_approval_request_agent_not_in_list():
             context={},
         )
 
-        assert result is False
+        assert isinstance(result, ApprovalResult)
+        assert result.status == ApprovalStatus.NOT_REQUIRED
+        assert result.can_continue
 
 
 @pytest.mark.asyncio
@@ -97,19 +103,21 @@ async def test_check_and_create_approval_request_approval_required():
         new_callable=AsyncMock,
         return_value=mock_manager,
     ):
-        with pytest.raises(ApprovalRequiredException) as exc_info:
-            await check_and_create_approval_request(
-                job_id="test-job-1",
-                agent_name="seo_keywords",
-                step_name="Step 1",
-                step_number=1,
-                input_data={},
-                output_data={},
-                context={},
-            )
+        result = await check_and_create_approval_request(
+            job_id="test-job-1",
+            agent_name="seo_keywords",
+            step_name="Step 1",
+            step_number=1,
+            input_data={},
+            output_data={},
+            context={},
+        )
 
-        assert exc_info.value.approval_id == "test-approval-1"
-        assert exc_info.value.job_id == "test-job-1"
+        assert isinstance(result, ApprovalResult)
+        assert result.status == ApprovalStatus.REQUIRED
+        assert result.requires_approval
+        assert result.approval_id == "test-approval-1"
+        assert result.job_id == "test-job-1"
         mock_manager.create_approval_request.assert_called_once()
         mock_manager.save_pipeline_context.assert_called_once()
 
@@ -192,3 +200,80 @@ def test_prepare_approval_data_with_suggestions():
     input_result, output_result = result
     assert isinstance(input_result, dict)
     assert isinstance(output_result, dict)
+
+
+@pytest.mark.asyncio
+async def test_check_and_create_approval_request_passes_job_root_traceparent():
+    """save_pipeline_context receives the __job_root_traceparent__ from context, not the live step span."""
+    mock_manager = MagicMock()
+    mock_manager.settings.require_approval = True
+    mock_manager.settings.approval_agents = ["seo_keywords"]
+    mock_approval = MagicMock()
+    mock_approval.id = "test-approval-tp"
+    mock_approval.status = "pending"
+    mock_manager.create_approval_request = AsyncMock(return_value=mock_approval)
+    mock_manager.save_pipeline_context = AsyncMock()
+
+    traceparent_value = "00-aabbccddeeff00112233445566778899-0011223344556677-01"
+
+    with patch(
+        "marketing_project.processors.approval_helper.get_approval_manager",
+        new_callable=AsyncMock,
+        return_value=mock_manager,
+    ):
+        result = await check_and_create_approval_request(
+            job_id="test-job-tp",
+            agent_name="seo_keywords",
+            step_name="Step 1",
+            step_number=1,
+            input_data={},
+            output_data={},
+            context={"__job_root_traceparent__": traceparent_value},
+        )
+
+    assert isinstance(result, ApprovalResult)
+    assert result.status == ApprovalStatus.REQUIRED
+    call_kwargs = mock_manager.save_pipeline_context.call_args
+    assert call_kwargs is not None
+    assert call_kwargs.kwargs.get("traceparent") == traceparent_value
+
+
+@pytest.mark.asyncio
+async def test_check_and_create_approval_request_falls_back_to_live_traceparent():
+    """Falls back to get_current_traceparent() when __job_root_traceparent__ is absent."""
+    mock_manager = MagicMock()
+    mock_manager.settings.require_approval = True
+    mock_manager.settings.approval_agents = ["seo_keywords"]
+    mock_approval = MagicMock()
+    mock_approval.id = "test-approval-fallback"
+    mock_approval.status = "pending"
+    mock_manager.create_approval_request = AsyncMock(return_value=mock_approval)
+    mock_manager.save_pipeline_context = AsyncMock()
+
+    with patch(
+        "marketing_project.processors.approval_helper.get_approval_manager",
+        new_callable=AsyncMock,
+        return_value=mock_manager,
+    ):
+        with patch(
+            "marketing_project.processors.approval_helper.get_current_traceparent",
+            return_value="00-fallback00000000000000000000000-fallback00000000-01",
+        ):
+            result = await check_and_create_approval_request(
+                job_id="test-job-fallback",
+                agent_name="seo_keywords",
+                step_name="Step 1",
+                step_number=1,
+                input_data={},
+                output_data={},
+                context={},  # no __job_root_traceparent__
+            )
+    assert isinstance(result, ApprovalResult)
+    assert result.status == ApprovalStatus.REQUIRED
+
+    call_kwargs = mock_manager.save_pipeline_context.call_args
+    assert call_kwargs is not None
+    assert (
+        call_kwargs.kwargs.get("traceparent")
+        == "00-fallback00000000000000000000000-fallback00000000-01"
+    )
