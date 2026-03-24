@@ -406,11 +406,26 @@ class SEOOptimizationResult(BaseModel):
     @field_validator("og_tags", mode="before")
     @classmethod
     def coerce_og_tags(cls, v: Any) -> Optional[Dict[str, str]]:
-        """Accept nested OGTags dict or plain dict; coerce empty dict to None."""
+        """Accept nested OGTags dict or plain dict; coerce empty dict to None.
+
+        LLMs sometimes return og_tags as a list of {property, content} dicts.
+        Convert that to a flat dict; pass through unknown types so Pydantic
+        surfaces a clear type error rather than a cryptic ValidationError.
+        """
         if not v:
             return None
         if isinstance(v, dict):
             return {str(k): str(val) for k, val in v.items()}
+        if isinstance(v, list):
+            # e.g. [{"property": "og:title", "content": "..."}]
+            result = {}
+            for item in v:
+                if isinstance(item, dict):
+                    key = item.get("property") or item.get("name") or item.get("key")
+                    val = item.get("content") or item.get("value")
+                    if key and val is not None:
+                        result[str(key)] = str(val)
+            return result or None
         return v
 
     @field_validator("alt_texts", mode="before")

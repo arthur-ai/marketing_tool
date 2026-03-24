@@ -33,6 +33,30 @@ CONTENT STRUCTURE
 - Main Topics: {{ content_structure.main_topics | join(', ') }}
 {% endif %}
 
+{% if personas %}
+───────────────────────────────────────
+TARGET AUDIENCE (Profound Personas)
+───────────────────────────────────────
+
+The following personas define who reads and searches for this content.
+Use their pain points, motivations, and role context to guide keyword
+selection toward phrases these specific people actually type into search engines.
+
+{% for p in personas %}
+**{{ p.name }}**
+{% if p.job_titles %}- Roles: {{ p.job_titles | join(', ') }}{% endif %}
+{% if p.industries %}- Industries: {{ p.industries | join(', ') }}{% endif %}
+{% if p.role_seniority %}- Seniority: {{ p.role_seniority | join(', ') }}{% endif %}
+{% if p.pain_points %}- Pain Points: {{ p.pain_points }}{% endif %}
+{% if p.motivations %}- Motivations: {{ p.motivations }}{% endif %}
+{% endfor %}
+
+When selecting keywords, prioritize:
+- Phrases that directly address the pain points above
+- Industry-specific terminology matching these job roles
+- Search intent that reflects where these personas are in their journey
+
+{% endif %}
 ───────────────────────────────────────
 EXTRACTION TASK
 ───────────────────────────────────────

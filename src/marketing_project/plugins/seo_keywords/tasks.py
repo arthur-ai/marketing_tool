@@ -82,6 +82,10 @@ class SEOKeywordsPlugin(PipelineStepPlugin):
         # Add content type
         prompt_context["content_type"] = context.get("content_type", "blog_post")
 
+        # Inject Profound personas if already fetched by execute()
+        if "_profound_personas" in context:
+            prompt_context["personas"] = context["_profound_personas"]
+
         return prompt_context
 
     def _analyze_content_structure(self, content: str) -> Dict[str, Any]:
@@ -720,6 +724,12 @@ class SEOKeywordsPlugin(PipelineStepPlugin):
                 f"is_valid={context['blog_post_preprocessing_approval'].get('is_valid') if isinstance(context['blog_post_preprocessing_approval'], dict) else 'N/A'}"
             )
 
+        # Step 5.5: Fetch Profound audience personas to enrich keyword targeting.
+        # Reads PROFOUND_CATEGORY_ID from env (or content.profound_category_id).
+        # Injects personas into context so _build_prompt_context() can pass them
+        # to the LLM prompt template. Fails silently if not configured.
+        await self._inject_profound_personas(context, content)
+
         # Step 6: Compose result from engines
         result = await seo_composer.compose_result(content, context, pipeline)
 
@@ -802,6 +812,47 @@ class SEOKeywordsPlugin(PipelineStepPlugin):
                     # Continue pipeline execution - approval check failed but we don't want to block
 
         return result
+
+    async def _inject_profound_personas(
+        self, context: Dict[str, Any], content: Any
+    ) -> None:
+        """
+        Fetch Profound personas and store them in context["_profound_personas"].
+
+        Category ID resolution order:
+          1. content["profound_category_id"] — per-content override
+          2. DB settings default_category_id (or PROFOUND_CATEGORY_ID env var fallback)
+
+        API key is loaded from DB settings (or PROFOUND_API_KEY env var fallback).
+        Does nothing if neither API key nor category ID is configured.
+        Results are cached in-process for 1 hour so repeated jobs don't re-fetch.
+        """
+        try:
+            from marketing_project.services.profound_client import get_profound_client
+
+            client, db_default_category_id = await get_profound_client()
+            if not client.is_configured():
+                return
+
+            # Per-content override takes priority over DB/env default
+            category_id: Optional[str] = None
+            if isinstance(content, dict):
+                category_id = content.get("profound_category_id")
+            if not category_id:
+                category_id = db_default_category_id
+
+            if not category_id:
+                return
+
+            personas = await client.get_category_personas(category_id)
+            if personas:
+                context["_profound_personas"] = [p.to_prompt_dict() for p in personas]
+                logger.info(
+                    "Injected %d Profound personas into SEO keyword context",
+                    len(personas),
+                )
+        except Exception as e:
+            logger.warning("Profound persona injection failed (non-fatal): %s", e)
 
     def _get_engine_config(
         self, context: Dict[str, Any], pipeline: Any
