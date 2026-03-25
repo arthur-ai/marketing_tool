@@ -203,6 +203,70 @@ async def update_job_progress(
         logger.warning(f"Failed to update progress: {e}")
 
 
+async def emit_progress(
+    job_id: str,
+    step_name: str,
+    step_number: int,
+    total_steps: int,
+) -> None:
+    """
+    Publish a post-step SSE progress event to Redis pub/sub.
+
+    Called AFTER each step's execute() returns successfully. Computes pct as
+    round(step_number / max(total_steps, 1) * 100) and publishes to the channel
+    ``job:{job_id}:progress:events``. Also updates the state hash
+    ``job:{job_id}:progress:state`` so cold-connect SSE clients can catch up.
+
+    Failures are swallowed — progress events are best-effort and must never
+    interrupt the pipeline.
+    """
+    try:
+        from marketing_project.services.redis_manager import get_redis_manager
+
+        pct = round(step_number / max(total_steps, 1) * 100)
+        event_payload = json.dumps(
+            {
+                "type": "progress",
+                "step": step_name,
+                "step_number": step_number,
+                "total_steps": total_steps,
+                "pct": pct,
+            }
+        )
+
+        channel = f"job:{job_id}:progress:events"
+        state_key = f"job:{job_id}:progress:state"
+
+        redis_mgr = get_redis_manager()
+        r = await redis_mgr.get_redis()
+
+        # Publish to subscribers and update state hash in one pipeline
+        pipe = r.pipeline()
+        pipe.publish(channel, event_payload)
+        pipe.hset(
+            state_key,
+            mapping={
+                "step": step_name,
+                "step_number": step_number,
+                "total_steps": total_steps,
+                "pct": pct,
+            },
+        )
+        pipe.expire(state_key, 3600)  # 1-hour TTL — auto-cleanup
+        await pipe.execute()
+
+        logger.debug(
+            "emit_progress: job=%s step=%s %d/%d (%d%%)",
+            job_id,
+            step_name,
+            step_number,
+            total_steps,
+            pct,
+        )
+    except Exception as exc:
+        logger.warning("emit_progress failed for job %s: %s", job_id, exc)
+
+
 async def register_step_output(
     job_id: str,
     step_name: str,
