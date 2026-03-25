@@ -20,6 +20,27 @@ from marketing_project.services.function_pipeline.litellm_client import (
 logger = logging.getLogger("marketing_project.services.function_pipeline.providers")
 
 
+def _get_llm_schema(response_model: Type[BaseModel]) -> dict:
+    """
+    Return the JSON schema for a Pydantic model, excluding any fields listed in
+    the model's `_llm_exclude_fields` class variable. This lets us keep rich
+    fields on the model for downstream use while staying within Anthropic's
+    24 optional-parameter limit per schema.
+    """
+    schema = response_model.model_json_schema()
+    exclude = getattr(response_model, "_llm_exclude_fields", frozenset())
+    if not exclude:
+        return schema
+    schema = dict(schema)
+    if "properties" in schema:
+        schema["properties"] = {
+            k: v for k, v in schema["properties"].items() if k not in exclude
+        }
+    if "required" in schema:
+        schema["required"] = [f for f in schema["required"] if f not in exclude]
+    return schema
+
+
 def _make_schema_anthropic_safe(schema: dict) -> dict:
     """
     Recursively add 'additionalProperties': false to all object-type nodes.
@@ -55,7 +76,7 @@ def _inject_json_schema(messages: list, response_model: Type[BaseModel]) -> list
     Append a JSON schema instruction to the system message so all providers
     know to return structured JSON.
     """
-    schema_json = json.dumps(response_model.model_json_schema(), indent=2)
+    schema_json = json.dumps(_get_llm_schema(response_model), indent=2)
     schema_instruction = (
         "\n\nIMPORTANT: Respond with valid JSON only, matching this schema exactly:\n"
         f"```json\n{schema_json}\n```\n"
@@ -149,7 +170,7 @@ async def call_llm_structured(
         # Arthur-supplied schemas are not used here because Arthur strips nested
         # object `properties` on write (UP-4007), which causes Anthropic's structured
         # output mode to enforce empty objects for all nested fields.
-        safe_schema = _make_schema_anthropic_safe(response_model.model_json_schema())
+        safe_schema = _make_schema_anthropic_safe(_get_llm_schema(response_model))
         extra_kwargs["response_format"] = {
             "type": "json_schema",
             "json_schema": {"name": "response", "schema": safe_schema},
