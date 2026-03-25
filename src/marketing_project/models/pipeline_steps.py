@@ -6,7 +6,7 @@ ensuring type safety and predictable results.
 """
 
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any, ClassVar, Dict, FrozenSet, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -1062,6 +1062,29 @@ def _fix_anyof_additional_properties(schema: Dict[str, Any], model_class: type) 
 class BlogPostPreprocessingApprovalResult(BaseModel):
     """Result from Blog Post Preprocessing Approval step."""
 
+    # Fields excluded from the LLM schema (kept in model for downstream use but
+    # not requested from the LLM — either computable programmatically or unused
+    # downstream). Anthropic enforces a ≤24 optional-parameter limit per schema.
+    _llm_exclude_fields: ClassVar[FrozenSet[str]] = frozenset(
+        {
+            "headings",
+            "sections",
+            "paragraph_count",
+            "list_count",
+            "link_count",
+            "completeness_score",
+            "shareability_score",
+            "engagement_potential",
+            "cta_detected",
+            "sentiment_confidence",
+            "sentiment_by_section",
+            "inferred_categories",
+            "seo_opportunities",
+            "content_structure",
+            "quality_metrics",
+        }
+    )
+
     is_valid: bool = Field(
         description="Overall validation status - true if all blog post fields are valid"
     )
@@ -1210,7 +1233,7 @@ class BlogPostPreprocessingApprovalResult(BaseModel):
         default_factory=list,
         description="Categories inferred from content analysis",
     )
-    # Optional parsing fields
+    # Parsing fields
     parsing_confidence: Optional[float] = Field(
         None,
         ge=0.0,
