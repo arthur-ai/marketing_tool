@@ -749,6 +749,17 @@ class SEOKeywordsPlugin(PipelineStepPlugin):
             # Try to fix errors automatically
             result = self._validate_and_fix(result, context)
 
+        # Step 10.5: Attach Profound persona names to result for trust-signal display.
+        # context["_profound_personas"] is populated by _inject_profound_personas() above.
+        # None means Profound is not configured; [] means configured but none returned.
+        _personas = context.get("_profound_personas")
+        if _personas is None:
+            result.profound_personas_used = None
+        else:
+            result.profound_personas_used = [
+                p["name"] for p in _personas if p.get("name")
+            ] or None
+
         # Step 11: Check for approval requirement (since we bypassed _execute_step)
         # This ensures SEO keywords step respects approval settings
         if job_id and pipeline:

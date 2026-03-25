@@ -72,6 +72,7 @@ from marketing_project.services.function_pipeline.llm_client import LLMClient
 from marketing_project.services.function_pipeline.orchestration import (
     build_initial_context,
     compile_pipeline_result,
+    emit_progress,
     filter_active_plugins,
     load_pipeline_configs,
     register_step_output,
@@ -844,6 +845,15 @@ class FunctionPipeline:
                             f"After {plugin.step_name}, input_content keys: {list(input_content.keys()) if isinstance(input_content, dict) else 'not a dict'}, "
                             f"author={input_content.get('author') if isinstance(input_content, dict) else 'N/A'}, "
                             f"category={input_content.get('category') if isinstance(input_content, dict) else 'N/A'}"
+                        )
+
+                    # Emit post-step SSE progress event (best-effort, never blocks pipeline)
+                    if job_id:
+                        await emit_progress(
+                            job_id=job_id,
+                            step_name=plugin.step_name,
+                            step_number=execution_index,
+                            total_steps=total_steps,
                         )
 
                 except Exception as e:

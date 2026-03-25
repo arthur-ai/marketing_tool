@@ -154,6 +154,14 @@ class SEOKeywordsResult(BaseModel):
         None, ge=0.0, le=100.0, description="Overall keyword relevance score (0-100)"
     )
 
+    # Profound audience personas used for keyword targeting.
+    # None when Profound is not configured; list of persona name strings when used.
+    # Not populated when ApprovalRequiredSentinel is returned.
+    profound_personas_used: Optional[List[str]] = Field(
+        None,
+        description="Names of Profound personas used for keyword targeting. None if Profound not configured.",
+    )
+
 
 class MarketingBriefResult(BaseModel):
     """Result from Marketing Brief generation step."""

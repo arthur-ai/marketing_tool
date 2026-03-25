@@ -4,11 +4,14 @@ Job Management API Endpoints.
 Endpoints for managing and tracking background job execution.
 """
 
+import asyncio
+import json
 import logging
 import uuid
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from ..middleware.keycloak_auth import get_current_user
@@ -823,4 +826,228 @@ async def resume_job(job_id: str, user: UserContext = Depends(get_current_user))
         logger.error(f"Failed to resume job {job_id}: {e}")
         raise HTTPException(
             status_code=500, detail=f"Failed to resume pipeline: {str(e)}"
+        )
+
+
+@router.get("/{job_id}/progress")
+async def stream_job_progress(
+    job_id: str, user: UserContext = Depends(get_current_user)
+):
+    """
+    SSE endpoint for real-time job progress updates.
+
+    Streams Server-Sent Events. Each event is a JSON object:
+      {"type": "progress", "step": "<step_name>", "step_number": N, "total_steps": N, "pct": N}
+
+    Cold-connect: reads the latest state from Redis state hash first so clients that
+    connect mid-pipeline immediately get the current position. Afterward, subscribes
+    to pub/sub for live updates.
+
+    Falls back to a polling-style heartbeat when the job is not yet started or Redis
+    pub/sub is unavailable.
+    """
+    # Verify ownership before streaming
+    manager = get_job_manager()
+    await verify_job_ownership(job_id, user, manager)
+
+    async def event_generator():
+        try:
+            from marketing_project.services.redis_manager import get_redis_manager
+
+            redis_mgr = get_redis_manager()
+            r = await redis_mgr.get_redis()
+
+            channel = f"job:{job_id}:progress:events"
+            state_key = f"job:{job_id}:progress:state"
+
+            # --- Cold-connect: replay latest state ---
+            try:
+                state = await r.hgetall(state_key)
+                if state:
+                    # hgetall returns bytes keys/values; decode them
+                    decoded = {
+                        k.decode() if isinstance(k, bytes) else k: (
+                            v.decode() if isinstance(v, bytes) else v
+                        )
+                        for k, v in state.items()
+                    }
+                    payload = json.dumps(
+                        {
+                            "type": "progress",
+                            "step": decoded.get("step", ""),
+                            "step_number": int(decoded.get("step_number", 0)),
+                            "total_steps": int(decoded.get("total_steps", 0)),
+                            "pct": int(decoded.get("pct", 0)),
+                        }
+                    )
+                    yield f"data: {payload}\n\n"
+            except Exception as exc:
+                logger.warning(
+                    "SSE cold-connect state read failed for %s: %s", job_id, exc
+                )
+
+            # --- Subscribe to live updates ---
+            pubsub = r.pubsub()
+            await pubsub.subscribe(channel)
+
+            try:
+                # Stream until job is done or connection closed
+                while True:
+                    message = await pubsub.get_message(
+                        ignore_subscribe_messages=True, timeout=30.0
+                    )
+                    if message is not None:
+                        raw = message.get("data", b"")
+                        if isinstance(raw, bytes):
+                            raw = raw.decode()
+                        yield f"data: {raw}\n\n"
+
+                        # Check if job completed so we can close the stream
+                        try:
+                            data = json.loads(raw)
+                            if data.get("pct", 0) >= 100:
+                                yield 'data: {"type": "done"}\n\n'
+                                break
+                        except Exception:
+                            pass
+                    else:
+                        # Heartbeat to keep the connection alive
+                        yield ": heartbeat\n\n"
+                        await asyncio.sleep(1)
+
+                        # Check if job finished while we were waiting
+                        job = await manager.get_job(job_id)
+                        if job and job.status in (
+                            JobStatus.COMPLETED,
+                            JobStatus.FAILED,
+                            JobStatus.CANCELLED,
+                        ):
+                            yield 'data: {"type": "done"}\n\n'
+                            break
+            finally:
+                await pubsub.unsubscribe(channel)
+                await pubsub.close()
+
+        except Exception as exc:
+            logger.error("SSE stream error for job %s: %s", job_id, exc)
+            yield f'data: {{"type": "error", "detail": "internal server error"}}\n\n'
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.get("/{job_id}/quality")
+async def get_job_quality(job_id: str, user: UserContext = Depends(get_current_user)):
+    """
+    Compute quality metrics for a completed job.
+
+    Returns:
+      - flesch_kincaid_grade: readability grade level (lower = easier to read)
+      - keyword_match_pct: percentage of topic keywords found in the output
+      - word_count: total word count of the formatted output
+      - warnings: list of quality concerns (e.g., very high grade level)
+
+    Returns 409 if the job is not yet COMPLETED, 404 if not found / not owned.
+    """
+    manager = get_job_manager()
+    job = await verify_job_ownership(job_id, user, manager)
+
+    if job.status != JobStatus.COMPLETED:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Quality metrics are only available for completed jobs (current status: {job.status})",
+        )
+
+    try:
+        import textstat
+
+        from marketing_project.services.step_result_manager import (
+            get_step_result_manager,
+        )
+
+        step_manager = get_step_result_manager()
+        formatting_result = await step_manager.get_step_result_by_name(
+            job_id, "content_formatting"
+        )
+
+        if not formatting_result:
+            raise HTTPException(
+                status_code=404,
+                detail="Quality data not available — content_formatting step result not found",
+            )
+
+        result_data = formatting_result.get("result", formatting_result)
+        text = (
+            result_data.get("formatted_markdown")
+            or result_data.get("formatted_html")
+            or ""
+        )
+
+        if not text:
+            raise HTTPException(
+                status_code=404,
+                detail="Quality data not available — no formatted text found",
+            )
+
+        # Flesch-Kincaid grade level (lower = more readable)
+        fk_grade = round(textstat.flesch_kincaid_grade(text), 1)
+        word_count = textstat.lexicon_count(text, removepunct=True)
+
+        # Keyword match: check how many topic keywords appear in the output
+        topic = ""
+        if job.metadata:
+            input_content = job.metadata.get("input_content", {})
+            if isinstance(input_content, dict):
+                topic = (
+                    input_content.get("topic", "")
+                    or input_content.get("title", "")
+                    or ""
+                )
+
+        keyword_match_pct = 0.0
+        if topic:
+            # Simple tokenization: split on whitespace and strip punctuation
+            import re
+
+            topic_words = [
+                w.lower()
+                for w in re.split(r"\W+", topic)
+                if len(w) > 3  # skip short stop-words
+            ]
+            if topic_words:
+                text_lower = text.lower()
+                matched = sum(1 for w in topic_words if w in text_lower)
+                keyword_match_pct = round(matched / len(topic_words) * 100, 1)
+
+        warnings = []
+        if fk_grade > 14:
+            warnings.append(
+                "Reading level is very high (grade > 14) — consider simplifying"
+            )
+        if word_count < 100:
+            warnings.append("Output is very short (< 100 words)")
+        if keyword_match_pct < 50 and topic:
+            warnings.append("Less than 50% of topic keywords appear in the output")
+
+        return {
+            "success": True,
+            "job_id": job_id,
+            "flesch_kincaid_grade": fk_grade,
+            "keyword_match_pct": keyword_match_pct,
+            "word_count": word_count,
+            "warnings": warnings,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to compute quality metrics for job {job_id}: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to compute quality metrics: {str(e)}"
         )
