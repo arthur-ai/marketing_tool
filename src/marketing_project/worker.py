@@ -724,7 +724,7 @@ async def analyze_brand_kit_batch_job(
         raise
     finally:
         close_span(job_span)
-        _flush_telemetry(job_id)
+        _flush_telemetry(batch_job_id)
 
 
 async def synthesize_brand_kit_job(
