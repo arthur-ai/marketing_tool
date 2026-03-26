@@ -7,8 +7,17 @@ Endpoints for managing and tracking background job execution.
 import asyncio
 import json
 import logging
+import os
+import re
 import uuid
 from typing import List, Optional
+
+import redis.asyncio as _aioredis
+
+try:
+    import textstat as _textstat_module
+except Exception:  # pragma: no cover — ImportError or numpy 1.x/2.x compat failure
+    _textstat_module = None  # type: ignore[assignment]
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -851,12 +860,16 @@ async def stream_job_progress(
     await verify_job_ownership(job_id, user, manager)
 
     async def event_generator():
+        # Dedicated Redis connection per stream — pub/sub must not share the
+        # connection pool since a subscribed connection can only handle
+        # subscribe/unsubscribe/ping commands on that socket.
+        redis_url = os.getenv(
+            "REDIS_URL",
+            f"redis://{os.getenv('REDIS_HOST', 'localhost')}:{os.getenv('REDIS_PORT', '6379')}/{os.getenv('REDIS_DB', '0')}",
+        )
+        r = None
         try:
-            from marketing_project.services.redis_manager import get_redis_manager
-
-            redis_mgr = get_redis_manager()
-            r = await redis_mgr.get_redis()
-
+            r = _aioredis.from_url(redis_url, decode_responses=False)
             channel = f"job:{job_id}:progress:events"
             state_key = f"job:{job_id}:progress:state"
 
@@ -902,11 +915,16 @@ async def stream_job_progress(
                             raw = raw.decode()
                         yield f"data: {raw}\n\n"
 
-                        # Check if job completed so we can close the stream
+                        # Close stream on any terminal event type
                         try:
                             data = json.loads(raw)
-                            if data.get("pct", 0) >= 100:
-                                yield 'data: {"type": "done"}\n\n'
+                            event_type = data.get("type", "")
+                            if (
+                                event_type in ("done", "error")
+                                or data.get("pct", 0) >= 100
+                            ):
+                                if event_type not in ("done", "error"):
+                                    yield 'data: {"type": "done"}\n\n'
                                 break
                         except Exception:
                             pass
@@ -922,7 +940,12 @@ async def stream_job_progress(
                             JobStatus.FAILED,
                             JobStatus.CANCELLED,
                         ):
-                            yield 'data: {"type": "done"}\n\n'
+                            terminal = (
+                                '{"type": "done"}'
+                                if job.status == JobStatus.COMPLETED
+                                else '{"type": "error", "status": "FAILED"}'
+                            )
+                            yield f"data: {terminal}\n\n"
                             break
             finally:
                 await pubsub.unsubscribe(channel)
@@ -931,6 +954,9 @@ async def stream_job_progress(
         except Exception as exc:
             logger.error("SSE stream error for job %s: %s", job_id, exc)
             yield f'data: {{"type": "error", "detail": "internal server error"}}\n\n'
+        finally:
+            if r is not None:
+                await r.aclose()
 
     return StreamingResponse(
         event_generator(),
@@ -949,12 +975,20 @@ async def get_job_quality(job_id: str, user: UserContext = Depends(get_current_u
 
     Returns:
       - flesch_kincaid_grade: readability grade level (lower = easier to read)
-      - keyword_match_pct: percentage of topic keywords found in the output
+      - keyword_match_pct: percentage of topic keywords found in the output (word-boundary matched)
       - word_count: total word count of the formatted output
+      - has_headings: whether the output contains any markdown or HTML headings
+      - profound_personas_used: list of Profound persona names used, or null if not configured
       - warnings: list of quality concerns (e.g., very high grade level)
 
     Returns 409 if the job is not yet COMPLETED, 404 if not found / not owned.
     """
+    if _textstat_module is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Quality metrics unavailable — textstat library not installed",
+        )
+
     manager = get_job_manager()
     job = await verify_job_ownership(job_id, user, manager)
 
@@ -965,15 +999,16 @@ async def get_job_quality(job_id: str, user: UserContext = Depends(get_current_u
         )
 
     try:
-        import textstat
-
         from marketing_project.services.step_result_manager import (
             get_step_result_manager,
         )
 
         step_manager = get_step_result_manager()
-        formatting_result = await step_manager.get_step_result_by_name(
-            job_id, "content_formatting"
+
+        # Fetch content_formatting and seo_keywords results in parallel
+        formatting_result, seo_result = await asyncio.gather(
+            step_manager.get_step_result_by_name(job_id, "content_formatting"),
+            step_manager.get_step_result_by_name(job_id, "seo_keywords"),
         )
 
         if not formatting_result:
@@ -996,10 +1031,15 @@ async def get_job_quality(job_id: str, user: UserContext = Depends(get_current_u
             )
 
         # Flesch-Kincaid grade level (lower = more readable)
-        fk_grade = round(textstat.flesch_kincaid_grade(text), 1)
-        word_count = textstat.lexicon_count(text, removepunct=True)
+        fk_grade = round(_textstat_module.flesch_kincaid_grade(text), 1)
+        word_count = _textstat_module.lexicon_count(text, removepunct=True)
 
-        # Keyword match: check how many topic keywords appear in the output
+        # Heading structure: markdown (#+ ) or HTML (<h1>–<h6>)
+        has_headings = bool(
+            re.search(r"^#{1,6} |<h[1-6][\s>]", text, re.MULTILINE | re.IGNORECASE)
+        )
+
+        # Keyword match: word-boundary matching to avoid partial-word false positives
         topic = ""
         if job.metadata:
             input_content = job.metadata.get("input_content", {})
@@ -1012,9 +1052,6 @@ async def get_job_quality(job_id: str, user: UserContext = Depends(get_current_u
 
         keyword_match_pct = 0.0
         if topic:
-            # Simple tokenization: split on whitespace and strip punctuation
-            import re
-
             topic_words = [
                 w.lower()
                 for w in re.split(r"\W+", topic)
@@ -1022,8 +1059,18 @@ async def get_job_quality(job_id: str, user: UserContext = Depends(get_current_u
             ]
             if topic_words:
                 text_lower = text.lower()
-                matched = sum(1 for w in topic_words if w in text_lower)
+                matched = sum(
+                    1
+                    for w in topic_words
+                    if re.search(r"\b" + re.escape(w) + r"\b", text_lower)
+                )
                 keyword_match_pct = round(matched / len(topic_words) * 100, 1)
+
+        # Profound personas from SEO keywords step result
+        profound_personas_used = None
+        if seo_result:
+            seo_data = seo_result.get("result", seo_result)
+            profound_personas_used = seo_data.get("profound_personas_used")
 
         warnings = []
         if fk_grade > 14:
@@ -1041,6 +1088,8 @@ async def get_job_quality(job_id: str, user: UserContext = Depends(get_current_u
             "flesch_kincaid_grade": fk_grade,
             "keyword_match_pct": keyword_match_pct,
             "word_count": word_count,
+            "has_headings": has_headings,
+            "profound_personas_used": profound_personas_used,
             "warnings": warnings,
         }
 

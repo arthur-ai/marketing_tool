@@ -288,7 +288,7 @@ class TestProfoundPersonasUsedField:
 
         minimal_result = self._make_minimal_seo_result()
 
-        async def inject_two_personas(self_plugin, context, content):
+        async def inject_two_personas(context, content):
             context["_profound_personas"] = [
                 _persona_dict("Marketing Manager"),
                 _persona_dict("DevOps Engineer"),
@@ -341,7 +341,7 @@ class TestProfoundPersonasUsedField:
 
         minimal_result = self._make_minimal_seo_result()
 
-        async def inject_nameless(self_plugin, context, content):
+        async def inject_nameless(context, content):
             context["_profound_personas"] = [
                 _persona_dict_no_name(),
                 _persona_dict_no_name(),
@@ -394,7 +394,7 @@ class TestProfoundPersonasUsedField:
 
         minimal_result = self._make_minimal_seo_result()
 
-        async def inject_empty(self_plugin, context, content):
+        async def inject_empty(context, content):
             context["_profound_personas"] = []
 
         with (
@@ -444,7 +444,7 @@ class TestProfoundPersonasUsedField:
 
         minimal_result = self._make_minimal_seo_result()
 
-        async def inject_mixed(self_plugin, context, content):
+        async def inject_mixed(context, content):
             context["_profound_personas"] = [
                 _persona_dict("Product Manager"),
                 _persona_dict_no_name(),  # empty name — filtered out

@@ -15,6 +15,7 @@ from marketing_project.services.function_pipeline.tracing import (
     set_span_attribute,
     set_span_status,
 )
+from marketing_project.services.redis_manager import get_redis_manager
 
 logger = logging.getLogger("marketing_project.services.function_pipeline.orchestration")
 
@@ -221,8 +222,6 @@ async def emit_progress(
     interrupt the pipeline.
     """
     try:
-        from marketing_project.services.redis_manager import get_redis_manager
-
         pct = round(step_number / max(total_steps, 1) * 100)
         event_payload = json.dumps(
             {
@@ -265,6 +264,42 @@ async def emit_progress(
         )
     except Exception as exc:
         logger.warning("emit_progress failed for job %s: %s", job_id, exc)
+
+
+async def emit_error(
+    job_id: str,
+    reason: str,
+) -> None:
+    """
+    Publish a terminal error SSE event to Redis pub/sub.
+
+    Called from the ARQ worker except block when the pipeline raises. Notifies
+    connected SSE clients immediately so they don't wait for the 30-second
+    heartbeat timeout to detect the failure.
+
+    Failures are swallowed — this is best-effort telemetry.
+    """
+    try:
+        event_payload = json.dumps(
+            {
+                "type": "error",
+                "status": "FAILED",
+                "reason": reason,
+            }
+        )
+
+        channel = f"job:{job_id}:progress:events"
+
+        r = await get_redis_manager().get_redis()
+        await r.publish(channel, event_payload)
+
+        logger.debug(
+            "emit_error: job=%s reason=%s",
+            job_id,
+            reason,
+        )
+    except Exception as exc:
+        logger.warning("emit_error failed for job %s: %s", job_id, exc)
 
 
 async def register_step_output(

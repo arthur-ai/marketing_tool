@@ -7,7 +7,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from marketing_project.services.function_pipeline.orchestration import emit_progress
+from marketing_project.services.function_pipeline.orchestration import (
+    emit_error,
+    emit_progress,
+)
 
 
 @pytest.fixture
@@ -217,3 +220,47 @@ async def test_emit_progress_total_steps_zero_guard():
     data = json.loads(payload)
     # max(0, 1) = 1, so round(1/1 * 100) = 100
     assert data["pct"] == 100
+
+
+# ---------------------------------------------------------------------------
+# emit_error tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_emit_error_publishes_error_payload():
+    """emit_error publishes {type:'error', status:'FAILED', reason:...} to the channel."""
+    r = AsyncMock()
+    r.publish = AsyncMock()
+
+    mgr = AsyncMock()
+    mgr.get_redis = AsyncMock(return_value=r)
+
+    with patch(
+        "marketing_project.services.function_pipeline.orchestration.get_redis_manager",
+        return_value=mgr,
+    ):
+        await emit_error(job_id="job-err-1", reason="LLM quota exceeded")
+
+    r.publish.assert_called_once()
+    channel, payload = r.publish.call_args[0]
+    assert channel == "job:job-err-1:progress:events"
+
+    data = json.loads(payload)
+    assert data["type"] == "error"
+    assert data["status"] == "FAILED"
+    assert data["reason"] == "LLM quota exceeded"
+
+
+@pytest.mark.asyncio
+async def test_emit_error_swallows_redis_errors():
+    """Failures in emit_error are silently swallowed — never interrupt the pipeline."""
+    mgr = AsyncMock()
+    mgr.get_redis = AsyncMock(side_effect=ConnectionError("Redis down"))
+
+    with patch(
+        "marketing_project.services.function_pipeline.orchestration.get_redis_manager",
+        return_value=mgr,
+    ):
+        # Should not raise
+        await emit_error(job_id="job-err-2", reason="some failure")

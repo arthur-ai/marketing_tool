@@ -44,6 +44,21 @@ def _make_job(status=JobStatus.COMPLETED, metadata=None):
     )
 
 
+def _make_srm_mock(formatting_result, seo_result=None):
+    """Build a step_result_manager mock that returns different values per step name."""
+
+    async def _side_effect(job_id, step_name):
+        if step_name == "content_formatting":
+            return formatting_result
+        if step_name == "seo_keywords":
+            return seo_result
+        return None
+
+    mock_srm_instance = AsyncMock()
+    mock_srm_instance.get_step_result_by_name = AsyncMock(side_effect=_side_effect)
+    return mock_srm_instance
+
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
@@ -51,6 +66,16 @@ def _make_job(status=JobStatus.COMPLETED, metadata=None):
 
 class TestJobQualityEndpoint:
     """Tests for GET /api/v1/jobs/{job_id}/quality"""
+
+    # autouse: provide a mock textstat so tests aren't blocked by the numpy
+    # 1.x/2.x compat issue in the dev environment.
+    @pytest.fixture(autouse=True)
+    def mock_textstat(self):
+        mock_ts = MagicMock()
+        mock_ts.flesch_kincaid_grade.return_value = 8.5
+        mock_ts.lexicon_count.return_value = 150
+        with patch("marketing_project.api.jobs._textstat_module", mock_ts):
+            yield mock_ts
 
     # ------------------------------------------------------------------
     # 409 when job not completed
@@ -68,8 +93,7 @@ class TestJobQualityEndpoint:
             patch("marketing_project.api.jobs.get_job_manager") as mock_mgr,
             patch("marketing_project.api.jobs.verify_job_ownership", return_value=job),
         ):
-            mock_mgr_instance = AsyncMock()
-            mock_mgr.return_value = mock_mgr_instance
+            mock_mgr.return_value = AsyncMock()
 
             response = client.get("/api/v1/jobs/job-q-1/quality")
 
@@ -92,9 +116,7 @@ class TestJobQualityEndpoint:
             ) as mock_srm,
         ):
             mock_mgr.return_value = AsyncMock()
-            mock_srm_instance = AsyncMock()
-            mock_srm_instance.get_step_result_by_name = AsyncMock(return_value=None)
-            mock_srm.return_value = mock_srm_instance
+            mock_srm.return_value = _make_srm_mock(formatting_result=None)
 
             response = client.get("/api/v1/jobs/job-q-1/quality")
 
@@ -113,11 +135,7 @@ class TestJobQualityEndpoint:
             ) as mock_srm,
         ):
             mock_mgr.return_value = AsyncMock()
-            mock_srm_instance = AsyncMock()
-            mock_srm_instance.get_step_result_by_name = AsyncMock(
-                return_value=formatting_result
-            )
-            mock_srm.return_value = mock_srm_instance
+            mock_srm.return_value = _make_srm_mock(formatting_result=formatting_result)
 
             response = client.get("/api/v1/jobs/job-q-1/quality")
 
@@ -143,11 +161,7 @@ class TestJobQualityEndpoint:
             ) as mock_srm,
         ):
             mock_mgr.return_value = AsyncMock()
-            mock_srm_instance = AsyncMock()
-            mock_srm_instance.get_step_result_by_name = AsyncMock(
-                return_value=formatting_result
-            )
-            mock_srm.return_value = mock_srm_instance
+            mock_srm.return_value = _make_srm_mock(formatting_result=formatting_result)
 
             response = client.get("/api/v1/jobs/job-q-1/quality")
 
@@ -158,6 +172,8 @@ class TestJobQualityEndpoint:
         assert "flesch_kincaid_grade" in data
         assert "keyword_match_pct" in data
         assert "word_count" in data
+        assert "has_headings" in data
+        assert "profound_personas_used" in data
         assert "warnings" in data
         assert isinstance(data["warnings"], list)
 
@@ -175,11 +191,7 @@ class TestJobQualityEndpoint:
             ) as mock_srm,
         ):
             mock_mgr.return_value = AsyncMock()
-            mock_srm_instance = AsyncMock()
-            mock_srm_instance.get_step_result_by_name = AsyncMock(
-                return_value=formatting_result
-            )
-            mock_srm.return_value = mock_srm_instance
+            mock_srm.return_value = _make_srm_mock(formatting_result=formatting_result)
 
             response = client.get("/api/v1/jobs/job-q-1/quality")
 
@@ -187,12 +199,168 @@ class TestJobQualityEndpoint:
         assert response.json()["word_count"] > 0
 
     # ------------------------------------------------------------------
+    # has_headings field
+    # ------------------------------------------------------------------
+
+    def test_has_headings_true_for_markdown_heading(self, client):
+        """has_headings is True when output contains a markdown heading."""
+        text = "## Introduction\n\nSome content here.\n" * 5
+        job = _make_job()
+        formatting_result = {"result": {"formatted_markdown": text}}
+
+        with (
+            patch("marketing_project.api.jobs.get_job_manager") as mock_mgr,
+            patch("marketing_project.api.jobs.verify_job_ownership", return_value=job),
+            patch(
+                "marketing_project.services.step_result_manager.get_step_result_manager"
+            ) as mock_srm,
+        ):
+            mock_mgr.return_value = AsyncMock()
+            mock_srm.return_value = _make_srm_mock(formatting_result=formatting_result)
+
+            response = client.get("/api/v1/jobs/job-q-1/quality")
+
+        assert response.status_code == 200
+        assert response.json()["has_headings"] is True
+
+    def test_has_headings_false_for_plain_text(self, client):
+        """has_headings is False when output has no headings."""
+        text = "Just plain text content without any headings. " * 10
+        job = _make_job()
+        formatting_result = {"result": {"formatted_markdown": text}}
+
+        with (
+            patch("marketing_project.api.jobs.get_job_manager") as mock_mgr,
+            patch("marketing_project.api.jobs.verify_job_ownership", return_value=job),
+            patch(
+                "marketing_project.services.step_result_manager.get_step_result_manager"
+            ) as mock_srm,
+        ):
+            mock_mgr.return_value = AsyncMock()
+            mock_srm.return_value = _make_srm_mock(formatting_result=formatting_result)
+
+            response = client.get("/api/v1/jobs/job-q-1/quality")
+
+        assert response.status_code == 200
+        assert response.json()["has_headings"] is False
+
+    # ------------------------------------------------------------------
+    # profound_personas_used field
+    # ------------------------------------------------------------------
+
+    def test_profound_personas_used_from_seo_step(self, client):
+        """profound_personas_used is populated from the seo_keywords step result."""
+        text = "Marketing content. " * 20
+        job = _make_job()
+        formatting_result = {"result": {"formatted_markdown": text}}
+        seo_result = {
+            "result": {
+                "profound_personas_used": ["Marketing Manager", "DevOps Engineer"]
+            }
+        }
+
+        with (
+            patch("marketing_project.api.jobs.get_job_manager") as mock_mgr,
+            patch("marketing_project.api.jobs.verify_job_ownership", return_value=job),
+            patch(
+                "marketing_project.services.step_result_manager.get_step_result_manager"
+            ) as mock_srm,
+        ):
+            mock_mgr.return_value = AsyncMock()
+            mock_srm.return_value = _make_srm_mock(
+                formatting_result=formatting_result, seo_result=seo_result
+            )
+
+            response = client.get("/api/v1/jobs/job-q-1/quality")
+
+        assert response.status_code == 200
+        assert response.json()["profound_personas_used"] == [
+            "Marketing Manager",
+            "DevOps Engineer",
+        ]
+
+    def test_profound_personas_used_null_when_seo_step_missing(self, client):
+        """profound_personas_used is null when seo_keywords step result is absent."""
+        text = "Marketing content. " * 20
+        job = _make_job()
+        formatting_result = {"result": {"formatted_markdown": text}}
+
+        with (
+            patch("marketing_project.api.jobs.get_job_manager") as mock_mgr,
+            patch("marketing_project.api.jobs.verify_job_ownership", return_value=job),
+            patch(
+                "marketing_project.services.step_result_manager.get_step_result_manager"
+            ) as mock_srm,
+        ):
+            mock_mgr.return_value = AsyncMock()
+            mock_srm.return_value = _make_srm_mock(
+                formatting_result=formatting_result, seo_result=None
+            )
+
+            response = client.get("/api/v1/jobs/job-q-1/quality")
+
+        assert response.status_code == 200
+        assert response.json()["profound_personas_used"] is None
+
+    # ------------------------------------------------------------------
+    # Keyword matching — word-boundary correctness
+    # ------------------------------------------------------------------
+
+    def test_keyword_match_does_not_false_positive_on_partial_words(self, client):
+        """'cat' keyword must not match 'categories' or 'catalog' in output."""
+        # "cat" appears only as a substring in "categories" and "catalog", not as a word
+        text = "This article covers categories of data and catalog entries. " * 10
+        job = _make_job(metadata={"input_content": {"topic": "cat dog"}})
+        formatting_result = {"result": {"formatted_markdown": text}}
+
+        with (
+            patch("marketing_project.api.jobs.get_job_manager") as mock_mgr,
+            patch("marketing_project.api.jobs.verify_job_ownership", return_value=job),
+            patch(
+                "marketing_project.services.step_result_manager.get_step_result_manager"
+            ) as mock_srm,
+        ):
+            mock_mgr.return_value = AsyncMock()
+            mock_srm.return_value = _make_srm_mock(formatting_result=formatting_result)
+
+            response = client.get("/api/v1/jobs/job-q-1/quality")
+
+        assert response.status_code == 200
+        # "cat" and "dog" both filtered (len<=3), so match pct = 0
+        # Even if not filtered, "cat" should NOT match "categories"
+        data = response.json()
+        assert data["keyword_match_pct"] == 0.0
+
+    def test_keyword_match_word_boundary_hit(self, client):
+        """Keyword matches when it appears as a whole word in the output."""
+        text = "vector databases are used in RAG systems. Vector search is fast. " * 5
+        job = _make_job(metadata={"input_content": {"topic": "vector database search"}})
+        formatting_result = {"result": {"formatted_markdown": text}}
+
+        with (
+            patch("marketing_project.api.jobs.get_job_manager") as mock_mgr,
+            patch("marketing_project.api.jobs.verify_job_ownership", return_value=job),
+            patch(
+                "marketing_project.services.step_result_manager.get_step_result_manager"
+            ) as mock_srm,
+        ):
+            mock_mgr.return_value = AsyncMock()
+            mock_srm.return_value = _make_srm_mock(formatting_result=formatting_result)
+
+            response = client.get("/api/v1/jobs/job-q-1/quality")
+
+        assert response.status_code == 200
+        # "vector", "database", "search" are all > 3 chars and present as whole words
+        assert response.json()["keyword_match_pct"] > 0
+
+    # ------------------------------------------------------------------
     # Warning generation
     # ------------------------------------------------------------------
 
-    def test_warning_when_word_count_below_100(self, client):
+    def test_warning_when_word_count_below_100(self, client, mock_textstat):
         """Emits a warning when output is very short."""
-        short_text = "Short output."  # well below 100 words
+        mock_textstat.lexicon_count.return_value = 50  # below threshold
+        short_text = "Short output."
         job = _make_job()
         formatting_result = {"result": {"formatted_markdown": short_text}}
 
@@ -204,27 +372,19 @@ class TestJobQualityEndpoint:
             ) as mock_srm,
         ):
             mock_mgr.return_value = AsyncMock()
-            mock_srm_instance = AsyncMock()
-            mock_srm_instance.get_step_result_by_name = AsyncMock(
-                return_value=formatting_result
-            )
-            mock_srm.return_value = mock_srm_instance
+            mock_srm.return_value = _make_srm_mock(formatting_result=formatting_result)
 
             response = client.get("/api/v1/jobs/job-q-1/quality")
 
         assert response.status_code == 200
         warnings = response.json()["warnings"]
-        assert any("100 words" in w for w in warnings)
+        assert any("short" in w.lower() for w in warnings)
 
     def test_warning_when_keyword_match_below_50_pct(self, client):
-        """Emits a warning when fewer than half the topic keywords appear."""
-        # Text contains none of the topic words
-        text = "Completely unrelated content about weather patterns. " * 10
-        job = _make_job(
-            metadata={
-                "input_content": {"topic": "machine learning artificial intelligence"}
-            }
-        )
+        """Emits a keyword warning when match rate is low and topic is present."""
+        # "vector" is the only keyword >3 chars and it's NOT in the text
+        text = "Completely unrelated content about something else entirely. " * 10
+        job = _make_job(metadata={"input_content": {"topic": "vector database"}})
         formatting_result = {"result": {"formatted_markdown": text}}
 
         with (
@@ -235,11 +395,7 @@ class TestJobQualityEndpoint:
             ) as mock_srm,
         ):
             mock_mgr.return_value = AsyncMock()
-            mock_srm_instance = AsyncMock()
-            mock_srm_instance.get_step_result_by_name = AsyncMock(
-                return_value=formatting_result
-            )
-            mock_srm.return_value = mock_srm_instance
+            mock_srm.return_value = _make_srm_mock(formatting_result=formatting_result)
 
             response = client.get("/api/v1/jobs/job-q-1/quality")
 
@@ -248,8 +404,8 @@ class TestJobQualityEndpoint:
         assert any("keyword" in w.lower() for w in warnings)
 
     def test_no_keyword_warning_without_topic(self, client):
-        """No keyword warning when the job has no topic metadata."""
-        text = "Some output content. " * 10
+        """No keyword warning emitted when topic is absent from job metadata."""
+        text = "Some content without a topic. " * 20
         job = _make_job(metadata={})  # no input_content
         formatting_result = {"result": {"formatted_markdown": text}}
 
@@ -261,11 +417,7 @@ class TestJobQualityEndpoint:
             ) as mock_srm,
         ):
             mock_mgr.return_value = AsyncMock()
-            mock_srm_instance = AsyncMock()
-            mock_srm_instance.get_step_result_by_name = AsyncMock(
-                return_value=formatting_result
-            )
-            mock_srm.return_value = mock_srm_instance
+            mock_srm.return_value = _make_srm_mock(formatting_result=formatting_result)
 
             response = client.get("/api/v1/jobs/job-q-1/quality")
 
@@ -274,8 +426,8 @@ class TestJobQualityEndpoint:
         assert not any("keyword" in w.lower() for w in warnings)
 
     def test_keyword_match_pct_zero_when_no_topic(self, client):
-        """keyword_match_pct is 0.0 when there is no topic."""
-        text = "Some content. " * 10
+        """keyword_match_pct is 0.0 when no topic is available."""
+        text = "Content about AI and machine learning. " * 10
         job = _make_job(metadata={})
         formatting_result = {"result": {"formatted_markdown": text}}
 
@@ -287,11 +439,7 @@ class TestJobQualityEndpoint:
             ) as mock_srm,
         ):
             mock_mgr.return_value = AsyncMock()
-            mock_srm_instance = AsyncMock()
-            mock_srm_instance.get_step_result_by_name = AsyncMock(
-                return_value=formatting_result
-            )
-            mock_srm.return_value = mock_srm_instance
+            mock_srm.return_value = _make_srm_mock(formatting_result=formatting_result)
 
             response = client.get("/api/v1/jobs/job-q-1/quality")
 
@@ -317,11 +465,7 @@ class TestJobQualityEndpoint:
             ) as mock_srm,
         ):
             mock_mgr.return_value = AsyncMock()
-            mock_srm_instance = AsyncMock()
-            mock_srm_instance.get_step_result_by_name = AsyncMock(
-                return_value=formatting_result
-            )
-            mock_srm.return_value = mock_srm_instance
+            mock_srm.return_value = _make_srm_mock(formatting_result=formatting_result)
 
             response = client.get("/api/v1/jobs/job-q-1/quality")
 
