@@ -3,6 +3,7 @@ Unit tests for the SSE progress endpoint: GET /api/v1/jobs/{job_id}/progress
 """
 
 import json
+from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -35,8 +36,6 @@ def client(mock_user):
 
 @pytest.fixture
 def completed_job():
-    from datetime import datetime
-
     return Job(
         id="job-sse-1",
         type="blog_post",
@@ -48,9 +47,19 @@ def completed_job():
 
 
 @pytest.fixture
-def running_job():
-    from datetime import datetime
+def failed_job():
+    return Job(
+        id="job-sse-1",
+        type="blog_post",
+        content_id="c-1",
+        status=JobStatus.FAILED,
+        created_at=datetime.utcnow(),
+        progress=40,
+    )
 
+
+@pytest.fixture
+def running_job():
     return Job(
         id="job-sse-1",
         type="blog_post",
@@ -89,6 +98,7 @@ def _build_mock_redis(state_data: dict = None, pubsub_messages: list = None):
                      is delivered after each real message so the loop exits.
     """
     r = AsyncMock()
+    r.aclose = AsyncMock()
 
     # hgetall mock
     if state_data:
@@ -115,6 +125,11 @@ def _build_mock_redis(state_data: dict = None, pubsub_messages: list = None):
     r.pubsub = MagicMock(return_value=pubsub)
 
     return r, pubsub
+
+
+def _patch_redis(mock_r):
+    """Return a context manager that patches redis.asyncio.from_url to return mock_r."""
+    return patch("marketing_project.api.jobs._aioredis.from_url", return_value=mock_r)
 
 
 # ---------------------------------------------------------------------------
@@ -163,29 +178,9 @@ class TestSSEProgressEndpoint:
                 "marketing_project.api.jobs.verify_job_ownership",
                 return_value=completed_job,
             ),
-            patch(
-                "marketing_project.services.function_pipeline.orchestration.get_redis_manager"
-            ),
-            patch(
-                "marketing_project.api.jobs.get_redis_manager"
-                if hasattr(
-                    __import__(
-                        "marketing_project.api.jobs", fromlist=["get_redis_manager"]
-                    ),
-                    "get_redis_manager",
-                )
-                else "marketing_project.services.redis_manager.get_redis_manager"
-            ),
+            _patch_redis(r),
         ):
-            # Directly patch the import inside the endpoint closure
-            with patch(
-                "marketing_project.services.redis_manager.get_redis_manager"
-            ) as mock_rm:
-                mock_rm_instance = AsyncMock()
-                mock_rm_instance.get_redis = AsyncMock(return_value=r)
-                mock_rm.return_value = mock_rm_instance
-
-                response = client.get("/api/v1/jobs/job-sse-1/progress")
+            response = client.get("/api/v1/jobs/job-sse-1/progress")
 
         assert response.status_code == 200
         assert "text/event-stream" in response.headers["content-type"]
@@ -216,14 +211,8 @@ class TestSSEProgressEndpoint:
                 "marketing_project.api.jobs.verify_job_ownership",
                 return_value=completed_job,
             ),
-            patch(
-                "marketing_project.services.redis_manager.get_redis_manager"
-            ) as mock_rm,
+            _patch_redis(r),
         ):
-            mock_rm_instance = AsyncMock()
-            mock_rm_instance.get_redis = AsyncMock(return_value=r)
-            mock_rm.return_value = mock_rm_instance
-
             response = client.get("/api/v1/jobs/job-sse-1/progress")
 
         events = _parse_sse_events(response.text)
@@ -256,14 +245,8 @@ class TestSSEProgressEndpoint:
                 "marketing_project.api.jobs.verify_job_ownership",
                 return_value=completed_job,
             ),
-            patch(
-                "marketing_project.services.redis_manager.get_redis_manager"
-            ) as mock_rm,
+            _patch_redis(r),
         ):
-            mock_rm_instance = AsyncMock()
-            mock_rm_instance.get_redis = AsyncMock(return_value=r)
-            mock_rm.return_value = mock_rm_instance
-
             response = client.get("/api/v1/jobs/job-sse-1/progress")
 
         events = _parse_sse_events(response.text)
@@ -271,7 +254,7 @@ class TestSSEProgressEndpoint:
         assert len(done_events) == 1
 
     def test_stream_closes_on_terminal_job_status(self, client, completed_job):
-        """On heartbeat timeout the stream closes if job is in a terminal state."""
+        """On heartbeat timeout the stream closes with done if job is COMPLETED."""
         r, pubsub = _build_mock_redis(
             pubsub_messages=None  # immediate None → heartbeat → job check
         )
@@ -284,27 +267,83 @@ class TestSSEProgressEndpoint:
                 "marketing_project.api.jobs.verify_job_ownership",
                 return_value=completed_job,
             ),
-            patch(
-                "marketing_project.services.redis_manager.get_redis_manager"
-            ) as mock_rm,
+            _patch_redis(r),
             patch("asyncio.sleep", new_callable=AsyncMock),  # skip real sleep
         ):
-            mock_rm_instance = AsyncMock()
-            mock_rm_instance.get_redis = AsyncMock(return_value=r)
-            mock_rm.return_value = mock_rm_instance
-
             response = client.get("/api/v1/jobs/job-sse-1/progress")
 
         events = _parse_sse_events(response.text)
         done_events = [e for e in events if e.get("type") == "done"]
         assert len(done_events) == 1
 
+    def test_stream_closes_with_error_event_when_job_fails(self, client, failed_job):
+        """On heartbeat, stream yields {type:'error'} and closes if job is FAILED."""
+        r, pubsub = _build_mock_redis(
+            pubsub_messages=None  # immediate heartbeat → job check
+        )
+        mgr = AsyncMock()
+        mgr.get_job = AsyncMock(return_value=failed_job)  # FAILED status
+
+        with (
+            patch("marketing_project.api.jobs.get_job_manager", return_value=mgr),
+            patch(
+                "marketing_project.api.jobs.verify_job_ownership",
+                return_value=failed_job,
+            ),
+            _patch_redis(r),
+            patch("asyncio.sleep", new_callable=AsyncMock),
+        ):
+            response = client.get("/api/v1/jobs/job-sse-1/progress")
+
+        events = _parse_sse_events(response.text)
+        error_events = [e for e in events if e.get("type") == "error"]
+        assert len(error_events) == 1
+        # Must not close with 'done' on a failed job
+        done_events = [e for e in events if e.get("type") == "done"]
+        assert len(done_events) == 0
+
+    def test_emit_error_event_closes_stream_immediately(self, client, failed_job):
+        """When the worker emits {type:'error'}, stream forwards it and closes."""
+        r, pubsub = _build_mock_redis(
+            pubsub_messages=[
+                {
+                    "data": json.dumps(
+                        {
+                            "type": "error",
+                            "status": "FAILED",
+                            "reason": "LLM quota exceeded",
+                        }
+                    ).encode()
+                }
+            ]
+        )
+        mgr = AsyncMock()
+        mgr.get_job = AsyncMock(return_value=failed_job)
+
+        with (
+            patch("marketing_project.api.jobs.get_job_manager", return_value=mgr),
+            patch(
+                "marketing_project.api.jobs.verify_job_ownership",
+                return_value=failed_job,
+            ),
+            _patch_redis(r),
+        ):
+            response = client.get("/api/v1/jobs/job-sse-1/progress")
+
+        events = _parse_sse_events(response.text)
+        error_events = [e for e in events if e.get("type") == "error"]
+        assert len(error_events) == 1
+        assert error_events[0]["status"] == "FAILED"
+        # Stream must close — no lingering done event after error
+        done_events = [e for e in events if e.get("type") == "done"]
+        assert len(done_events) == 0
+
     # ------------------------------------------------------------------
     # Error handling
     # ------------------------------------------------------------------
 
     def test_redis_failure_yields_error_event(self, client, completed_job):
-        """When Redis is unavailable the stream yields an error event."""
+        """When Redis connection fails, the stream yields an error event."""
         mgr = AsyncMock()
         mgr.get_job = AsyncMock(return_value=completed_job)
 
@@ -315,21 +354,49 @@ class TestSSEProgressEndpoint:
                 return_value=completed_job,
             ),
             patch(
-                "marketing_project.services.redis_manager.get_redis_manager"
-            ) as mock_rm,
+                "marketing_project.api.jobs._aioredis.from_url",
+                side_effect=ConnectionError("Redis down"),
+            ),
         ):
-            mock_rm_instance = AsyncMock()
-            mock_rm_instance.get_redis = AsyncMock(
-                side_effect=ConnectionError("Redis down")
-            )
-            mock_rm.return_value = mock_rm_instance
-
             response = client.get("/api/v1/jobs/job-sse-1/progress")
 
         assert response.status_code == 200  # StreamingResponse headers already sent
         events = _parse_sse_events(response.text)
         error_events = [e for e in events if e.get("type") == "error"]
         assert len(error_events) == 1
+
+    # ------------------------------------------------------------------
+    # Dedicated connection
+    # ------------------------------------------------------------------
+
+    def test_uses_dedicated_redis_connection_not_shared_pool(
+        self, client, completed_job
+    ):
+        """SSE generator opens a fresh redis.asyncio connection, not the shared pool."""
+        r, _ = _build_mock_redis(
+            pubsub_messages=[
+                {"data": json.dumps({"type": "progress", "pct": 100}).encode()}
+            ]
+        )
+        mgr = AsyncMock()
+        mgr.get_job = AsyncMock(return_value=completed_job)
+
+        with (
+            patch("marketing_project.api.jobs.get_job_manager", return_value=mgr),
+            patch(
+                "marketing_project.api.jobs.verify_job_ownership",
+                return_value=completed_job,
+            ),
+            patch(
+                "marketing_project.api.jobs._aioredis.from_url", return_value=r
+            ) as mock_from_url,
+        ):
+            client.get("/api/v1/jobs/job-sse-1/progress")
+
+        # from_url must be called (dedicated connection), not get_redis_manager
+        mock_from_url.assert_called_once()
+        # Connection must be closed after stream ends
+        r.aclose.assert_called_once()
 
     # ------------------------------------------------------------------
     # Response headers
@@ -351,14 +418,8 @@ class TestSSEProgressEndpoint:
                 "marketing_project.api.jobs.verify_job_ownership",
                 return_value=completed_job,
             ),
-            patch(
-                "marketing_project.services.redis_manager.get_redis_manager"
-            ) as mock_rm,
+            _patch_redis(r),
         ):
-            mock_rm_instance = AsyncMock()
-            mock_rm_instance.get_redis = AsyncMock(return_value=r)
-            mock_rm.return_value = mock_rm_instance
-
             response = client.get("/api/v1/jobs/job-sse-1/progress")
 
         assert "text/event-stream" in response.headers.get("content-type", "")
@@ -385,14 +446,8 @@ class TestSSEProgressEndpoint:
                 "marketing_project.api.jobs.verify_job_ownership",
                 return_value=completed_job,
             ),
-            patch(
-                "marketing_project.services.redis_manager.get_redis_manager"
-            ) as mock_rm,
+            _patch_redis(r),
         ):
-            mock_rm_instance = AsyncMock()
-            mock_rm_instance.get_redis = AsyncMock(return_value=r)
-            mock_rm.return_value = mock_rm_instance
-
             client.get("/api/v1/jobs/job-sse-1/progress")
 
         pubsub.unsubscribe.assert_called_once()

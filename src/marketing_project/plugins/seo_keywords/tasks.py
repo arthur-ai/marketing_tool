@@ -20,6 +20,7 @@ from marketing_project.services.engines.seo_keywords.llm_engine import (
 from marketing_project.services.engines.seo_keywords.local_semantic_engine import (
     LocalSemanticSEOKeywordsEngine,
 )
+from marketing_project.services.profound_client import get_profound_client
 
 logger = logging.getLogger("marketing_project.plugins.seo_keywords")
 
@@ -731,7 +732,9 @@ class SEOKeywordsPlugin(PipelineStepPlugin):
         await self._inject_profound_personas(context, content)
 
         # Step 6: Compose result from engines
-        result = await seo_composer.compose_result(content, context, pipeline)
+        result = await self._execute_keyword_steps(
+            seo_composer, content, context, pipeline
+        )
 
         # Step 7: Post-process keywords
         result = self._post_process_keywords(result, context)
@@ -824,6 +827,21 @@ class SEOKeywordsPlugin(PipelineStepPlugin):
 
         return result
 
+    async def _execute_keyword_steps(
+        self,
+        seo_composer: Any,
+        content: Dict[str, Any],
+        context: Dict[str, Any],
+        pipeline: Any,
+    ) -> "SEOKeywordsResult":
+        """
+        Run the LLM-heavy keyword composition step.
+
+        Extracted as a private method so unit tests can mock it without
+        spinning up the full engine stack.
+        """
+        return await seo_composer.compose_result(content, context, pipeline)
+
     async def _inject_profound_personas(
         self, context: Dict[str, Any], content: Any
     ) -> None:
@@ -839,8 +857,6 @@ class SEOKeywordsPlugin(PipelineStepPlugin):
         Results are cached in-process for 1 hour so repeated jobs don't re-fetch.
         """
         try:
-            from marketing_project.services.profound_client import get_profound_client
-
             client, db_default_category_id = await get_profound_client()
             if not client.is_configured():
                 return

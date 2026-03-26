@@ -27,6 +27,7 @@ from marketing_project.processors import (
     process_transcript,
 )
 from marketing_project.services.function_pipeline import FunctionPipeline
+from marketing_project.services.function_pipeline.orchestration import emit_error
 from marketing_project.services.function_pipeline.tracing import (
     add_job_metadata_to_span,
     close_span,
@@ -148,6 +149,7 @@ async def process_blog_job(ctx, content_json: str, job_id: str, **kwargs) -> Dic
 
     except Exception as e:
         logger.error(f"ARQ Worker: Blog job {job_id} failed: {e}")
+        await emit_error(job_id, str(e))
         if job_span:
             set_span_attribute(job_span, "job.status", "failed")
             record_span_exception(job_span, e)
@@ -231,6 +233,7 @@ async def process_release_notes_job(
 
     except Exception as e:
         logger.error(f"ARQ Worker: Release notes job {job_id} failed: {e}")
+        await emit_error(job_id, str(e))
         if job_span:
             set_span_attribute(job_span, "job.status", "failed")
             record_span_exception(job_span, e)
@@ -332,6 +335,7 @@ async def process_transcript_job(ctx, content_json: str, job_id: str, **kwargs) 
 
     except Exception as e:
         logger.error(f"ARQ Worker: Transcript job {job_id} failed: {e}")
+        await emit_error(job_id, str(e))
         if job_span:
             set_span_attribute(job_span, "job.status", "failed")
             record_span_exception(job_span, e)
