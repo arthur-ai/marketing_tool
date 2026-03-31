@@ -7,7 +7,7 @@ provider via LiteLLM, injecting DB-backed credentials automatically.
 
 import json
 import logging
-from typing import Any, Dict, Optional, Tuple, Type
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Type
 
 from pydantic import BaseModel
 
@@ -20,15 +20,8 @@ from marketing_project.services.function_pipeline.litellm_client import (
 logger = logging.getLogger("marketing_project.services.function_pipeline.providers")
 
 
-def _get_llm_schema(response_model: Type[BaseModel]) -> dict:
-    """
-    Return the JSON schema for a Pydantic model, excluding any fields listed in
-    the model's `_llm_exclude_fields` class variable. This lets us keep rich
-    fields on the model for downstream use while staying within Anthropic's
-    24 optional-parameter limit per schema.
-    """
-    schema = response_model.model_json_schema()
-    exclude = getattr(response_model, "_llm_exclude_fields", frozenset())
+def _apply_field_exclusions(schema: dict, exclude) -> dict:
+    """Strip excluded field names from a schema's properties and required list."""
     if not exclude:
         return schema
     schema = dict(schema)
@@ -41,14 +34,139 @@ def _get_llm_schema(response_model: Type[BaseModel]) -> dict:
     return schema
 
 
+def _iter_base_models(annotation) -> Iterator[Type[BaseModel]]:
+    """Yield every BaseModel subclass found anywhere in a type annotation."""
+    if annotation is None:
+        return
+    origin = getattr(annotation, "__origin__", None)
+    if origin is not None:
+        for arg in getattr(annotation, "__args__", ()):
+            yield from _iter_base_models(arg)
+    elif isinstance(annotation, type):
+        try:
+            if issubclass(annotation, BaseModel):
+                yield annotation
+        except TypeError:
+            pass
+
+
+def _collect_nested_exclusions(model: Type[BaseModel]) -> Dict[str, frozenset]:
+    """
+    Walk the model's field annotations recursively and collect _llm_exclude_fields
+    for every nested BaseModel, keyed by class __name__ (which matches $defs keys).
+    """
+    result: Dict[str, frozenset] = {}
+    _walk_for_exclusions(model, result, seen=set())
+    return result
+
+
+def _walk_for_exclusions(
+    model: Type[BaseModel], result: Dict[str, frozenset], seen: set
+) -> None:
+    if id(model) in seen:
+        return
+    seen.add(id(model))
+    for field_info in model.model_fields.values():
+        for nested_cls in _iter_base_models(field_info.annotation):
+            exclude = getattr(nested_cls, "_llm_exclude_fields", frozenset())
+            if exclude:
+                result[nested_cls.__name__] = exclude
+            _walk_for_exclusions(nested_cls, result, seen)
+
+
+def _remove_unreferenced_defs(schema: dict) -> dict:
+    """
+    Drop $defs entries that are no longer $ref-referenced anywhere in the schema.
+    This happens when top-level exclusions remove all fields that pointed to a
+    nested model — the $def becomes dead code that Anthropic's grammar compiler
+    may still try (and fail) to compile.
+    """
+    if "$defs" not in schema:
+        return schema
+    # Serialise everything except $defs to find active $ref strings
+    non_defs = {k: v for k, v in schema.items() if k != "$defs"}
+    non_defs_str = json.dumps(non_defs)
+    # Also check cross-references within $defs themselves
+    defs_str = json.dumps(schema["$defs"])
+    referenced = {
+        def_name
+        for def_name in schema["$defs"]
+        if f'"$ref": "#/$defs/{def_name}"' in non_defs_str
+        or f'"$ref": "#/$defs/{def_name}"' in defs_str
+    }
+    if len(referenced) == len(schema["$defs"]):
+        return schema  # nothing to prune
+    schema = dict(schema)
+    pruned = {k: v for k, v in schema["$defs"].items() if k in referenced}
+    schema["$defs"] = pruned if pruned else schema.pop("$defs", {})
+    if not schema.get("$defs"):
+        schema.pop("$defs", None)
+    return schema
+
+
+def _get_llm_schema(response_model: Type[BaseModel]) -> dict:
+    """
+    Return the JSON schema for a Pydantic model, excluding any fields listed in
+    the model's `_llm_exclude_fields` class variable. This lets us keep rich
+    fields on the model for downstream use while staying within Anthropic's
+    grammar compilation limits (~16 Optional fields per schema).
+
+    Also applies _llm_exclude_fields from nested BaseModel classes to their
+    corresponding $defs entries, so the grammar size reduction applies to the
+    full schema tree (not just the top-level model). Unreferenced $defs are
+    pruned after exclusions to avoid Anthropic compiling dead grammar rules.
+    """
+    schema = response_model.model_json_schema()
+
+    # Apply top-level exclusions
+    top_exclude = getattr(response_model, "_llm_exclude_fields", frozenset())
+    schema = _apply_field_exclusions(schema, top_exclude)
+
+    # Apply nested model exclusions to their $defs entries
+    if "$defs" in schema:
+        nested_excludes = _collect_nested_exclusions(response_model)
+        if nested_excludes:
+            defs = dict(schema["$defs"])
+            for def_name, def_exclude in nested_excludes.items():
+                if def_name in defs:
+                    defs[def_name] = _apply_field_exclusions(
+                        defs[def_name], def_exclude
+                    )
+            schema = dict(schema)
+            schema["$defs"] = defs
+
+    # Drop $defs no longer referenced after exclusions
+    schema = _remove_unreferenced_defs(schema)
+
+    return schema
+
+
 def _make_schema_anthropic_safe(schema: dict) -> dict:
     """
-    Recursively add 'additionalProperties': false to all object-type nodes.
-    Required by Anthropic's API when using output_format with a JSON schema.
-    Preserves existing additionalProperties when it is already a schema dict
-    (e.g. {type: number} for Dict[str, float] fields).
+    Recursively sanitise a JSON schema for Anthropic's structured output API:
+    1. Add 'additionalProperties': false to all object-type nodes (required by Anthropic).
+    2. Strip numeric/string constraint keywords (minimum, maximum, minLength, etc.) that
+       Anthropic rejects and that cause grammar compilation errors (LiteLLM issues #21097,
+       #21366). Pydantic ge/le constraints generate these keys; validation is done
+       client-side via model_validate() after the LLM call.
     """
-    schema = dict(schema)
+    # Strip constraint keywords Anthropic rejects at the current level
+    _ANTHROPIC_UNSUPPORTED_CONSTRAINTS = {
+        "minimum",
+        "maximum",
+        "exclusiveMinimum",
+        "exclusiveMaximum",
+        "minLength",
+        "maxLength",
+        "minItems",
+        "maxItems",
+        "pattern",
+        "multipleOf",
+    }
+    schema = {
+        k: v for k, v in schema.items() if k not in _ANTHROPIC_UNSUPPORTED_CONSTRAINTS
+    }
+
     if schema.get("type") == "object":
         # Don't overwrite if already set to a schema dict (Dict[str, X] pattern)
         if not isinstance(schema.get("additionalProperties"), dict):
