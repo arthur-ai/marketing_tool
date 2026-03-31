@@ -52,7 +52,7 @@ class PipelineStepPlugin(ABC):
         self,
         default_model: str = "gpt-5.1",
         default_temperature: float = 0.7,
-        default_max_retries: int = 2,
+        default_max_retries: int = 3,
     ) -> PipelineStepConfig:
         """
         Get model configuration for this step with defaults applied.

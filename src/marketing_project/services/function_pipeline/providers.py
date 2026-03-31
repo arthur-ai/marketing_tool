@@ -182,6 +182,7 @@ async def call_llm_structured(
         model=litellm_model,
         messages=messages_with_schema,
         temperature=temperature,
+        timeout=300,
         **extra_kwargs,
     )
 
