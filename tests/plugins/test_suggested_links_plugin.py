@@ -85,16 +85,21 @@ class TestSuggestedLinksPlugin:
             internal_links=[], total_suggestions=0, high_confidence_links=0
         )
 
-        mock_pipeline = MagicMock()
-        mock_pipeline._get_user_prompt = MagicMock(return_value="Test prompt")
-        mock_pipeline._get_system_instruction = MagicMock(
-            return_value="Test instruction"
+        from marketing_project.services.arthur_prompt_client import ArthurPromptResult
+
+        mock_arthur = ArthurPromptResult(
+            system_content="Test instruction", user_template="Test prompt"
         )
+        mock_pipeline = MagicMock()
         mock_pipeline._call_function = AsyncMock(return_value=mock_result)
 
-        result = await suggested_links_plugin.execute(
-            sample_context, mock_pipeline, job_id="test-job"
-        )
+        with patch(
+            "marketing_project.services.arthur_prompt_client.fetch_arthur_prompt",
+            new=AsyncMock(return_value=mock_arthur),
+        ):
+            result = await suggested_links_plugin.execute(
+                sample_context, mock_pipeline, job_id="test-job"
+            )
 
         assert isinstance(result, SuggestedLinksResult)
         mock_pipeline._call_function.assert_called_once()
