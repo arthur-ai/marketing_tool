@@ -19,7 +19,13 @@ def content_formatting_plugin():
 @pytest.fixture
 def sample_context():
     """Sample context for plugin execution."""
-    from marketing_project.models.pipeline_steps import SEOOptimizationResult
+    from marketing_project.models.pipeline_steps import (
+        HeaderStructure,
+        KeywordMap,
+        OGTags,
+        ReadabilityOptimization,
+        SEOOptimizationResult,
+    )
 
     return {
         "input_content": {"id": "test-1", "title": "Test", "content": "Test content"},
@@ -28,6 +34,18 @@ def sample_context():
             meta_title="Test Meta Title",
             meta_description="Test meta description",
             slug="test-slug",
+            og_tags=OGTags(
+                og_title="Test",
+                og_description="Test description",
+                og_image="https://example.com/img.jpg",
+                og_type="article",
+            ),
+            confidence_score=0.9,
+            seo_score=85.0,
+            header_structure=HeaderStructure(),
+            keyword_map=KeywordMap(),
+            readability_optimization=ReadabilityOptimization(),
+            modification_report=[],
         ),
     }
 

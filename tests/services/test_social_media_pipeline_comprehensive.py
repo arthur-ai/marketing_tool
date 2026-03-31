@@ -12,7 +12,9 @@ from marketing_project.services.social_media_pipeline import SocialMediaPipeline
 @pytest.fixture
 def mock_openai():
     """Mock OpenAI client."""
-    with patch("marketing_project.services.social_media_pipeline.AsyncOpenAI") as mock:
+    with patch(
+        "marketing_project.services.social_media_pipeline.AsyncOpenAI", create=True
+    ) as mock:
         mock_client = MagicMock()
         mock.return_value = mock_client
         yield mock_client
@@ -163,6 +165,9 @@ async def test_execute_multi_platform_pipeline(social_media_pipeline, mock_opena
 
     with (
         patch(
+            "marketing_project.services.social_media_pipeline.BlogPostPreprocessingApprovalPlugin"
+        ) as mock_preprocessing_plugin_class,
+        patch(
             "marketing_project.services.social_media_pipeline.SEOKeywordsPlugin"
         ) as mock_seo_plugin_class,
         patch(
@@ -175,6 +180,25 @@ async def test_execute_multi_platform_pipeline(social_media_pipeline, mock_opena
             "marketing_project.services.social_media_pipeline.SocialMediaPostGenerationPlugin"
         ) as mock_post_plugin_class,
     ):
+        # Mock preprocessing plugin
+        from marketing_project.models.pipeline_steps import (
+            BlogPostPreprocessingApprovalResult,
+        )
+
+        mock_preprocessing_plugin = MagicMock()
+        mock_preprocessing_result = BlogPostPreprocessingApprovalResult(
+            is_valid=True,
+            title_validated=True,
+            content_validated=True,
+            author_validated=True,
+            category_validated=True,
+            tags_validated=True,
+            requires_approval=False,
+        )
+        mock_preprocessing_plugin.execute = AsyncMock(
+            return_value=mock_preprocessing_result
+        )
+        mock_preprocessing_plugin_class.return_value = mock_preprocessing_plugin
         # Mock SEO plugin
         mock_seo_plugin = MagicMock()
         mock_seo_result = SEOKeywordsResult(
@@ -196,8 +220,12 @@ async def test_execute_multi_platform_pipeline(social_media_pipeline, mock_opena
 
         mock_angle_plugin = MagicMock()
         mock_angle_result = AngleHookResult(
-            angle="test angle",
-            hook="test hook",
+            platform="linkedin",
+            angles=["test angle"],
+            hooks=["test hook"],
+            recommended_angle="test angle",
+            recommended_hook="test hook",
+            rationale="Test rationale",
         )
         mock_angle_plugin.execute = AsyncMock(return_value=mock_angle_result)
         mock_angle_plugin_class.return_value = mock_angle_plugin

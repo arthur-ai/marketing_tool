@@ -10,7 +10,11 @@ from marketing_project.models.pipeline_steps import (
     ArticleGenerationResult,
     ContentFormattingResult,
     DesignKitResult,
+    HeaderStructure,
+    KeywordMap,
     MarketingBriefResult,
+    OGTags,
+    ReadabilityOptimization,
     SEOKeywordsResult,
     SEOOptimizationResult,
     SuggestedLinksResult,
@@ -180,6 +184,18 @@ async def test_retry_step_seo_optimization_success(step_retry_service):
         meta_title="Meta Title",
         meta_description="Meta description",
         slug="test-slug",
+        og_tags=OGTags(
+            og_title="Test",
+            og_description="Test description",
+            og_image="https://example.com/img.jpg",
+            og_type="article",
+        ),
+        confidence_score=0.9,
+        seo_score=85.0,
+        header_structure=HeaderStructure(),
+        keyword_map=KeywordMap(),
+        readability_optimization=ReadabilityOptimization(),
+        modification_report=[],
     )
 
     step_retry_service.pipeline._call_function = AsyncMock(return_value=mock_result)
@@ -284,11 +300,11 @@ async def test_retry_step_design_kit_success(step_retry_service):
     step_retry_service.pipeline._call_function = AsyncMock(return_value=mock_result)
 
     result = await step_retry_service.retry_step(
-        "design_kit", input_data, context=context
+        "brand_kit", input_data, context=context
     )
 
     assert result["status"] == "success"
-    assert result["step_name"] == "design_kit"
+    assert result["step_name"] == "brand_kit"
 
 
 @pytest.mark.asyncio
@@ -534,7 +550,7 @@ def test_build_prompt_design_kit(step_retry_service):
         "seo_keywords": {"main_keyword": "test keyword"},
     }
 
-    prompt = step_retry_service._build_prompt("design_kit", input_data, context=context)
+    prompt = step_retry_service._build_prompt("brand_kit", input_data, context=context)
 
     assert "Title" in prompt
     assert "Developers" in prompt
