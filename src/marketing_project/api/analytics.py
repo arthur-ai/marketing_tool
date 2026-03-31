@@ -5,9 +5,10 @@ Provides endpoints for retrieving system analytics and statistics.
 """
 
 import logging
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 
 from marketing_project.middleware.rbac import require_roles
 from marketing_project.models.analytics_models import (
@@ -21,6 +22,28 @@ from marketing_project.models.analytics_models import (
     TrendData,
     UnifiedMonitoringMetrics,
 )
+
+
+class QualityScoreRecord(BaseModel):
+    id: int
+    job_id: str
+    word_count: Optional[int] = None
+    flesch_kincaid_grade: Optional[float] = None
+    has_headings: Optional[bool] = None
+    keyword_match_pct: Optional[float] = None
+    profound_personas_used: Optional[List] = None
+    computed_at: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+class QualityScoresListResponse(BaseModel):
+    scores: List[QualityScoreRecord]
+    total: int
+    offset: int
+    limit: int
+
+
 from marketing_project.models.user_context import UserContext
 from marketing_project.services.analytics_service import get_analytics_service
 
@@ -325,4 +348,54 @@ async def get_quality_trends(
         logger.error(f"Failed to get quality trends: {e}")
         raise HTTPException(
             status_code=500, detail=f"Failed to retrieve quality trends: {str(e)}"
+        )
+
+
+@router.get("/quality-scores", response_model=QualityScoresListResponse)
+async def get_quality_scores(
+    limit: int = Query(50, ge=1, le=500, description="Max rows to return"),
+    offset: int = Query(0, ge=0, description="Pagination offset"),
+    job_id: Optional[str] = Query(None, description="Filter by job ID"),
+    user: Any = Depends(require_roles(["admin"])),
+) -> QualityScoresListResponse:
+    """
+    [Admin] Return persisted quality score records ordered by computed_at desc.
+
+    Useful for VP-level reporting: are scores trending up over time? Which jobs
+    score lowest? Filter by job_id to see all historical scores for one job.
+    """
+    try:
+        from sqlalchemy import desc, func, select
+
+        from marketing_project.models.db_models import QualityScoreModel
+        from marketing_project.services.database import get_database_manager
+
+        db = get_database_manager()
+        async with db.get_session() as session:
+            base_stmt = select(QualityScoreModel)
+            if job_id:
+                base_stmt = base_stmt.where(QualityScoreModel.job_id == job_id)
+
+            # True total count (unaffected by limit/offset)
+            count_result = await session.execute(
+                select(func.count()).select_from(base_stmt.subquery())
+            )
+            total = count_result.scalar_one()
+
+            rows_result = await session.execute(
+                base_stmt.order_by(desc(QualityScoreModel.computed_at))
+                .offset(offset)
+                .limit(limit)
+            )
+            rows: List[QualityScoreModel] = rows_result.scalars().all()
+            return QualityScoresListResponse(
+                scores=[QualityScoreRecord(**row.to_dict()) for row in rows],
+                total=total,
+                offset=offset,
+                limit=limit,
+            )
+    except Exception as e:
+        logger.error(f"Failed to fetch quality scores: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to retrieve quality scores: {str(e)}"
         )
