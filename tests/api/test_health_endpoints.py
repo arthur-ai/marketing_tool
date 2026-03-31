@@ -7,6 +7,7 @@ from unittest.mock import Mock, patch
 import pytest
 from fastapi.testclient import TestClient
 
+from marketing_project import __version__
 from marketing_project.api.health import router
 
 
@@ -44,7 +45,7 @@ class TestHealthCheck:
         data = response.json()
         assert data["status"] == "healthy"
         assert data["service"] == "marketing-project"
-        assert data["version"] == "2.0.41"
+        assert data["version"] == __version__
         assert data["checks"]["config_loaded"] is True
         assert data["checks"]["prompts_dir_exists"] is True
         assert data["checks"]["redis_healthy"] is True
