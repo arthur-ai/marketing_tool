@@ -111,7 +111,7 @@ async def test_resume_pipeline_job(mock_ctx):
 
 @pytest.mark.asyncio
 async def test_resume_pipeline_job_restores_traceparent(mock_ctx):
-    """resume_pipeline_job extracts a parent OTel context when traceparent is in context_data."""
+    """resume_pipeline_job attaches the OTel parent context when traceparent is in context_data."""
     traceparent = "00-aabbccddeeff00112233445566778899-0011223344556677-01"
     context_data = {
         "context": {},
@@ -140,34 +140,41 @@ async def test_resume_pipeline_job_restores_traceparent(mock_ctx):
                     mock_propagator_cls.return_value = mock_propagator
 
                     with patch(
-                        "marketing_project.worker.create_job_root_span",
-                        return_value=None,
-                    ) as mock_create_span:
-                        mock_pipeline = MagicMock()
-                        mock_pipeline.resume_pipeline = AsyncMock(
-                            return_value={"pipeline_status": "completed"}
-                        )
-                        mock_pipeline_class.return_value = mock_pipeline
+                        "marketing_project.worker.context_api"
+                    ) as mock_context_api:
+                        mock_context_api.attach.return_value = object()
 
-                        mock_job = MagicMock()
-                        mock_job.metadata = {}
-                        mock_job_mgr.return_value.get_job = AsyncMock(
-                            return_value=mock_job
-                        )
-                        mock_job_mgr.return_value.update_job_progress = AsyncMock()
-                        mock_job_mgr.return_value._save_job = AsyncMock()
+                        with patch(
+                            "marketing_project.worker.create_job_root_span",
+                            return_value=None,
+                        ):
+                            mock_pipeline = MagicMock()
+                            mock_pipeline.resume_pipeline = AsyncMock(
+                                return_value={"pipeline_status": "completed"}
+                            )
+                            mock_pipeline_class.return_value = mock_pipeline
 
-                        await resume_pipeline_job(
-                            mock_ctx, "original-job-1", context_data, "test-job-1"
-                        )
+                            mock_job = MagicMock()
+                            mock_job.metadata = {}
+                            mock_job_mgr.return_value.get_job = AsyncMock(
+                                return_value=mock_job
+                            )
+                            mock_job_mgr.return_value.update_job_progress = AsyncMock()
+                            mock_job_mgr.return_value._save_job = AsyncMock()
 
-                        # Propagator must be called with the traceparent string
+                            await resume_pipeline_job(
+                                mock_ctx, "original-job-1", context_data, "test-job-1"
+                            )
+
+                        # Propagator must extract the traceparent
                         mock_propagator.extract.assert_called_once_with(
                             {"traceparent": traceparent}
                         )
-                        # create_job_root_span must receive the extracted context
-                        call_kwargs = mock_create_span.call_args.kwargs
-                        assert call_kwargs.get("parent_context") is extracted_ctx
+                        # context_api.attach must be called with the extracted context
+                        # (not passed as kwarg to create_job_root_span)
+                        mock_context_api.attach.assert_called_once_with(extracted_ctx)
+                        # context_api.detach must be called in the finally block
+                        mock_context_api.detach.assert_called_once()
 
 
 @pytest.mark.asyncio

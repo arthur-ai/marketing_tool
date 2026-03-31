@@ -1355,6 +1355,8 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
         logger.info("=" * 80)
 
         # Validate platforms
+        if not platforms:
+            raise ValueError("At least one platform must be specified")
         valid_platforms = {"linkedin", "hackernews", "email"}
         invalid_platforms = [p for p in platforms if p not in valid_platforms]
         if invalid_platforms:

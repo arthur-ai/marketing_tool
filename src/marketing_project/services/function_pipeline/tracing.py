@@ -255,27 +255,20 @@ def create_job_root_span(
     job: Optional[Any] = None,
     attributes: Optional[dict] = None,
     session_id: Optional[str] = None,
-    parent_context: Optional[Any] = None,
 ) -> Optional[_SpanHolder]:
     """
     Create a root span for a job execution.
 
     Serves as the parent for all pipeline step spans and auto-instrumented LLM spans.
-
-    Args:
-        parent_context: Optional OTel context extracted from a serialized traceparent.
-                        When provided (e.g. for resume_pipeline), the new span becomes
-                        a child of the original job's span, keeping the full pipeline
-                        execution in one coherent trace across the approval gate.
+    The parent context is always taken from the current contextvars context — callers
+    that need to restore a saved traceparent (e.g. resume_pipeline_job) should call
+    context_api.attach() before invoking this function.
     """
     if not _tracing_available:
         return None
     try:
         tracer = trace.get_tracer(__name__)
-        # Use provided parent context (resume case) or current context (normal case).
-        ctx_to_use = (
-            parent_context if parent_context is not None else context_api.get_current()
-        )
+        ctx_to_use = context_api.get_current()
         span = tracer.start_span(
             f"job.{job_type}", context=ctx_to_use, kind=trace.SpanKind.INTERNAL
         )

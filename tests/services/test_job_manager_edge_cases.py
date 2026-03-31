@@ -168,7 +168,7 @@ async def test_cleanup_old_jobs_none_old(job_manager):
     # Create recent job
     job = await job_manager.create_job("blog", "content-1")
 
-    cleaned = job_manager.cleanup_old_jobs(max_age_hours=24)
+    cleaned = await job_manager.cleanup_old_jobs(max_age_hours=24)
 
     assert isinstance(cleaned, int)
     assert cleaned >= 0
@@ -182,7 +182,7 @@ async def test_cleanup_old_jobs_all_old(job_manager):
     old_job.created_at = datetime.now(timezone.utc).replace(year=2020)
     await job_manager._save_job(old_job)
 
-    cleaned = job_manager.cleanup_old_jobs(max_age_hours=1)
+    cleaned = await job_manager.cleanup_old_jobs(max_age_hours=1)
 
     assert isinstance(cleaned, int)
     assert cleaned >= 0

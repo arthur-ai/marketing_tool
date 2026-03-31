@@ -27,57 +27,68 @@ def function_pipeline(mock_openai):
 
 
 @pytest.mark.asyncio
-async def test_call_function_with_retry(function_pipeline, mock_openai):
+async def test_call_function_with_retry(function_pipeline):
     """Test _call_function with retry logic."""
-    mock_response = MagicMock()
-    mock_response.choices = [MagicMock()]
-    mock_response.choices[0].message.parsed = MagicMock(
-        main_keyword="test",
-        primary_keywords=["test1"],
-        confidence_score=0.9,
-    )
-    mock_openai.beta.chat.completions.parse = AsyncMock(return_value=mock_response)
-
     from marketing_project.models.pipeline_steps import SEOKeywordsResult
 
-    result = await function_pipeline._call_function(
-        prompt="Test prompt",
-        system_instruction="Test instruction",
-        response_model=SEOKeywordsResult,
-        step_name="seo_keywords",
-        step_number=1,
+    expected = SEOKeywordsResult(
+        main_keyword="test",
+        primary_keywords=["test1"],
+        search_intent="informational",
     )
+
+    with patch.object(
+        function_pipeline.llm_client,
+        "call_with_retries",
+        new_callable=AsyncMock,
+        return_value=(expected, MagicMock()),
+    ):
+        result = await function_pipeline._call_function(
+            prompt="Test prompt",
+            system_instruction="Test instruction",
+            response_model=SEOKeywordsResult,
+            step_name="seo_keywords",
+            step_number=1,
+        )
 
     assert result is not None
 
 
 @pytest.mark.asyncio
-async def test_call_function_with_approval_required(function_pipeline, mock_openai):
-    """Test _call_function when approval is required."""
+async def test_call_function_with_approval_required(function_pipeline):
+    """Test _call_function returns ApprovalRequiredSentinel when approval is required."""
     from marketing_project.models.pipeline_steps import SEOKeywordsResult
-    from marketing_project.processors.approval_helper import ApprovalRequiredException
+    from marketing_project.processors.approval_helper import (
+        ApprovalRequiredSentinel,
+        ApprovalResult,
+        ApprovalStatus,
+    )
 
-    mock_response = MagicMock()
-    mock_response.choices = [MagicMock()]
-    mock_response.choices[0].message.parsed = MagicMock(
+    expected = SEOKeywordsResult(
         main_keyword="test",
         primary_keywords=["test1"],
-        confidence_score=0.3,  # Low confidence triggers approval
+        search_intent="informational",
     )
-    mock_openai.beta.chat.completions.parse = AsyncMock(return_value=mock_response)
+    approval_result = ApprovalResult(
+        status=ApprovalStatus.REQUIRED,
+        approval_id="approval-1",
+        job_id="test-job-1",
+        step_name="seo_keywords",
+        step_number=1,
+    )
 
-    with patch(
-        "marketing_project.processors.approval_helper.check_and_create_approval_request"
-    ) as mock_check:
-        mock_check.side_effect = ApprovalRequiredException(
-            approval_id="approval-1",
-            job_id="test-job-1",
-            step_name="seo_keywords",
-            step_number=1,
-        )
-
-        with pytest.raises(ApprovalRequiredException):
-            await function_pipeline._call_function(
+    with patch.object(
+        function_pipeline.llm_client,
+        "call_with_retries",
+        new_callable=AsyncMock,
+        return_value=(expected, MagicMock()),
+    ):
+        with patch(
+            "marketing_project.services.function_pipeline.pipeline.check_step_approval",
+            new_callable=AsyncMock,
+            return_value=approval_result,
+        ):
+            result = await function_pipeline._call_function(
                 prompt="Test prompt",
                 system_instruction="Test instruction",
                 response_model=SEOKeywordsResult,
@@ -85,6 +96,9 @@ async def test_call_function_with_approval_required(function_pipeline, mock_open
                 step_number=1,
                 job_id="test-job-1",
             )
+
+    assert isinstance(result, ApprovalRequiredSentinel)
+    assert result.approval_result.approval_id == "approval-1"
 
 
 @pytest.mark.asyncio

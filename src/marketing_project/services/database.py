@@ -160,6 +160,8 @@ class DatabaseManager:
             # Added user_id to jobs table
             "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS user_id VARCHAR",
             "CREATE INDEX IF NOT EXISTS idx_jobs_user_id ON jobs (user_id)",
+            # Added error_message to jobs table (worker error surfacing)
+            "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS error_message TEXT",
             # Approvals table indexes (table created via create_all)
             "CREATE INDEX IF NOT EXISTS idx_approvals_job_id_status ON approvals (job_id, status)",
             "CREATE INDEX IF NOT EXISTS idx_approvals_status_created ON approvals (status, created_at)",
@@ -231,6 +233,36 @@ class DatabaseManager:
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             )
             """,
+            # Onboarding examples table (quick-start job templates, DB-backed)
+            """
+            CREATE TABLE IF NOT EXISTS onboarding_examples (
+                id SERIAL PRIMARY KEY,
+                title VARCHAR(200) NOT NULL,
+                description TEXT,
+                job_type VARCHAR(100) NOT NULL,
+                input_data JSONB NOT NULL DEFAULT '{}',
+                display_order INTEGER NOT NULL DEFAULT 0,
+                is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+            """,
+            "CREATE INDEX IF NOT EXISTS idx_onboarding_examples_job_type ON onboarding_examples (job_type)",
+            # Quality scores table (persisted content quality metrics for trend analysis)
+            """
+            CREATE TABLE IF NOT EXISTS quality_scores (
+                id SERIAL PRIMARY KEY,
+                job_id VARCHAR(255) NOT NULL,
+                word_count INTEGER,
+                flesch_kincaid_grade REAL,
+                has_headings BOOLEAN,
+                keyword_match_pct REAL,
+                profound_personas_used JSONB,
+                computed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+            """,
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_scores_job_id ON quality_scores (job_id)",
+            "CREATE INDEX IF NOT EXISTS idx_quality_scores_computed_at ON quality_scores (computed_at DESC)",
         ]
         try:
             async with self._engine.begin() as conn:

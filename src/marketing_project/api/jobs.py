@@ -40,6 +40,10 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+# Module-level set to hold strong references to fire-and-forget background tasks,
+# preventing them from being garbage-collected before they complete.
+_background_tasks: set = set()
+
 
 class JobResponse(BaseModel):
     """Response model for job details."""
@@ -968,6 +972,56 @@ async def stream_job_progress(
     )
 
 
+async def _persist_quality_score(
+    job_id: str,
+    word_count: int,
+    flesch_kincaid_grade: float,
+    has_headings: bool,
+    keyword_match_pct: float,
+    profound_personas_used: Optional[list],
+) -> None:
+    """Fire-and-forget: persist computed quality metrics to the quality_scores table.
+
+    Uses an upsert so that repeated calls (e.g. from a polling frontend) refresh
+    the metrics in-place rather than growing unbounded rows per job.
+    """
+    try:
+        from datetime import datetime, timezone
+
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+        from ..models.db_models import QualityScoreModel
+        from ..services.database import get_database_manager
+
+        db = get_database_manager()
+        async with db.get_session() as session:
+            stmt = (
+                pg_insert(QualityScoreModel)
+                .values(
+                    job_id=job_id,
+                    word_count=word_count,
+                    flesch_kincaid_grade=flesch_kincaid_grade,
+                    has_headings=has_headings,
+                    keyword_match_pct=keyword_match_pct,
+                    profound_personas_used=profound_personas_used,
+                )
+                .on_conflict_do_update(
+                    index_elements=["job_id"],
+                    set_={
+                        "word_count": word_count,
+                        "flesch_kincaid_grade": flesch_kincaid_grade,
+                        "has_headings": has_headings,
+                        "keyword_match_pct": keyword_match_pct,
+                        "profound_personas_used": profound_personas_used,
+                        "computed_at": datetime.now(timezone.utc),
+                    },
+                )
+            )
+            await session.execute(stmt)
+    except Exception as exc:
+        logger.warning(f"Failed to persist quality score for job {job_id}: {exc}")
+
+
 @router.get("/{job_id}/quality")
 async def get_job_quality(job_id: str, user: UserContext = Depends(get_current_user)):
     """
@@ -1081,6 +1135,21 @@ async def get_job_quality(job_id: str, user: UserContext = Depends(get_current_u
             warnings.append("Output is very short (< 100 words)")
         if keyword_match_pct < 50 and topic:
             warnings.append("Less than 50% of topic keywords appear in the output")
+
+        # Persist quality metrics asynchronously — fire-and-forget so latency is unaffected.
+        # Keep a strong reference in _background_tasks to prevent GC before completion.
+        _task = asyncio.create_task(
+            _persist_quality_score(
+                job_id=job_id,
+                word_count=word_count,
+                flesch_kincaid_grade=fk_grade,
+                has_headings=has_headings,
+                keyword_match_pct=keyword_match_pct,
+                profound_personas_used=profound_personas_used,
+            )
+        )
+        _background_tasks.add(_task)
+        _task.add_done_callback(_background_tasks.discard)
 
         return {
             "success": True,

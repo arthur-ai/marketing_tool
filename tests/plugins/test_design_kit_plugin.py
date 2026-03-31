@@ -93,8 +93,8 @@ async def test_analyze_content_error_handling(design_kit_plugin, mock_content_do
 
 
 @pytest.mark.asyncio
-@patch("marketing_project.plugins.design_kit.tasks.get_scanned_document_db")
-@patch("marketing_project.plugins.design_kit.tasks.FunctionPipeline")
+@patch("marketing_project.plugins.brand_kit.tasks.get_scanned_document_db")
+@patch("marketing_project.plugins.brand_kit.tasks.FunctionPipeline")
 async def test_generate_design_kit_with_internal_docs(
     mock_pipeline_class, mock_get_db, design_kit_plugin
 ):
@@ -143,7 +143,7 @@ async def test_generate_design_kit_with_internal_docs(
 
 
 @pytest.mark.asyncio
-@patch("marketing_project.plugins.design_kit.tasks.FunctionPipeline")
+@patch("marketing_project.plugins.brand_kit.tasks.FunctionPipeline")
 async def test_generate_design_kit_without_internal_docs(
     mock_pipeline_class, design_kit_plugin
 ):
@@ -180,7 +180,7 @@ async def test_generate_design_kit_without_internal_docs(
 
 
 @pytest.mark.asyncio
-@patch("marketing_project.plugins.design_kit.tasks.get_scanned_document_db")
+@patch("marketing_project.plugins.brand_kit.tasks.get_scanned_document_db")
 async def test_generate_design_kit_no_content_in_db(mock_get_db, design_kit_plugin):
     """Test generate_design_kit when database has no content."""
     # Mock empty database
@@ -189,7 +189,7 @@ async def test_generate_design_kit_no_content_in_db(mock_get_db, design_kit_plug
     mock_get_db.return_value = mock_db
 
     with patch(
-        "marketing_project.plugins.design_kit.tasks.FunctionPipeline"
+        "marketing_project.plugins.brand_kit.tasks.FunctionPipeline"
     ) as mock_pipeline_class:
         mock_pipeline = MagicMock()
         mock_pipeline._call_function = AsyncMock(return_value={})

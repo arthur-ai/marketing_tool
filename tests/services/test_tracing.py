@@ -183,8 +183,12 @@ def test_close_span_with_none_holder_is_noop():
         close_span(None)  # must not raise
 
 
-def test_create_job_root_span_uses_parent_context_when_provided():
-    """create_job_root_span passes parent_context to tracer.start_span when provided."""
+def test_create_job_root_span_uses_current_context():
+    """create_job_root_span always reads parent context from context_api.get_current().
+
+    Callers that need to restore a saved traceparent must call context_api.attach()
+    *before* invoking create_job_root_span — not via a kwarg.
+    """
     from marketing_project.services.function_pipeline.tracing import (
         _SpanHolder,
         create_job_root_span,
@@ -194,7 +198,7 @@ def test_create_job_root_span_uses_parent_context_when_provided():
     mock_token = MagicMock()
     mock_tracer = MagicMock()
     mock_tracer.start_span.return_value = mock_span
-    parent_ctx = object()  # sentinel representing extracted OTel context
+    sentinel_ctx = object()  # what context_api.get_current() will return
 
     with patch(
         "marketing_project.services.function_pipeline.tracing._tracing_available",
@@ -209,22 +213,22 @@ def test_create_job_root_span_uses_parent_context_when_provided():
                 mock_trace_mod.get_tracer.return_value = mock_tracer
                 mock_trace_mod.SpanKind.INTERNAL = "INTERNAL"
                 mock_trace_mod.set_span_in_context.return_value = MagicMock()
+                mock_ctx_api.get_current.return_value = sentinel_ctx
                 mock_ctx_api.attach.return_value = mock_token
 
                 holder = create_job_root_span(
                     job_id="job-123",
                     job_type="resume_pipeline",
                     input_value={},
-                    parent_context=parent_ctx,
                 )
 
     assert isinstance(holder, _SpanHolder)
-    # Verify the span was started with the provided parent context
+    # Span must be started with the context returned by get_current()
     mock_tracer.start_span.assert_called_once()
     _, start_kwargs = mock_tracer.start_span.call_args
-    assert start_kwargs.get("context") is parent_ctx, (
-        "parent_context must be forwarded to tracer.start_span so the resumed job "
-        "appears under job.pipeline in the trace, not under an ended step span"
+    assert start_kwargs.get("context") is sentinel_ctx, (
+        "create_job_root_span must use context_api.get_current() — callers attach() "
+        "the parent context before calling this function"
     )
 
 

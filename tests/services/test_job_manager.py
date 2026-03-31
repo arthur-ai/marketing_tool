@@ -115,6 +115,73 @@ class TestJobManager:
         assert updated_job is not None
 
     @pytest.mark.asyncio
+    async def test_update_job_status_failed_sets_error_message(self, job_manager):
+        """FAILED status with error_message populates both error_message and legacy error fields."""
+        job = await job_manager.create_job(
+            job_type="blog_post", content_id="content-123"
+        )
+
+        await job_manager.update_job_status(
+            job.id,
+            JobStatus.FAILED,
+            error_message="ValueError: missing content_id",
+        )
+
+        updated_job = await job_manager.get_job(job.id)
+        assert updated_job is not None
+        assert updated_job.status == JobStatus.FAILED
+        assert updated_job.error_message == "ValueError: missing content_id"
+        assert updated_job.error == "ValueError: missing content_id"
+        assert updated_job.completed_at is not None
+
+    @pytest.mark.asyncio
+    async def test_update_job_status_failed_without_error_message(self, job_manager):
+        """FAILED status without error_message leaves error_message as None."""
+        job = await job_manager.create_job(
+            job_type="blog_post", content_id="content-123"
+        )
+
+        await job_manager.update_job_status(job.id, JobStatus.FAILED)
+
+        updated_job = await job_manager.get_job(job.id)
+        assert updated_job is not None
+        assert updated_job.status == JobStatus.FAILED
+        assert updated_job.error_message is None
+
+    def test_job_model_to_dict_includes_error_message(self):
+        """JobModel.to_dict() returns error_message at the top level for API responses."""
+        from marketing_project.models.db_models import JobModel
+
+        db_job = JobModel(
+            job_id="test-job-1",
+            job_type="blog",
+            status="failed",
+            content_id="content-1",
+            progress=0,
+            error="ValueError: bad input",
+            error_message="ValueError: bad input",
+            job_metadata={},
+        )
+        result = db_job.to_dict()
+        assert result["error_message"] == "ValueError: bad input"
+        assert result["error"] == "ValueError: bad input"
+
+    def test_job_model_to_dict_error_message_none_for_non_failed(self):
+        """JobModel.to_dict() returns error_message=None for jobs that haven't failed."""
+        from marketing_project.models.db_models import JobModel
+
+        db_job = JobModel(
+            job_id="test-job-2",
+            job_type="blog",
+            status="completed",
+            content_id="content-2",
+            progress=100,
+            job_metadata={},
+        )
+        result = db_job.to_dict()
+        assert result["error_message"] is None
+
+    @pytest.mark.asyncio
     async def test_update_job_progress(self, job_manager):
         """Test updating job progress."""
         job = await job_manager.create_job(

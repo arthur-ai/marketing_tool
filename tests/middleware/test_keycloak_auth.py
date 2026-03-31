@@ -37,6 +37,21 @@ def mock_keycloak_env(monkeypatch):
     monkeypatch.setenv("KEYCLOAK_REALM", "test-realm")
     monkeypatch.setenv("KEYCLOAK_CLIENT_ID", "test-client")
     monkeypatch.setenv("KEYCLOAK_PUBLIC_KEY", mock_keycloak_public_key())
+    # Patch module-level constants that were already read at import time
+    with (
+        patch(
+            "marketing_project.middleware.keycloak_auth.KEYCLOAK_SERVER_URL",
+            "https://test-keycloak.com",
+        ),
+        patch(
+            "marketing_project.middleware.keycloak_auth.KEYCLOAK_REALM", "test-realm"
+        ),
+        patch(
+            "marketing_project.middleware.keycloak_auth.KEYCLOAK_CLIENT_ID",
+            "test-client",
+        ),
+    ):
+        yield
 
 
 class TestExtractTokenFromHeader:

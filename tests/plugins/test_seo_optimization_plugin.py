@@ -64,11 +64,30 @@ class TestSEOOptimizationPlugin:
     @pytest.mark.asyncio
     async def test_execute(self, seo_optimization_plugin, sample_context):
         """Test plugin execution."""
+        from marketing_project.models.pipeline_steps import (
+            HeaderStructure,
+            KeywordMap,
+            OGTags,
+            ReadabilityOptimization,
+        )
+
         mock_result = SEOOptimizationResult(
             optimized_content="Optimized content",
             meta_title="Test Meta Title",
             meta_description="Test meta description",
             slug="test-slug",
+            og_tags=OGTags(
+                og_title="Test",
+                og_description="Test description",
+                og_image="https://example.com/img.jpg",
+                og_type="article",
+            ),
+            confidence_score=0.9,
+            seo_score=85.0,
+            header_structure=HeaderStructure(),
+            keyword_map=KeywordMap(),
+            readability_optimization=ReadabilityOptimization(),
+            modification_report=[],
         )
 
         mock_pipeline = MagicMock()

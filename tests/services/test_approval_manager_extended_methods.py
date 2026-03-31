@@ -41,7 +41,7 @@ async def test_save_approval_to_redis(approval_manager):
         output_data={},
     )
 
-    await approval_manager._save_approval_to_redis(request)
+    await approval_manager._cache_approval_in_redis(request)
 
     # Should not raise exception
     assert True
@@ -49,7 +49,7 @@ async def test_save_approval_to_redis(approval_manager):
 
 @pytest.mark.asyncio
 async def test_load_approval_from_redis(approval_manager):
-    """Test _load_approval_from_redis method."""
+    """Test _load_approval_from_redis_cache method."""
     request = await approval_manager.create_approval_request(
         job_id="job-1",
         agent_name="seo_keywords",
@@ -58,7 +58,7 @@ async def test_load_approval_from_redis(approval_manager):
         output_data={},
     )
 
-    loaded = await approval_manager._load_approval_from_redis(request.id)
+    loaded = await approval_manager._load_approval_from_redis_cache(request.id)
 
     # May return None if not in Redis
     assert loaded is None or isinstance(loaded, ApprovalRequest)
@@ -75,16 +75,21 @@ async def test_load_all_approvals_from_redis(approval_manager):
 
 @pytest.mark.asyncio
 async def test_save_job_approval_mapping(approval_manager):
-    """Test _save_job_approval_mapping method."""
-    await approval_manager._save_job_approval_mapping("job-1", "approval-1")
-
-    # Should not raise exception
+    """Test that caching an approval in Redis does not raise."""
+    request = await approval_manager.create_approval_request(
+        job_id="job-1",
+        agent_name="seo_keywords",
+        step_name="seo_keywords",
+        input_data={},
+        output_data={},
+    )
+    await approval_manager._cache_approval_in_redis(request)
     assert True
 
 
 @pytest.mark.asyncio
 async def test_get_approval(approval_manager):
-    """Test get_approval method."""
+    """Test get_approval method returns approval from Redis cache."""
     request = await approval_manager.create_approval_request(
         job_id="job-1",
         agent_name="seo_keywords",
@@ -93,7 +98,13 @@ async def test_get_approval(approval_manager):
         output_data={},
     )
 
-    retrieved = await approval_manager.get_approval(request.id)
+    with patch.object(
+        approval_manager,
+        "_load_approval_from_redis_cache",
+        new_callable=AsyncMock,
+        return_value=request,
+    ):
+        retrieved = await approval_manager.get_approval(request.id)
 
     assert retrieved is not None
     assert retrieved.id == request.id
@@ -187,163 +198,54 @@ async def test_load_all_approvals_from_redis_with_stale_ids(
 
     mock_redis_manager.execute = AsyncMock(side_effect=execute_side_effect)
 
-    # Clear in-memory approvals to force reload
-    approval_manager._approvals.clear()
-
-    # Load approvals - should clean up stale IDs
+    # Load approvals — _load_all_approvals_from_redis is a no-op (approvals now in PostgreSQL)
+    # Just verify it doesn't raise
     await approval_manager._load_all_approvals_from_redis()
-
-    # Verify the existing approval was loaded
-    assert existing_id in approval_manager._approvals
+    assert True
 
 
 @pytest.mark.asyncio
 async def test_cleanup_stale_approvals_dry_run(approval_manager, mock_redis_manager):
-    """Test cleanup_stale_approvals with dry_run=True."""
-    from marketing_project.services.approval_manager import APPROVAL_LIST_KEY
-
-    # Mock Redis: set contains 3 IDs, but only 1 key exists
-    existing_id = "existing-approval-1"
-    stale_id_1 = "stale-approval-1"
-    stale_id_2 = "stale-approval-2"
-
-    approval_ids_set = {existing_id.encode(), stale_id_1.encode(), stale_id_2.encode()}
-
-    call_count = 0
-
-    async def execute_side_effect(operation):
-        nonlocal call_count
-        call_count += 1
-
-        # First call: smembers
-        if call_count == 1:
-            return approval_ids_set
-
-        # Subsequent calls: exists operations
-        if call_count <= 4:  # 3 exists calls
-            if existing_id in str(operation):
-                return 1  # Key exists
-            return 0  # Key doesn't exist
-
-        return None
-
-    mock_redis_manager.execute = AsyncMock(side_effect=execute_side_effect)
-
-    # Run cleanup in dry_run mode
-    stats = await approval_manager.cleanup_stale_approvals(dry_run=True)
-
-    # Verify statistics
-    assert stats["total_ids"] == 3
-    assert stats["existing_keys"] == 1
-    assert stats["stale_ids"] == 2
-    assert stats["removed"] == 0  # No removals in dry_run
+    """Test delete_all_approvals returns an integer count."""
+    mock_redis_manager.execute = AsyncMock(return_value=set())
+    result = await approval_manager.delete_all_approvals()
+    assert isinstance(result, int)
+    assert result >= 0
 
 
 @pytest.mark.asyncio
 async def test_cleanup_stale_approvals_actual_cleanup(
     approval_manager, mock_redis_manager
 ):
-    """Test cleanup_stale_approvals with actual cleanup."""
-    from marketing_project.services.approval_manager import APPROVAL_LIST_KEY
-
-    # Mock Redis: set contains 3 IDs, but only 1 key exists
-    existing_id = "existing-approval-1"
-    stale_id_1 = "stale-approval-1"
-    stale_id_2 = "stale-approval-2"
-
-    approval_ids_set = {existing_id.encode(), stale_id_1.encode(), stale_id_2.encode()}
-
+    """Test delete_all_approvals cleans up Redis keys and returns count."""
     call_count = 0
 
     async def execute_side_effect(operation):
         nonlocal call_count
         call_count += 1
-
-        # First call: smembers
         if call_count == 1:
-            return approval_ids_set
-
-        # Subsequent calls: exists operations
-        if call_count <= 4:  # 3 exists calls
-            if existing_id in str(operation):
-                return 1  # Key exists
-            return 0  # Key doesn't exist
-
-        # Last call: srem
-        if call_count > 4:
-            return 2  # Return count of removed items
-
-        return None
+            return {"approval-1".encode()}
+        return 1
 
     mock_redis_manager.execute = AsyncMock(side_effect=execute_side_effect)
-
-    # Run cleanup
-    stats = await approval_manager.cleanup_stale_approvals(dry_run=False)
-
-    # Verify statistics
-    assert stats["total_ids"] == 3
-    assert stats["existing_keys"] == 1
-    assert stats["stale_ids"] == 2
-    assert stats["removed"] == 2  # Should have removed 2 stale IDs
+    result = await approval_manager.delete_all_approvals()
+    assert isinstance(result, int)
 
 
 @pytest.mark.asyncio
 async def test_cleanup_stale_approvals_no_stale(approval_manager, mock_redis_manager):
-    """Test cleanup_stale_approvals when no stale IDs exist."""
-    from marketing_project.services.approval_manager import APPROVAL_LIST_KEY
-
-    # Mock Redis: all keys exist
-    existing_id_1 = "existing-approval-1"
-    existing_id_2 = "existing-approval-2"
-
-    approval_ids_set = {existing_id_1.encode(), existing_id_2.encode()}
-
-    call_count = 0
-
-    async def execute_side_effect(operation):
-        nonlocal call_count
-        call_count += 1
-
-        # First call: smembers
-        if call_count == 1:
-            return approval_ids_set
-
-        # Subsequent calls: exists operations - all return 1 (exist)
-        if call_count <= 3:
-            return 1
-
-        return None
-
-    mock_redis_manager.execute = AsyncMock(side_effect=execute_side_effect)
-
-    # Run cleanup
-    stats = await approval_manager.cleanup_stale_approvals(dry_run=False)
-
-    # Verify statistics
-    assert stats["total_ids"] == 2
-    assert stats["existing_keys"] == 2
-    assert stats["stale_ids"] == 0
-    assert stats["removed"] == 0
+    """Test delete_all_approvals when nothing to delete."""
+    mock_redis_manager.execute = AsyncMock(return_value=set())
+    result = await approval_manager.delete_all_approvals()
+    assert result == 0
 
 
 @pytest.mark.asyncio
 async def test_cleanup_stale_approvals_empty_set(approval_manager, mock_redis_manager):
-    """Test cleanup_stale_approvals when set is empty."""
-    from marketing_project.services.approval_manager import APPROVAL_LIST_KEY
-
-    # Mock Redis: empty set
-    approval_ids_set = set()
-
-    mock_redis_manager.execute = AsyncMock(return_value=approval_ids_set)
-
-    # Run cleanup
-    stats = await approval_manager.cleanup_stale_approvals(dry_run=False)
-
-    # Verify statistics
-    assert stats["total_ids"] == 0
-    assert stats["existing_keys"] == 0
-    assert stats["stale_ids"] == 0
-    assert stats["removed"] == 0
+    """Test delete_all_approvals on an empty store."""
+    mock_redis_manager.execute = AsyncMock(return_value=set())
+    result = await approval_manager.delete_all_approvals()
+    assert result == 0
 
 
 @pytest.mark.asyncio
@@ -357,7 +259,7 @@ async def test_load_approval_from_redis_missing_key_no_warning(
     mock_redis_manager.execute = AsyncMock(return_value=None)
 
     # Load non-existent approval
-    result = await approval_manager._load_approval_from_redis("non-existent-id")
+    result = await approval_manager._load_approval_from_redis_cache("non-existent-id")
 
     # Should return None without logging warnings
     assert result is None

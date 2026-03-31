@@ -70,7 +70,15 @@ def mock_redis_manager():
             mock_redis.smembers = smembers
             return await operation(mock_redis)
 
-        manager.get_redis = AsyncMock(return_value=MagicMock())
+        # Build an async-compatible mock Redis client with pubsub support
+        mock_redis_client = MagicMock()
+        mock_pubsub = AsyncMock()
+        mock_pubsub.subscribe = AsyncMock()
+        mock_pubsub.get_message = AsyncMock(return_value=None)
+        mock_pubsub.unsubscribe = AsyncMock()
+        mock_pubsub.close = AsyncMock()
+        mock_redis_client.pubsub.return_value = mock_pubsub
+        manager.get_redis = AsyncMock(return_value=mock_redis_client)
         manager.execute = execute_operation
         mock.return_value = manager
         yield manager
@@ -230,21 +238,48 @@ async def test_wait_for_approval_already_decided(approval_manager):
 @pytest.mark.asyncio
 async def test_list_approvals_with_filters(approval_manager):
     """Test list_approvals with various filters."""
-    await approval_manager.create_approval_request(
+    req1 = await approval_manager.create_approval_request(
         "job-1", "test-agent", "seo_keywords", {}, {}
     )
-    await approval_manager.create_approval_request(
+    req2 = await approval_manager.create_approval_request(
         "job-2", "test-agent", "marketing_brief", {}, {}
     )
 
+    # list_approvals queries PostgreSQL; mock it to return the created requests
+    def make_db_mock(rows):
+        mock_db_mgr = MagicMock()
+        mock_db_mgr.is_initialized = True
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = rows
+        mock_session = AsyncMock()
+        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_db_mgr.get_session.return_value.__aenter__ = AsyncMock(
+            return_value=mock_session
+        )
+        mock_db_mgr.get_session.return_value.__aexit__ = AsyncMock(return_value=False)
+        return mock_db_mgr
+
+    mock_row1 = MagicMock()
+    mock_row1.to_approval_request.return_value = req1
+    mock_row2 = MagicMock()
+    mock_row2.to_approval_request.return_value = req2
+
     # Filter by job_id
-    approvals = await approval_manager.list_approvals(job_id="job-1")
+    with patch(
+        "marketing_project.services.approval_manager.get_database_manager",
+        return_value=make_db_mock([mock_row1]),
+    ):
+        approvals = await approval_manager.list_approvals(job_id="job-1")
 
     assert len(approvals) >= 1
     assert all(a.job_id == "job-1" for a in approvals)
 
     # Filter by status
-    pending = await approval_manager.list_approvals(status="pending")
+    with patch(
+        "marketing_project.services.approval_manager.get_database_manager",
+        return_value=make_db_mock([mock_row1, mock_row2]),
+    ):
+        pending = await approval_manager.list_approvals(status="pending")
 
     assert len(pending) >= 2
     assert all(a.status == "pending" for a in pending)
@@ -253,14 +288,34 @@ async def test_list_approvals_with_filters(approval_manager):
 @pytest.mark.asyncio
 async def test_get_approvals_for_job(approval_manager):
     """Test get_approvals_for_job method."""
-    await approval_manager.create_approval_request(
+    req1 = await approval_manager.create_approval_request(
         "job-1", "test-agent", "seo_keywords", {}, {}
     )
-    await approval_manager.create_approval_request(
+    req2 = await approval_manager.create_approval_request(
         "job-1", "test-agent", "marketing_brief", {}, {}
     )
 
-    approvals = await approval_manager.list_approvals(job_id="job-1")
+    mock_row1 = MagicMock()
+    mock_row1.to_approval_request.return_value = req1
+    mock_row2 = MagicMock()
+    mock_row2.to_approval_request.return_value = req2
+
+    mock_db_mgr = MagicMock()
+    mock_db_mgr.is_initialized = True
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.all.return_value = [mock_row1, mock_row2]
+    mock_session = AsyncMock()
+    mock_session.execute = AsyncMock(return_value=mock_result)
+    mock_db_mgr.get_session.return_value.__aenter__ = AsyncMock(
+        return_value=mock_session
+    )
+    mock_db_mgr.get_session.return_value.__aexit__ = AsyncMock(return_value=False)
+
+    with patch(
+        "marketing_project.services.approval_manager.get_database_manager",
+        return_value=mock_db_mgr,
+    ):
+        approvals = await approval_manager.list_approvals(job_id="job-1")
 
     assert len(approvals) >= 2
     assert all(a.job_id == "job-1" for a in approvals)
@@ -286,22 +341,32 @@ async def test_get_stats_empty(approval_manager):
 
 @pytest.mark.asyncio
 async def test_get_stats_with_approvals(approval_manager):
-    """Test get_stats with various approval statuses."""
-    req1 = await approval_manager.create_approval_request(
-        "job-1", "test-agent", "seo_keywords", {}, {}
-    )
-    req2 = await approval_manager.create_approval_request(
-        "job-2", "test-agent", "marketing_brief", {}, {}
-    )
+    """Test get_stats with various approval statuses (mocked via DB)."""
+    from marketing_project.models.approval_models import ApprovalStats
 
-    await approval_manager.decide_approval(
-        req1.id, ApprovalDecisionRequest(decision="approve")
-    )
-    await approval_manager.decide_approval(
-        req2.id, ApprovalDecisionRequest(decision="reject")
-    )
+    mock_db_mgr = MagicMock()
+    mock_db_mgr.is_initialized = True
 
-    stats = await approval_manager.get_stats()
+    # First execute call: status counts
+    count_result = MagicMock()
+    count_result.fetchall.return_value = [("approved", 1), ("rejected", 1)]
+
+    # Second execute call: reviewed rows for avg time
+    reviewed_result = MagicMock()
+    reviewed_result.fetchall.return_value = []
+
+    mock_session = AsyncMock()
+    mock_session.execute = AsyncMock(side_effect=[count_result, reviewed_result])
+    mock_db_mgr.get_session.return_value.__aenter__ = AsyncMock(
+        return_value=mock_session
+    )
+    mock_db_mgr.get_session.return_value.__aexit__ = AsyncMock(return_value=False)
+
+    with patch(
+        "marketing_project.services.approval_manager.get_database_manager",
+        return_value=mock_db_mgr,
+    ):
+        stats = await approval_manager.get_stats()
 
     assert stats.total_requests == 2
     assert stats.approved == 1
@@ -319,15 +384,21 @@ async def test_delete_all_approvals_empty(approval_manager):
 
 @pytest.mark.asyncio
 async def test_clear_job_approvals(approval_manager):
-    """Test clear_job_approvals method."""
+    """Test delete_all_approvals clears approvals without raising."""
     await approval_manager.create_approval_request(
         "job-1", "test-agent", "seo_keywords", {}, {}
     )
 
-    approval_manager.clear_job_approvals("job-1")
+    with patch.object(
+        approval_manager._redis_manager,
+        "execute",
+        new_callable=AsyncMock,
+        return_value=set(),
+    ):
+        result = await approval_manager.delete_all_approvals()
 
-    # Should not raise exception
-    assert True
+    assert isinstance(result, int)
+    assert result >= 0
 
 
 @pytest.mark.asyncio

@@ -88,6 +88,7 @@ class Job(BaseModel):
     current_step: Optional[str] = None
     result: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
+    error_message: Optional[str] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -188,6 +189,7 @@ class JobManager:
                     existing_job.current_step = job.current_step
                     existing_job.result = job.result
                     existing_job.error = job.error
+                    existing_job.error_message = job.error_message
                     existing_job.job_metadata = job.metadata
                     if job.started_at:
                         existing_job.started_at = job.started_at
@@ -206,6 +208,7 @@ class JobManager:
                         current_step=job.current_step,
                         result=job.result,
                         error=job.error,
+                        error_message=job.error_message,
                         job_metadata=job.metadata,
                         created_at=job.created_at,
                         started_at=job.started_at,
@@ -481,6 +484,7 @@ class JobManager:
         except Exception as e:
             job.status = JobStatus.FAILED
             job.error = f"Failed to submit to ARQ: {str(e)}"
+            job.error_message = job.error
             # Save failed status to Redis
             await self._save_job(job)
             logger.error(f"Failed to submit job {job_id} to ARQ: {e}")
@@ -673,6 +677,7 @@ class JobManager:
                         f"ARQ result likely expired"
                     )
                     job.error = f"Job exceeded maximum age ({JOB_MAX_AGE}s) - ARQ result expired"
+                    job.error_message = job.error
                     job.status = JobStatus.FAILED
                     job.completed_at = datetime.now(timezone.utc)
                     return job
@@ -771,6 +776,7 @@ class JobManager:
                                 exc_info=True,
                             )
                             job.error = f"Job execution failed: {error_msg}"
+                            job.error_message = job.error
                             job.status = JobStatus.FAILED
                             job.completed_at = datetime.now(timezone.utc)
                             await self._save_job(job)
@@ -781,6 +787,7 @@ class JobManager:
                                 exc_info=True,
                             )
                             job.error = f"Error retrieving job result: {str(e)}"
+                            job.error_message = job.error
                             job.status = JobStatus.FAILED
                             job.completed_at = datetime.now(timezone.utc)
                             await self._save_job(job)
@@ -817,6 +824,7 @@ class JobManager:
                             f"result may have expired (ARQ TTL: {ARQ_RESULT_TTL}s)"
                         )
                         job.error = "Job not found in ARQ - result may have expired"
+                        job.error_message = job.error
                         job.status = JobStatus.FAILED
                         job.completed_at = datetime.now(timezone.utc)
                         await self._save_job(job)
@@ -857,15 +865,27 @@ class JobManager:
                 job.current_step = current_step
             await self._save_job(job)
 
-    async def update_job_status(self, job_id: str, status: JobStatus) -> None:
+    async def update_job_status(
+        self,
+        job_id: str,
+        status: JobStatus,
+        error_message: Optional[str] = None,
+    ) -> None:
         """
         Update job status and save to Redis.
 
         Args:
             job_id: ID of the job to update
             status: New job status
+            error_message: Optional worker error message (for FAILED status)
         """
         job = await self.get_job(job_id, _skip_arq_poll=True)
+        if not job:
+            logger.warning(
+                f"update_job_status: job {job_id} not found in any store — "
+                f"status update to {status.value} silently skipped"
+            )
+            return
         if job:
             job.status = status
             # Keep metadata.status in sync with job.status for frontend compatibility
@@ -873,6 +893,11 @@ class JobManager:
             if status == JobStatus.WAITING_FOR_APPROVAL:
                 # Mark as completed time if waiting for approval (job is "done" but waiting)
                 job.completed_at = datetime.now(timezone.utc)
+            if status == JobStatus.FAILED:
+                job.completed_at = datetime.now(timezone.utc)
+            if error_message is not None:
+                job.error_message = error_message
+                job.error = error_message  # keep legacy field in sync
             await self._save_job(job)
             logger.info(f"Updated job {job_id} status to {status.value}")
 
