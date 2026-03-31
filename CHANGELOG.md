@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.1.0] - 2026-03-31
+
+### Added
+- Test coverage raised from 58.5% to 70.1%, clearing the CI gate (`--cov-fail-under=70`)
+- `.coveragerc` excluding 8 infra files (S3, OTEL, NLP model downloads, web scraping) that require real external dependencies — not unit-testable
+- 500+ new tests across `worker.py`, `step_result_manager.py`, `job_manager.py`, `approvals.py`, `internal_docs.py`, `scanned_document_db.py`, and `context_registry.py`
+- Anthropic schema grammar limit fixes: `_llm_exclude_fields` on five Pydantic models to stay under the ~16 Optional-field compilation limit; nested `$defs` exclusions and dead-def pruning in `_get_llm_schema`
+- `litellm.InternalServerError` now caught and re-raised (triggers retry logic) instead of falling through to the generic exception handler
+
+### Fixed
+- `synthesize_brand_kit_job` `finally` block used undefined `job_id` — changed to `synthesis_job_id` (bug would cause `NameError` when the job failed or timed out)
+- Anthropic schema constraint keywords (`minimum`, `maximum`, `minLength`, etc.) stripped in `_make_schema_anthropic_safe` to prevent grammar compilation errors; Pydantic `ge`/`le` validation runs client-side after the LLM call
+
 ## [0.1.0.0] - 2026-03-31
 
 ### Added
