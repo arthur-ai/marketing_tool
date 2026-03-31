@@ -244,6 +244,12 @@ class LLMClient:
                 self.provider,
             )
             raise
+        except litellm.InternalServerError:
+            logger.warning(
+                "Internal server error (500) from provider '%s' — transient, will retry",
+                self.provider,
+            )
+            raise
         except Exception:
             logger.error(
                 "Unexpected error calling provider '%s'", self.provider, exc_info=True

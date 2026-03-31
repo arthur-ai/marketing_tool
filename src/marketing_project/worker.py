@@ -882,7 +882,7 @@ async def synthesize_brand_kit_job(
         raise
     finally:
         close_span(job_span)
-        _flush_telemetry(job_id)
+        _flush_telemetry(synthesis_job_id)
 
 
 async def refresh_brand_kit_job(

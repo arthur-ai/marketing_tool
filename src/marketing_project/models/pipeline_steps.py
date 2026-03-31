@@ -68,6 +68,23 @@ class KeywordCluster(BaseModel):
 class SEOKeywordsResult(BaseModel):
     """Result from SEO Keywords extraction step."""
 
+    # Exclude metadata/enrichment fields to stay under Anthropic's grammar compilation
+    # limit (~16 Optional fields). Core extraction fields are kept; metadata and
+    # duplicate/deprecated fields are excluded and will be None downstream.
+    _llm_exclude_fields: ClassVar[FrozenSet[str]] = frozenset(
+        {
+            "keyword_density",  # deprecated (use keyword_density_analysis)
+            "keyword_density_analysis",  # detailed analysis, secondary enrichment
+            "primary_keywords_metadata",  # metadata enrichment
+            "secondary_keywords_metadata",  # metadata enrichment
+            "long_tail_keywords_metadata",  # metadata enrichment
+            "keyword_clusters",  # grouping, secondary
+            "search_volume_summary",  # summary stats, secondary
+            "relevance_score",  # secondary metric (also has ge/le)
+            "profound_personas_used",  # internal tracking; LLM cannot know this
+        }
+    )
+
     main_keyword: str = Field(
         description="The single most important keyword for this content - the primary focus"
     )
@@ -251,6 +268,12 @@ class HeaderStructure(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    # Exclude count fields (computable from heading lists) and secondary notes to
+    # reduce Optional field count in $defs for Anthropic grammar compilation.
+    _llm_exclude_fields: ClassVar[FrozenSet[str]] = frozenset(
+        {"h1_count", "h2_count", "h3_count", "validation_notes"}
+    )
+
     h1_count: Optional[int] = Field(
         None, description="Number of H1 headings found (should be 1)"
     )
@@ -278,6 +301,9 @@ class KeywordPlacement(BaseModel):
     """Keyword placement information."""
 
     model_config = ConfigDict(extra="forbid")
+
+    # Exclude count (computable from locations list length) to reduce Optional fields.
+    _llm_exclude_fields: ClassVar[FrozenSet[str]] = frozenset({"count"})
 
     keyword: str = Field(description="The keyword")
     locations: Optional[List[str]] = Field(
@@ -307,6 +333,11 @@ class ReadabilityOptimization(BaseModel):
     """Readability analysis results."""
 
     model_config = ConfigDict(extra="forbid")
+
+    # Exclude secondary computed metrics to reduce Optional fields in $defs.
+    _llm_exclude_fields: ClassVar[FrozenSet[str]] = frozenset(
+        {"grade_level", "average_sentence_length"}
+    )
 
     score: Optional[float] = Field(
         None,
@@ -714,6 +745,20 @@ class AngleHookResult(BaseModel):
 class SocialMediaPostResult(BaseModel):
     """Result from Social Media Post Generation step."""
 
+    # Exclude platform-specific scores and A/B testing fields to stay under Anthropic's
+    # grammar compilation limit. The LLM knows which platform it's writing for and
+    # confidence_score covers overall quality. Excluded fields will be None downstream.
+    _llm_exclude_fields: ClassVar[FrozenSet[str]] = frozenset(
+        {
+            "linkedin_score",  # platform-specific score, secondary (ge/le)
+            "hackernews_score",  # platform-specific score, secondary (ge/le)
+            "email_score",  # platform-specific score, secondary (ge/le)
+            "engagement_score",  # secondary metric (ge/le)
+            "variations",  # A/B testing variants, secondary
+            "variation_id",  # A/B testing, secondary
+        }
+    )
+
     platform: str = Field(
         description="Social media platform: linkedin, hackernews, or email"
     )
@@ -920,6 +965,19 @@ class TranscriptDurationExtractionResult(BaseModel):
 class TranscriptPreprocessingApprovalResult(BaseModel):
     """Result from Transcript Preprocessing Approval step."""
 
+    # Exclude enrichment and complex nested fields to stay under Anthropic's grammar
+    # compilation limit. Core validation fields are kept. Excluded fields will be
+    # None/empty downstream — all guarded by `if result.x:` checks in execute().
+    _llm_exclude_fields: ClassVar[FrozenSet[str]] = frozenset(
+        {
+            "quality_metrics",  # nested QualityMetrics model, secondary
+            "conversation_flow",  # nested ConversationFlow model, secondary
+            "speaking_time_per_speaker",  # computable from transcript, secondary
+            "detected_language",  # enrichment, secondary
+            "key_topics",  # enrichment, handled by downstream steps
+        }
+    )
+
     is_valid: bool = Field(
         description="Overall validation status - true if all transcript fields are valid"
     )
@@ -1067,21 +1125,34 @@ class BlogPostPreprocessingApprovalResult(BaseModel):
     # downstream). Anthropic enforces a ≤24 optional-parameter limit per schema.
     _llm_exclude_fields: ClassVar[FrozenSet[str]] = frozenset(
         {
+            # Structural analysis — computable programmatically, not needed from LLM
             "headings",
             "sections",
             "paragraph_count",
             "list_count",
             "link_count",
+            "content_structure",
+            "quality_metrics",
+            # Scoring fields — secondary enrichment, reduce Optional count for Anthropic
+            # grammar compilation limit (~12-16 Optional fields max)
             "completeness_score",
             "shareability_score",
             "engagement_potential",
             "cta_detected",
+            # Sentiment enrichment — excluded to stay under Anthropic grammar limits;
+            # values remain None and are safely skipped in execute() merge logic
+            "overall_sentiment",
+            "sentiment_score",
             "sentiment_confidence",
             "sentiment_by_section",
+            "emotional_tone",
+            "readability_score",
+            # Keyword/topic enrichment — handled by downstream SEO steps
+            "potential_keywords",
+            "key_topics",
+            "detected_language",
             "inferred_categories",
             "seo_opportunities",
-            "content_structure",
-            "quality_metrics",
         }
     )
 
