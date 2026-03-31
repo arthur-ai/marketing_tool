@@ -159,6 +159,23 @@ async def process_blog_post(
 
                 logger.info("Blog Processor: Function pipeline completed successfully")
 
+            # Propagate pipeline-level failure so the worker marks the job failed
+            if pipeline_result.get("pipeline_status") == "failed":
+                error_msg = pipeline_result.get("metadata", {}).get(
+                    "error", "Pipeline reported failure"
+                )
+                logger.error(
+                    f"Blog Processor: Pipeline returned failed status: {error_msg}"
+                )
+                return json.dumps(
+                    {
+                        "status": "error",
+                        "error": "pipeline_failed",
+                        "message": error_msg,
+                        "pipeline_result": pipeline_result,
+                    }
+                )
+
         except ValueError as e:
             # Approval rejected by user
             logger.error(f"Blog Processor: Content rejected during approval: {e}")
