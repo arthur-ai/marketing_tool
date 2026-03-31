@@ -473,7 +473,7 @@ async def process_social_media_job(
                 pipeline_config=PipelineConfig(
                     default_model="gpt-5.1",
                     default_temperature=0.7,
-                    default_max_retries=2,
+                    default_max_retries=3,
                     step_configs={},
                 )
             )
@@ -635,7 +635,7 @@ async def process_multi_platform_social_media_job(
                 pipeline_config=PipelineConfig(
                     default_model="gpt-5.1",
                     default_temperature=0.7,
-                    default_max_retries=2,
+                    default_max_retries=3,
                     step_configs={},
                 )
             )

@@ -238,6 +238,12 @@ class LLMClient:
         except litellm.ServiceUnavailableError:
             logger.warning("Provider '%s' is temporarily unavailable", self.provider)
             raise
+        except litellm.BadGatewayError:
+            logger.warning(
+                "Bad gateway (502) from provider '%s' — transient, will retry",
+                self.provider,
+            )
+            raise
         except Exception:
             logger.error(
                 "Unexpected error calling provider '%s'", self.provider, exc_info=True

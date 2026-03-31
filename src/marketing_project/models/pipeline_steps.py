@@ -1352,7 +1352,7 @@ class PipelineConfig(BaseModel):
         default=0.7, ge=0.0, le=2.0, description="Default sampling temperature"
     )
     default_max_retries: int = Field(
-        default=2, ge=0, description="Default maximum number of retries"
+        default=3, ge=0, description="Default maximum number of retries"
     )
     step_configs: Dict[str, PipelineStepConfig] = Field(
         default_factory=dict,
