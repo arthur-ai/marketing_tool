@@ -16,8 +16,9 @@ from marketing_project.services.design_kit_manager import (
 @pytest.fixture
 def mock_redis_manager():
     """Mock Redis manager."""
+    # design_kit_manager is a shim — patch the real module that uses get_redis_manager
     with patch(
-        "marketing_project.services.design_kit_manager.get_redis_manager"
+        "marketing_project.services.brand_kit_manager.get_redis_manager"
     ) as mock:
         manager = MagicMock()
         manager.get_redis = AsyncMock(return_value=MagicMock())
@@ -30,7 +31,7 @@ def mock_redis_manager():
 def mock_db_manager():
     """Mock database manager."""
     with patch(
-        "marketing_project.services.design_kit_manager.get_database_manager"
+        "marketing_project.services.brand_kit_manager.get_database_manager"
     ) as mock:
         manager = MagicMock()
         manager.is_initialized = True

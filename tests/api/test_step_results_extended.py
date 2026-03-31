@@ -23,6 +23,7 @@ def mock_job_manager_ownership():
     mock_job.user_id = "test-user-123"
     mock_mgr = MagicMock()
     mock_mgr.get_job = AsyncMock(return_value=mock_job)
+    mock_mgr.list_jobs = AsyncMock(return_value=[])
     with patch(
         "marketing_project.api.step_results.get_job_manager",
         return_value=mock_mgr,

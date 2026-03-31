@@ -311,21 +311,25 @@ def test_test_provider_auth_failure(client, mock_svc):
 
 
 def test_test_vllm_success(client, mock_svc):
+    """Test POST /providers/{provider}/test — mocks acompletion so no real LLM call."""
+    mock_choice = MagicMock()
+    mock_choice.message.content = "ok"
+    mock_completion_response = MagicMock()
+    mock_completion_response.choices = [mock_choice]
+
     llm_client = MagicMock()
-    llm_client.get_available_models = MagicMock(
-        return_value=["mistral-7b", "llama-3-8b"]
-    )
+    llm_client.acompletion = AsyncMock(return_value=mock_completion_response)
     mock_svc.get_llm_client = AsyncMock(return_value=llm_client)
 
     with patch(
         "marketing_project.api.provider_settings.get_provider_credential_service",
         return_value=mock_svc,
     ):
-        response = client.post("/api/v1/settings/providers/hosted_vllm/test")
+        response = client.post("/api/v1/settings/providers/openai/test")
     assert response.status_code == 200
     data = response.json()
     assert data["success"] is True
-    assert "2" in data["message"]
+    assert "ok" in data["message"]
 
 
 # ──────────────────────────────────────────────

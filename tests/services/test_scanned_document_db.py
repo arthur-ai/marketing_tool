@@ -2,10 +2,8 @@
 Tests for scanned document database service.
 """
 
-import tempfile
 from datetime import datetime
-from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -19,171 +17,219 @@ from marketing_project.services.scanned_document_db import (
 )
 
 
-@pytest.fixture
-def temp_db_path():
-    """Create a temporary database path."""
-    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
-        temp_path = f.name
+def _make_db_mock(scalar_result=None, scalars_result=None, rowcount=0):
+    """Build a mock db_manager with a fully async session."""
+    mock_db_mgr = MagicMock()
+    mock_db_mgr.is_initialized = True
 
-    yield temp_path
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = scalar_result
+    if scalars_result is not None:
+        mock_result.scalars.return_value.all.return_value = scalars_result
+    mock_result.rowcount = rowcount
 
-    # Cleanup
-    Path(temp_path).unlink(missing_ok=True)
+    mock_session = AsyncMock()
+    mock_session.execute = AsyncMock(return_value=mock_result)
+    mock_session.add = MagicMock()
+    mock_session.flush = AsyncMock()
 
-
-@pytest.fixture
-def scanned_doc_db(temp_db_path):
-    """Create a ScannedDocumentDatabase instance."""
-    return ScannedDocumentDatabase(db_path=temp_db_path)
-
-
-def test_initialization(scanned_doc_db, temp_db_path):
-    """Test database initialization."""
-    assert scanned_doc_db.db_path == temp_db_path
-    assert Path(temp_db_path).exists()
-
-
-def test_ensure_db_directory(scanned_doc_db):
-    """Test _ensure_db_directory method."""
-    scanned_doc_db._ensure_db_directory()
-
-    # Directory should exist
-    assert Path(scanned_doc_db.db_path).parent.exists()
-
-
-def test_init_database(scanned_doc_db):
-    """Test _init_database method."""
-    scanned_doc_db._init_database()
-
-    # Database file should exist
-    assert Path(scanned_doc_db.db_path).exists()
-
-
-def test_save_document(scanned_doc_db):
-    """Test saving a document."""
-    from marketing_project.models.scanned_document_db import ScannedDocumentDB
-
-    document = ScannedDocumentDB(
-        title="Test Document",
-        url="https://example.com/test",
-        scanned_at=datetime.now(),
-        metadata=ScannedDocumentMetadata(
-            content_text="Test content",
-            content_type="blog_post",
-        ),
+    mock_db_mgr.get_session.return_value.__aenter__ = AsyncMock(
+        return_value=mock_session
     )
-
-    doc_id = scanned_doc_db.save_document(document)
-
-    assert doc_id is not None
-    assert isinstance(doc_id, int)
+    mock_db_mgr.get_session.return_value.__aexit__ = AsyncMock(return_value=False)
+    return mock_db_mgr, mock_session, mock_result
 
 
-def test_get_document_by_url(scanned_doc_db):
-    """Test getting document by URL."""
-    from datetime import datetime
-
-    from marketing_project.models.scanned_document_db import ScannedDocumentDB
-
-    document = ScannedDocumentDB(
-        title="Test Document",
-        url="https://example.com/test",
-        scanned_at=datetime.now(),
-        metadata=ScannedDocumentMetadata(
-            content_text="Test content",
-        ),
-    )
-
-    doc_id = scanned_doc_db.save_document(document)
-    doc = scanned_doc_db.get_document_by_url("https://example.com/test")
-
-    assert doc is not None
-    assert doc.id == doc_id
-    assert doc.title == "Test Document"
-
-
-def test_get_all_active_documents(scanned_doc_db):
-    """Test getting all active documents."""
-    from datetime import datetime
-
-    from marketing_project.models.scanned_document_db import ScannedDocumentDB
-
-    doc1 = ScannedDocumentDB(
-        title="Doc 1",
-        url="https://example.com/1",
-        scanned_at=datetime.now(),
-        metadata=ScannedDocumentMetadata(content_text="Content 1"),
-    )
-    doc2 = ScannedDocumentDB(
-        title="Doc 2",
-        url="https://example.com/2",
-        scanned_at=datetime.now(),
-        metadata=ScannedDocumentMetadata(content_text="Content 2"),
-    )
-
-    scanned_doc_db.save_document(doc1)
-    scanned_doc_db.save_document(doc2)
-
-    docs = scanned_doc_db.get_all_active_documents()
-
-    assert len(docs) >= 2
-
-
-def test_update_document(scanned_doc_db):
-    """Test updating a document."""
-    from datetime import datetime
-
-    from marketing_project.models.scanned_document_db import ScannedDocumentDB
-
-    document = ScannedDocumentDB(
+def _sample_doc():
+    return ScannedDocumentDB(
         title="Test Document",
         url="https://example.com/test",
         scanned_at=datetime.now(),
         metadata=ScannedDocumentMetadata(content_text="Test content"),
     )
 
-    doc_id = scanned_doc_db.save_document(document)
 
-    updated_doc = ScannedDocumentDB(
-        title="Updated Document",
-        url="https://example.com/test",
-        scanned_at=datetime.now(),
-        metadata=ScannedDocumentMetadata(content_text="Updated content"),
-    )
-
-    updated_id = scanned_doc_db.save_document(updated_doc)
-
-    assert updated_id == doc_id  # Should update existing
-
-    doc = scanned_doc_db.get_document_by_url("https://example.com/test")
-    assert doc.title == "Updated Document"
+@pytest.fixture
+def scanned_doc_db():
+    """Create a ScannedDocumentDatabase instance (no args required)."""
+    return ScannedDocumentDatabase()
 
 
-def test_delete_document(scanned_doc_db):
-    """Test deleting a document."""
-    from datetime import datetime
+def test_initialization(scanned_doc_db):
+    """ScannedDocumentDatabase instantiates without arguments."""
+    assert scanned_doc_db is not None
+    assert isinstance(scanned_doc_db, ScannedDocumentDatabase)
 
-    from marketing_project.models.scanned_document_db import ScannedDocumentDB
 
-    document = ScannedDocumentDB(
-        title="Test Document",
-        url="https://example.com/test",
-        scanned_at=datetime.now(),
-        metadata=ScannedDocumentMetadata(content_text="Test content"),
-    )
+@pytest.mark.asyncio
+async def test_save_document_new(scanned_doc_db):
+    """Test saving a new document inserts and returns an ID."""
+    mock_model = MagicMock()
+    mock_model.id = 42
+    mock_db_mgr, mock_session, mock_result = _make_db_mock(scalar_result=None)
+    # scalar_one_or_none returns None → new insert path
+    mock_result.scalar_one_or_none.return_value = None
 
-    scanned_doc_db.save_document(document)
-    success = scanned_doc_db.delete_document("https://example.com/test")
+    async def fake_flush():
+        mock_model.id = 42
+
+    mock_session.flush = fake_flush
+    mock_session.add = MagicMock()
+
+    # Patch add so we can set id on the added object
+    added_objects = []
+
+    def capture_add(obj):
+        obj.id = 42
+        added_objects.append(obj)
+
+    mock_session.add = capture_add
+
+    with patch(
+        "marketing_project.services.scanned_document_db.get_database_manager",
+        return_value=mock_db_mgr,
+    ):
+        doc = _sample_doc()
+        doc_id = await scanned_doc_db.save_document(doc)
+
+    assert doc_id == 42
+
+
+@pytest.mark.asyncio
+async def test_save_document_update(scanned_doc_db):
+    """Test saving an existing document updates it and returns the existing ID."""
+    existing = MagicMock()
+    existing.id = 7
+    existing.scan_count = 1
+
+    mock_db_mgr, _, mock_result = _make_db_mock(scalar_result=existing)
+    mock_result.scalar_one_or_none.return_value = existing
+
+    with patch(
+        "marketing_project.services.scanned_document_db.get_database_manager",
+        return_value=mock_db_mgr,
+    ):
+        doc = _sample_doc()
+        doc_id = await scanned_doc_db.save_document(doc)
+
+    assert doc_id == 7
+
+
+@pytest.mark.asyncio
+async def test_get_document_by_url_not_found(scanned_doc_db):
+    """Returns None when the document is not in the DB."""
+    mock_db_mgr, _, mock_result = _make_db_mock(scalar_result=None)
+    mock_result.scalar_one_or_none.return_value = None
+
+    with patch(
+        "marketing_project.services.scanned_document_db.get_database_manager",
+        return_value=mock_db_mgr,
+    ):
+        result = await scanned_doc_db.get_document_by_url("https://example.com/missing")
+
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_get_document_by_url_found(scanned_doc_db):
+    """Returns a ScannedDocumentDB when the document exists."""
+    mock_row = MagicMock()
+    mock_row.id = 1
+    mock_row.title = "Test Document"
+    mock_row.url = "https://example.com/test"
+    mock_row.scanned_at = datetime.now()
+    mock_row.last_scanned_at = datetime.now()
+    mock_row.metadata_json = {"content_text": "Test content"}
+    mock_row.is_active = True
+    mock_row.scan_count = 1
+    mock_row.relevance_score = None
+    mock_row.related_documents = []
+
+    mock_db_mgr, _, mock_result = _make_db_mock(scalar_result=mock_row)
+    mock_result.scalar_one_or_none.return_value = mock_row
+
+    with patch(
+        "marketing_project.services.scanned_document_db.get_database_manager",
+        return_value=mock_db_mgr,
+    ):
+        result = await scanned_doc_db.get_document_by_url("https://example.com/test")
+
+    assert result is not None
+    assert result.title == "Test Document"
+
+
+@pytest.mark.asyncio
+async def test_get_all_active_documents(scanned_doc_db):
+    """Returns a list of active documents."""
+    mock_row = MagicMock()
+    mock_row.id = 1
+    mock_row.title = "Doc"
+    mock_row.url = "https://example.com/1"
+    mock_row.scanned_at = datetime.now()
+    mock_row.last_scanned_at = datetime.now()
+    mock_row.metadata_json = {}
+    mock_row.is_active = True
+    mock_row.scan_count = 1
+    mock_row.relevance_score = None
+    mock_row.related_documents = []
+
+    mock_db_mgr, _, mock_result = _make_db_mock(scalars_result=[mock_row])
+
+    with patch(
+        "marketing_project.services.scanned_document_db.get_database_manager",
+        return_value=mock_db_mgr,
+    ):
+        docs = await scanned_doc_db.get_all_active_documents()
+
+    assert len(docs) >= 1
+
+
+@pytest.mark.asyncio
+async def test_delete_document(scanned_doc_db):
+    """Delete returns True when a row is deleted."""
+    mock_db_mgr, _, mock_result = _make_db_mock(rowcount=1)
+    mock_result.rowcount = 1
+
+    with patch(
+        "marketing_project.services.scanned_document_db.get_database_manager",
+        return_value=mock_db_mgr,
+    ):
+        success = await scanned_doc_db.delete_document("https://example.com/test")
 
     assert success is True
 
-    doc = scanned_doc_db.get_document_by_url("https://example.com/test")
-    assert doc is None
+
+@pytest.mark.asyncio
+async def test_delete_document_not_found(scanned_doc_db):
+    """Delete returns False when no row is deleted."""
+    mock_db_mgr, _, mock_result = _make_db_mock(rowcount=0)
+    mock_result.rowcount = 0
+
+    with patch(
+        "marketing_project.services.scanned_document_db.get_database_manager",
+        return_value=mock_db_mgr,
+    ):
+        success = await scanned_doc_db.delete_document("https://example.com/missing")
+
+    assert success is False
+
+
+@pytest.mark.asyncio
+async def test_save_document_db_not_initialized(scanned_doc_db):
+    """Raises RuntimeError when DB is not initialized."""
+    mock_db_mgr = MagicMock()
+    mock_db_mgr.is_initialized = False
+
+    with patch(
+        "marketing_project.services.scanned_document_db.get_database_manager",
+        return_value=mock_db_mgr,
+    ):
+        with pytest.raises(RuntimeError, match="Database not initialized"):
+            await scanned_doc_db.save_document(_sample_doc())
 
 
 def test_get_scanned_document_db_singleton():
-    """Test that get_scanned_document_db returns a singleton."""
+    """get_scanned_document_db returns the same instance each time."""
     db1 = get_scanned_document_db()
     db2 = get_scanned_document_db()
-
     assert db1 is db2

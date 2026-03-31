@@ -141,14 +141,34 @@ async def test_decide_approval(approval_manager):
 @pytest.mark.asyncio
 async def test_get_approvals_for_job(approval_manager):
     """Test getting approvals for a job."""
-    await approval_manager.create_approval_request(
+    req1 = await approval_manager.create_approval_request(
         "test-job-1", "test-agent", "seo_keywords", {}, {}
     )
-    await approval_manager.create_approval_request(
+    req2 = await approval_manager.create_approval_request(
         "test-job-1", "test-agent", "marketing_brief", {}, {}
     )
 
-    approvals = await approval_manager.list_approvals(job_id="test-job-1")
+    mock_row1 = MagicMock()
+    mock_row1.to_approval_request.return_value = req1
+    mock_row2 = MagicMock()
+    mock_row2.to_approval_request.return_value = req2
+
+    mock_db_mgr = MagicMock()
+    mock_db_mgr.is_initialized = True
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.all.return_value = [mock_row1, mock_row2]
+    mock_session = AsyncMock()
+    mock_session.execute = AsyncMock(return_value=mock_result)
+    mock_db_mgr.get_session.return_value.__aenter__ = AsyncMock(
+        return_value=mock_session
+    )
+    mock_db_mgr.get_session.return_value.__aexit__ = AsyncMock(return_value=False)
+
+    with patch(
+        "marketing_project.services.approval_manager.get_database_manager",
+        return_value=mock_db_mgr,
+    ):
+        approvals = await approval_manager.list_approvals(job_id="test-job-1")
 
     assert len(approvals) >= 2
 
