@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.3.0] - 2026-04-01
+
+### Added
+- Test coverage raised to 70%+ across approval flow, job management, pipeline preprocessing, social media plugins, and API endpoints — clearing the CI gate (`--cov-fail-under=70`)
+- 500+ new tests across `api/`, `plugins/`, `processors/`, `services/` covering edge cases previously untested
+
+### Fixed
+- Approval chain root-walk in both approve and reject+retry paths now detects cycles via a `visited` set — prevents infinite loops when job chains contain circular `ORIGINAL_JOB_ID` references
+- `delete_jobs_before` in `job_manager.py`: `deleted_ids` is now only populated after a successful PostgreSQL `COMMIT`, eliminating a TOCTOU window where Redis and in-memory stores were purged even when the DB delete failed (ghost 404 bug)
+- Concurrent rejection race in `approval_manager.py`: `WAITING_FOR_APPROVAL` guard prevents two simultaneous rejection calls from overwriting each other's `retry_job_id` metadata and creating duplicate retry jobs
+- `update_parent_job_status` call in the approve path now runs *after* `submit_to_arq`, so the parent job correctly observes the resume job in `QUEUED` state (not `PENDING`)
+- `keyword_difficulty` (`Dict[str, float]`) added to `_llm_exclude_fields` — `additionalProperties: false` in Anthropic structured output overwrites `Dict` field schemas, causing schema validation failures; this field is populated post-processing
+- `delete_jobs_before` endpoint returns HTTP 400 when the `before` timestamp is in the future
+
 ## [0.1.2.0] - 2026-04-01
 
 ### Fixed
