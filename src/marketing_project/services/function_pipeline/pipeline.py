@@ -107,7 +107,6 @@ class FunctionPipeline:
 
     def __init__(
         self,
-        model: str = "gpt-5.1",
         temperature: float = 0.7,
         lang: str = "en",
         pipeline_config: Optional[PipelineConfig] = None,
@@ -116,8 +115,7 @@ class FunctionPipeline:
         Initialize the function pipeline.
 
         Args:
-            model: OpenAI model to use (default: gpt-5.1) - used if pipeline_config not provided
-            temperature: Sampling temperature (default: 0.7) - used if pipeline_config not provided
+            temperature: Sampling temperature (default: 0.7)
             lang: Language for prompts (default: "en")
             pipeline_config: Optional PipelineConfig for per-step model configuration
         """
@@ -126,17 +124,13 @@ class FunctionPipeline:
         self.step_info: List[PipelineStepInfo] = []
         self.llm_client = LLMClient(self.client)
 
-        # Support both old-style (model, temperature) and new-style (pipeline_config)
         if pipeline_config:
             self.pipeline_config = pipeline_config
-            self.model = pipeline_config.default_model
             self.temperature = pipeline_config.default_temperature
         else:
             self.pipeline_config = PipelineConfig(
-                default_model=model,
                 default_temperature=temperature,
             )
-            self.model = model
             self.temperature = temperature
 
         # Define optional steps that can fail without stopping the pipeline
@@ -542,7 +536,6 @@ class FunctionPipeline:
         # Update pipeline config if provided
         if pipeline_config:
             self.pipeline_config = pipeline_config
-            self.model = pipeline_config.default_model
             self.temperature = pipeline_config.default_temperature
         pipeline_start = time.time()
         logger.info("=" * 80)
@@ -602,7 +595,6 @@ class FunctionPipeline:
                 attributes={
                     "pipeline.job_id": job_id or "",
                     "pipeline.content_type": content_type,
-                    "pipeline.model": self.model,
                     "pipeline.temperature": self.temperature,
                 },
             )
@@ -948,7 +940,6 @@ class FunctionPipeline:
                 content_type=content_type,
                 execution_time=execution_time,
                 total_tokens=total_tokens,
-                model=self.model,
                 step_info=self.step_info,
                 failed_steps=failed_steps if failed_steps else None,
                 quality_warnings=quality_warnings if quality_warnings else None,
@@ -1052,7 +1043,6 @@ class FunctionPipeline:
         # Update pipeline config if provided
         if pipeline_config:
             self.pipeline_config = pipeline_config
-            self.model = pipeline_config.default_model
             self.temperature = pipeline_config.default_temperature
         pipeline_start = time.time()
         logger.info("=" * 80)
@@ -1347,7 +1337,6 @@ class FunctionPipeline:
                 total_tokens=sum(
                     step.tokens_used for step in self.step_info if step.tokens_used
                 ),
-                model=self.model,
                 step_info=self.step_info,
                 failed_steps=None,
                 quality_warnings=quality_warnings if quality_warnings else None,
@@ -1392,7 +1381,6 @@ class FunctionPipeline:
         # Update pipeline config if provided
         if pipeline_config:
             self.pipeline_config = pipeline_config
-            self.model = pipeline_config.default_model
             self.temperature = pipeline_config.default_temperature
 
         step_start = time.time()
@@ -1522,7 +1510,6 @@ class FunctionPipeline:
                 "result": result_dict,
                 "execution_time_seconds": execution_time,
                 "total_tokens_used": total_tokens,
-                "model": self.model,
                 "step_info": [
                     (
                         step.model_dump(mode="json")

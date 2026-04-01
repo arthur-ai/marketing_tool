@@ -283,7 +283,6 @@ class UserSettingsModel(Base):
                 else None
             ),
             "approval_timeout_seconds": self.approval_timeout_seconds,
-            "preferred_model": self.preferred_model,
             "preferred_temperature": (
                 float(self.preferred_temperature)
                 if self.preferred_temperature is not None

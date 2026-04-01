@@ -783,12 +783,25 @@ class SEOKeywordsPlugin(PipelineStepPlugin):
                     "_execution_step_number", self.step_number
                 )
 
-                # Get prompt and system instruction for approval context
-                prompt_context = self._build_prompt_context(context)
-                prompt = pipeline._get_user_prompt(self.step_name, prompt_context)
-                system_instruction = pipeline._get_system_instruction(
-                    self.step_name, context=prompt_context
+                # Get prompt and system instruction for approval context via Arthur
+                from jinja2 import Environment as _JinjaEnv
+
+                from marketing_project.services.arthur_prompt_client import (
+                    fetch_arthur_prompt as _fetch_arthur,
                 )
+
+                prompt_context = self._build_prompt_context(context)
+                _arthur = await _fetch_arthur(self.step_name)
+                if _arthur is not None:
+                    prompt = (
+                        _JinjaEnv(autoescape=False)
+                        .from_string(_arthur.user_template)
+                        .render(**prompt_context)
+                    )
+                    system_instruction = _arthur.system_content
+                else:
+                    prompt = f"Process content for {self.step_name} step."
+                    system_instruction = ""
 
                 # Check approval
                 approval_result = await check_step_approval(

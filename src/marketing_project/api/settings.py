@@ -60,7 +60,6 @@ async def get_pipeline_settings(user: UserContext = Depends(require_roles(["admi
             # Return default settings if none found
             return PipelineSettingsResponse(
                 pipeline_config={
-                    "default_model": "gpt-5.1",
                     "default_temperature": 0.7,
                     "default_max_retries": 2,
                     "step_configs": {},

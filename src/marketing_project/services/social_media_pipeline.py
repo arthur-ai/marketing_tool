@@ -69,7 +69,6 @@ class SocialMediaPipeline:
 
     def __init__(
         self,
-        model: Optional[str] = None,
         temperature: Optional[float] = None,
         lang: str = "en",
         pipeline_config: Optional[PipelineConfig] = None,
@@ -78,8 +77,7 @@ class SocialMediaPipeline:
         Initialize the social media pipeline.
 
         Args:
-            model: OpenAI model to use (deprecated: use pipeline_config instead)
-            temperature: Sampling temperature (deprecated: use pipeline_config instead)
+            temperature: Sampling temperature
             lang: Language for prompts (default: "en")
             pipeline_config: Optional PipelineConfig for per-step model configuration
         """
@@ -87,17 +85,12 @@ class SocialMediaPipeline:
         self.step_info: list[PipelineStepInfo] = []
         self._platform_config: Optional[Dict[str, Any]] = None
 
-        # Support both old-style (model, temperature) and new-style (pipeline_config)
         if pipeline_config:
             self.pipeline_config = pipeline_config
-            self.model = pipeline_config.default_model
             self.temperature = pipeline_config.default_temperature
         else:
-            # Use provided values or defaults (but note: models should be configured in settings)
-            self.model = model or "gpt-5.1"
             self.temperature = temperature if temperature is not None else 0.7
             self.pipeline_config = PipelineConfig(
-                default_model=self.model,
                 default_temperature=self.temperature,
                 default_max_retries=2,
                 step_configs={},
@@ -866,7 +859,6 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
         # Update pipeline config if provided
         if pipeline_config:
             self.pipeline_config = pipeline_config
-            self.model = pipeline_config.default_model
             self.temperature = pipeline_config.default_temperature
         pipeline_start = time.time()
         logger.info("=" * 80)
@@ -1194,7 +1186,6 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                     "steps_completed": len(results),
                     "execution_time_seconds": execution_time,
                     "total_tokens_used": total_tokens,
-                    "model": self.model,
                     "completed_at": datetime.now(timezone.utc).isoformat(),
                     "platform_quality_scores": platform_quality_scores,
                     "variations_generated": (
@@ -1268,7 +1259,6 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                             for step in self.step_info
                             if step.tokens_used
                         ),
-                        "model": self.model,
                         "stopped_at_step": e.step_number,
                         "stopped_at_step_name": e.step_name,
                         "approval_id": e.approval_id,
@@ -1647,7 +1637,7 @@ Include confidence_score (0-1) and any other quality metrics defined in the outp
                 "email_type": email_type,
                 "title": content.get("title"),
                 "execution_time_seconds": execution_time,
-                "model": self.model,
+                "model": None,
                 "completed_at": datetime.now(timezone.utc).isoformat(),
             },
         }

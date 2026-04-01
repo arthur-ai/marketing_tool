@@ -209,7 +209,7 @@ If a pattern is not clearly present, use an empty list [] or null. Only include 
 
         Args:
             use_internal_docs: Whether to fetch and analyze all content from internal_docs
-            model: OpenAI model to use (defaults to OPENAI_MODEL env var or gpt-5.1)
+            model: Optional model override — Arthur's model takes precedence when not set
             temperature: Sampling temperature (default: 0.7)
 
         Returns:
@@ -235,10 +235,8 @@ If a pattern is not clearly present, use an empty list [] or null. Only include 
             arthur_provider = arthur_result.model_provider if arthur_result else None
             arthur_model_config = arthur_result.model_config if arthur_result else None
 
-            # Resolve effective model: explicit arg > Arthur > env var > default
-            effective_model = (
-                model or arthur_model or os.getenv("OPENAI_MODEL", "gpt-5.1")
-            )
+            # Resolve effective model: explicit arg > Arthur
+            effective_model = model or arthur_model
 
             # Use FunctionPipeline infrastructure for consistency
             pipeline = FunctionPipeline(

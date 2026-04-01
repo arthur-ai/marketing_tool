@@ -471,7 +471,6 @@ async def process_social_media_job(
 
             pipeline = SocialMediaPipeline(
                 pipeline_config=PipelineConfig(
-                    default_model="gpt-5.1",
                     default_temperature=0.7,
                     default_max_retries=3,
                     step_configs={},
@@ -633,7 +632,6 @@ async def process_multi_platform_social_media_job(
 
             pipeline = SocialMediaPipeline(
                 pipeline_config=PipelineConfig(
-                    default_model="gpt-5.1",
                     default_temperature=0.7,
                     default_max_retries=3,
                     step_configs={},
@@ -743,9 +741,7 @@ async def analyze_brand_kit_batch_job(
         from marketing_project.plugins.brand_kit.tasks import BrandKitPlugin
         from marketing_project.services.function_pipeline import FunctionPipeline
 
-        pipeline = FunctionPipeline(
-            model=os.getenv("OPENAI_MODEL", "gpt-5.1"), temperature=0.7
-        )
+        pipeline = FunctionPipeline(temperature=0.7)
 
         plugin = BrandKitPlugin()
         analyses = []
@@ -834,9 +830,7 @@ async def synthesize_brand_kit_job(
         from marketing_project.plugins.brand_kit.tasks import BrandKitPlugin
         from marketing_project.services.function_pipeline import FunctionPipeline
 
-        pipeline = FunctionPipeline(
-            model=os.getenv("OPENAI_MODEL", "gpt-5.1"), temperature=0.7
-        )
+        pipeline = FunctionPipeline(temperature=0.7)
 
         plugin = BrandKitPlugin()
 
@@ -1383,9 +1377,7 @@ async def resume_pipeline_job(
         from marketing_project.services.function_pipeline import FunctionPipeline
 
         # Create pipeline and resume
-        pipeline = FunctionPipeline(
-            model=os.getenv("OPENAI_MODEL", "gpt-5.1"), temperature=0.7
-        )
+        pipeline = FunctionPipeline(temperature=0.7)
 
         # Determine content type from context
         content_type = context_data.get("content_type", "blog_post")
