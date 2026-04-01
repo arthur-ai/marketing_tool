@@ -33,7 +33,6 @@ async def test_execute_pipeline_with_pipeline_config(function_pipeline):
 
     content_json = '{"id": "test-1", "title": "Test", "content": "Content"}'
     pipeline_config = PipelineConfig(
-        default_model="gpt-4",
         default_temperature=0.5,
         default_max_retries=3,
     )
@@ -52,7 +51,6 @@ async def test_execute_pipeline_with_pipeline_config(function_pipeline):
         )
 
         assert result is not None
-        assert function_pipeline.model == "gpt-4"
         assert function_pipeline.temperature == 0.5
 
 
@@ -128,7 +126,6 @@ async def test_resume_pipeline_with_pipeline_config(function_pipeline):
     }
 
     pipeline_config = PipelineConfig(
-        default_model="gpt-4",
         default_temperature=0.5,
     )
 
@@ -146,7 +143,7 @@ async def test_resume_pipeline_with_pipeline_config(function_pipeline):
         )
 
         assert result is not None
-        assert function_pipeline.model == "gpt-4"
+        assert function_pipeline.temperature == 0.5
 
 
 @pytest.mark.asyncio
@@ -157,7 +154,6 @@ async def test_execute_single_step_with_pipeline_config(function_pipeline):
     content_json = '{"id": "test-1", "title": "Test", "content": "Content"}'
     context = {"input_content": {"id": "test-1", "title": "Test"}}
     pipeline_config = PipelineConfig(
-        default_model="gpt-4",
         default_temperature=0.5,
     )
 
@@ -185,4 +181,4 @@ async def test_execute_single_step_with_pipeline_config(function_pipeline):
             )
 
             assert result is not None
-            assert function_pipeline.model == "gpt-4"
+            assert function_pipeline.temperature == 0.5

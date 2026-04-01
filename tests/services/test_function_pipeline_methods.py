@@ -47,11 +47,10 @@ def test_get_user_prompt(function_pipeline):
 
 
 def test_get_step_model(function_pipeline):
-    """Test _get_step_model method."""
+    """Test _get_step_model method returns None or a non-empty string (Arthur supplies the model)."""
     model = function_pipeline._get_step_model("seo_keywords")
 
-    assert isinstance(model, str)
-    assert len(model) > 0
+    assert model is None or (isinstance(model, str) and len(model) > 0)
 
 
 def test_get_step_temperature(function_pipeline):
@@ -75,23 +74,25 @@ async def test_call_function_success(function_pipeline, mock_openai):
     """Test _call_function with successful response."""
     from marketing_project.models.pipeline_steps import SEOKeywordsResult
 
-    mock_response = MagicMock()
-    mock_response.choices = [MagicMock()]
-    mock_response.choices[0].message.parsed = SEOKeywordsResult(
+    mock_result = SEOKeywordsResult(
         main_keyword="test",
         primary_keywords=["test1"],
         search_intent="informational",
         confidence_score=0.9,
     )
-    mock_openai.beta.chat.completions.parse = AsyncMock(return_value=mock_response)
 
-    result = await function_pipeline._call_function(
-        prompt="Test prompt",
-        system_instruction="Test instruction",
-        response_model=SEOKeywordsResult,
-        step_name="seo_keywords",
-        step_number=1,
-    )
+    with patch(
+        "marketing_project.services.function_pipeline.providers.call_llm_structured",
+        new=AsyncMock(return_value=(mock_result, MagicMock())),
+    ):
+        result = await function_pipeline._call_function(
+            prompt="Test prompt",
+            system_instruction="Test instruction",
+            response_model=SEOKeywordsResult,
+            step_name="seo_keywords",
+            step_number=1,
+            model_override="gpt-4o",
+        )
 
     assert result is not None
     assert hasattr(result, "main_keyword")
@@ -102,29 +103,28 @@ async def test_call_function_with_retry(function_pipeline, mock_openai):
     """Test _call_function with retry on failure."""
     from marketing_project.models.pipeline_steps import SEOKeywordsResult
 
-    # First call fails, second succeeds
-    mock_response_success = MagicMock()
-    mock_response_success.choices = [MagicMock()]
-    mock_response_success.choices[0].message.parsed = SEOKeywordsResult(
+    mock_result = SEOKeywordsResult(
         main_keyword="test",
         primary_keywords=["test1"],
         search_intent="informational",
         confidence_score=0.9,
     )
 
-    mock_openai.beta.chat.completions.parse = AsyncMock(
-        side_effect=[Exception("Network error"), mock_response_success]
-    )
-
-    # Should retry and succeed
-    result = await function_pipeline._call_function(
-        prompt="Test prompt",
-        system_instruction="Test instruction",
-        response_model=SEOKeywordsResult,
-        step_name="seo_keywords",
-        step_number=1,
-        context={},
-    )
+    with patch(
+        "marketing_project.services.function_pipeline.providers.call_llm_structured",
+        new=AsyncMock(
+            side_effect=[Exception("Network error"), (mock_result, MagicMock())]
+        ),
+    ):
+        result = await function_pipeline._call_function(
+            prompt="Test prompt",
+            system_instruction="Test instruction",
+            response_model=SEOKeywordsResult,
+            step_name="seo_keywords",
+            step_number=1,
+            context={},
+            model_override="gpt-4o",
+        )
 
     assert result is not None
 

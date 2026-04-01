@@ -46,11 +46,10 @@ class TestFunctionPipelineHelpers:
         assert len(prompt) > 0
 
     def test_get_step_model(self, function_pipeline):
-        """Test _get_step_model method."""
+        """Test _get_step_model method returns None or a non-empty string (Arthur supplies the model)."""
         model = function_pipeline._get_step_model("seo_keywords")
 
-        assert isinstance(model, str)
-        assert len(model) > 0
+        assert model is None or (isinstance(model, str) and len(model) > 0)
 
     def test_get_step_temperature(self, function_pipeline):
         """Test _get_step_temperature method."""
@@ -71,24 +70,24 @@ class TestFunctionPipelineHelpers:
         """Test _call_function method."""
         from marketing_project.models.pipeline_steps import SEOKeywordsResult
 
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.parsed = SEOKeywordsResult(
+        mock_result = SEOKeywordsResult(
             main_keyword="test",
             primary_keywords=["test"],
             search_intent="informational",
         )
-        mock_response.usage = MagicMock()
-        mock_response.usage.total_tokens = 100
-        mock_openai.beta.chat.completions.parse = AsyncMock(return_value=mock_response)
 
-        result = await function_pipeline._call_function(
-            prompt="Test prompt",
-            system_instruction="Test instruction",
-            response_model=SEOKeywordsResult,
-            step_name="seo_keywords",
-            step_number=1,
-        )
+        with patch(
+            "marketing_project.services.function_pipeline.providers.call_llm_structured",
+            new=AsyncMock(return_value=(mock_result, MagicMock())),
+        ):
+            result = await function_pipeline._call_function(
+                prompt="Test prompt",
+                system_instruction="Test instruction",
+                response_model=SEOKeywordsResult,
+                step_name="seo_keywords",
+                step_number=1,
+                model_override="gpt-4o",
+            )
 
         assert result is not None
 

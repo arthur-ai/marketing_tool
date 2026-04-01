@@ -36,7 +36,7 @@ async def test_get_pipeline_settings_default(mock_settings_manager):
     data = response.json()
     assert "pipeline_config" in data
     assert "optional_steps" in data
-    assert data["pipeline_config"]["default_model"] == "gpt-5.1"
+    assert "default_model" not in data["pipeline_config"]
 
 
 @pytest.mark.asyncio
@@ -45,7 +45,7 @@ async def test_get_pipeline_settings_existing(mock_settings_manager):
     from marketing_project.services.pipeline_settings_manager import PipelineSettings
 
     mock_settings = PipelineSettings(
-        pipeline_config={"default_model": "gpt-4", "default_temperature": 0.5},
+        pipeline_config={"default_temperature": 0.5},
         optional_steps=["suggested_links"],
         retry_strategy={"max_retries": 3},
     )
@@ -55,7 +55,7 @@ async def test_get_pipeline_settings_existing(mock_settings_manager):
 
     assert response.status_code == 200
     data = response.json()
-    assert data["pipeline_config"]["default_model"] == "gpt-4"
+    assert data["pipeline_config"]["default_temperature"] == 0.5
     assert data["optional_steps"] == ["suggested_links"]
 
 
@@ -64,7 +64,6 @@ async def test_save_pipeline_settings(mock_settings_manager):
     """Test saving pipeline settings."""
     request_data = {
         "pipeline_config": {
-            "default_model": "gpt-4",
             "default_temperature": 0.7,
         },
         "optional_steps": ["suggested_links", "design_kit"],
@@ -75,7 +74,7 @@ async def test_save_pipeline_settings(mock_settings_manager):
 
     assert response.status_code == 200
     data = response.json()
-    assert data["pipeline_config"]["default_model"] == "gpt-4"
+    assert data["pipeline_config"]["default_temperature"] == 0.7
     assert "suggested_links" in data["optional_steps"]
     mock_settings_manager.save_settings.assert_called_once()
 

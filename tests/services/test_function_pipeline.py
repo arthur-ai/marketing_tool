@@ -56,7 +56,6 @@ class TestFunctionPipelineInitialization:
         mock_openai_class.return_value = mock_client
 
         pipeline = FunctionPipeline()
-        assert pipeline.model == "gpt-5.1"
         assert pipeline.temperature == 0.7
         assert pipeline.lang == "en"
         assert pipeline.step_info == []
@@ -67,8 +66,7 @@ class TestFunctionPipelineInitialization:
         mock_client = AsyncMock()
         mock_openai_class.return_value = mock_client
 
-        pipeline = FunctionPipeline(model="gpt-4", temperature=0.5, lang="es")
-        assert pipeline.model == "gpt-4"
+        pipeline = FunctionPipeline(temperature=0.5, lang="es")
         assert pipeline.temperature == 0.5
         assert pipeline.lang == "es"
 

@@ -137,11 +137,10 @@ def test_get_user_prompt(social_media_pipeline):
 
 
 def test_get_step_model(social_media_pipeline):
-    """Test _get_step_model method."""
+    """Test _get_step_model method returns None or a non-empty string (Arthur supplies the model)."""
     model = social_media_pipeline._get_step_model("social_media_post_generation")
 
-    assert isinstance(model, str)
-    assert len(model) > 0
+    assert model is None or (isinstance(model, str) and len(model) > 0)
 
 
 def test_get_step_temperature(social_media_pipeline):

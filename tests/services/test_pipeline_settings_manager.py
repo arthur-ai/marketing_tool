@@ -58,7 +58,7 @@ async def test_load_settings_from_db(settings_manager, mock_db_manager):
     mock_settings_model = MagicMock()
     mock_settings_model.to_dict.return_value = {
         "settings_data": {
-            "pipeline_config": {"default_model": "gpt-4"},
+            "pipeline_config": {"default_temperature": 0.7},
             "optional_steps": ["suggested_links"],
         }
     }
@@ -70,7 +70,7 @@ async def test_load_settings_from_db(settings_manager, mock_db_manager):
     settings = await settings_manager.load_settings_from_db()
 
     assert settings is not None
-    assert settings.pipeline_config["default_model"] == "gpt-4"
+    assert settings.pipeline_config["default_temperature"] == 0.7
 
 
 @pytest.mark.asyncio
@@ -86,7 +86,7 @@ async def test_load_settings_from_redis(settings_manager, mock_redis_manager):
     """Test loading settings from Redis."""
     mock_redis = MagicMock()
     mock_redis.get = AsyncMock(
-        return_value='{"pipeline_config": {"default_model": "gpt-4"}}'
+        return_value='{"pipeline_config": {"default_temperature": 0.7}}'
     )
     mock_redis_manager.get_redis = AsyncMock(return_value=mock_redis)
 
@@ -100,7 +100,7 @@ async def test_load_settings_from_redis(settings_manager, mock_redis_manager):
 async def test_save_settings_to_db(settings_manager, mock_db_manager):
     """Test saving settings to database."""
     settings = PipelineSettings(
-        pipeline_config={"default_model": "gpt-4"},
+        pipeline_config={"default_temperature": 0.7},
         optional_steps=["suggested_links"],
     )
 
@@ -125,7 +125,7 @@ async def test_save_settings_to_db(settings_manager, mock_db_manager):
 async def test_save_settings_to_redis(settings_manager, mock_redis_manager):
     """Test saving settings to Redis."""
     settings = PipelineSettings(
-        pipeline_config={"default_model": "gpt-4"},
+        pipeline_config={"default_temperature": 0.7},
         optional_steps=["suggested_links"],
     )
 
@@ -159,7 +159,7 @@ async def test_load_settings(settings_manager, mock_db_manager, mock_redis_manag
 async def test_save_settings(settings_manager, mock_db_manager, mock_redis_manager):
     """Test save_settings method."""
     settings = PipelineSettings(
-        pipeline_config={"default_model": "gpt-4"},
+        pipeline_config={"default_temperature": 0.7},
         optional_steps=["suggested_links"],
     )
 
