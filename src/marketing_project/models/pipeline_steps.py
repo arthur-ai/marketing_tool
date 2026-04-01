@@ -68,12 +68,13 @@ class KeywordCluster(BaseModel):
 class SEOKeywordsResult(BaseModel):
     """Result from SEO Keywords extraction step."""
 
-    # Exclude metadata/enrichment fields to stay under Anthropic's grammar compilation
-    # limit (~16 Optional fields). Core extraction fields are kept; metadata and
-    # duplicate/deprecated fields are excluded and will be None downstream.
+    # Exclude metadata/enrichment fields from the JSON schema sent to the LLM to stay
+    # under Anthropic's grammar compilation limit (~16 Optional fields). Core extraction
+    # fields are kept. Excluded fields remain on the Python model and are populated by
+    # post-processing after the LLM call — they are NOT filled by the LLM.
     _llm_exclude_fields: ClassVar[FrozenSet[str]] = frozenset(
         {
-            "keyword_density",  # deprecated (use keyword_density_analysis)
+            "keyword_density",  # deprecated (use keyword_density_analysis); Dict[str, float] incompatible with additionalProperties:false
             "keyword_density_analysis",  # detailed analysis, secondary enrichment
             "primary_keywords_metadata",  # metadata enrichment
             "secondary_keywords_metadata",  # metadata enrichment
@@ -82,6 +83,7 @@ class SEOKeywordsResult(BaseModel):
             "search_volume_summary",  # summary stats, secondary
             "relevance_score",  # secondary metric (also has ge/le)
             "profound_personas_used",  # internal tracking; LLM cannot know this
+            "keyword_difficulty",  # Dict[str, float] incompatible with additionalProperties:false; populated post-processing
         }
     )
 

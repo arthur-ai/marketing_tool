@@ -731,10 +731,18 @@ async def decide_approval(
                     # Find the root job (original job that started the chain)
                     root_job_id = approval.job_id
                     current_job = job
+                    visited_jobs: set = {root_job_id}
                     while current_job.metadata.get(JobMetadataKeys.ORIGINAL_JOB_ID):
-                        root_job_id = current_job.metadata.get(
+                        next_id = current_job.metadata.get(
                             JobMetadataKeys.ORIGINAL_JOB_ID
                         )
+                        if next_id in visited_jobs:
+                            logger.warning(
+                                f"Cycle detected in job chain at {next_id} — stopping root walk"
+                            )
+                            break
+                        visited_jobs.add(next_id)
+                        root_job_id = next_id
                         current_job = await job_manager.get_job(root_job_id)
                         if not current_job:
                             break
@@ -845,7 +853,11 @@ async def decide_approval(
                     # persisted so the live traversal will include the new job.
                     await job_manager.update_job_chain_metadata(root_job_id)
 
-                    # Submit to ARQ with context
+                    # Submit to ARQ with context — must happen BEFORE
+                    # update_parent_job_status so the resume job is already QUEUED
+                    # when the parent status aggregation runs. Without this ordering,
+                    # update_parent_job_status sees the new job as PENDING and may
+                    # leave the root in a stale state.
                     await job_manager.submit_to_arq(
                         resume_job_id,
                         "resume_pipeline_job",
@@ -853,6 +865,10 @@ async def decide_approval(
                         context_data,  # context_data
                         resume_job_id,  # job_id (new resume job ID)
                     )
+
+                    # Propagate status upward AFTER submit_to_arq so root job
+                    # reflects the resume job's QUEUED state rather than PENDING.
+                    await job_manager.update_parent_job_status(root_job_id)
 
                     logger.info(
                         f"Auto-resumed pipeline for approval {approval_id} "
@@ -996,6 +1012,29 @@ async def decide_approval(
                         f"Auto-regenerated step '{approval.pipeline_step}' for approval {approval_id} "
                         f"(retry job: {retry_job_id})"
                     )
+                    # Walk up to root job and update chain + parent status so the root
+                    # reflects the retry job's state instead of staying WAITING_FOR_APPROVAL.
+                    rej_root_job_id = approval.job_id
+                    rej_current = await job_manager.get_job(approval.job_id)
+                    rej_visited: set = {rej_root_job_id}
+                    while rej_current and rej_current.metadata.get(
+                        JobMetadataKeys.ORIGINAL_JOB_ID
+                    ):
+                        rej_next_id = rej_current.metadata[
+                            JobMetadataKeys.ORIGINAL_JOB_ID
+                        ]
+                        if rej_next_id in rej_visited:
+                            logger.warning(
+                                f"Cycle detected in job chain at {rej_next_id} — stopping root walk"
+                            )
+                            break
+                        rej_visited.add(rej_next_id)
+                        rej_root_job_id = rej_next_id
+                        rej_current = await job_manager.get_job(rej_root_job_id)
+                        if not rej_current:
+                            break
+                    await job_manager.update_job_chain_metadata(rej_root_job_id)
+                    await job_manager.update_parent_job_status(rej_root_job_id)
             else:
                 # Mark job as failed if auto_retry is False
                 job = await job_manager.get_job(approval.job_id)

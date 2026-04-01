@@ -935,7 +935,18 @@ class JobManager:
             for subjob_id in subjob_ids:
                 subjob = await self.get_job(subjob_id)
                 if subjob:
+                    # Skip superseded jobs — they have been replaced by a newer retry or
+                    # resume job and should not influence parent status aggregation.
+                    if subjob.metadata.get("retry_job_id") or subjob.metadata.get(
+                        JobMetadataKeys.RESUME_JOB_ID
+                    ):
+                        continue
                     subjob_statuses.append(subjob.status)
+
+            # If all subjobs are superseded there's nothing to aggregate yet —
+            # the successor retry/resume jobs will trigger another call when they finish.
+            if not subjob_statuses:
+                return
 
             # Determine aggregated status
             if all(s == JobStatus.COMPLETED for s in subjob_statuses):
@@ -1555,6 +1566,87 @@ class JobManager:
         except Exception as e:
             logger.error(f"Failed to delete all jobs: {e}", exc_info=True)
             raise
+
+    async def delete_jobs_before(self, before: datetime) -> int:
+        """
+        Hard-delete all jobs created before a given datetime from all storage layers.
+
+        Deletes matching jobs from PostgreSQL, Redis, and in-memory storage.
+        Associated approvals are NOT automatically rejected here — callers that
+        need approval clean-up should handle that before invoking this method.
+
+        Args:
+            before: Delete jobs whose created_at timestamp is older than this value.
+
+        Returns:
+            Number of job records deleted.
+        """
+        deleted_count = 0
+        deleted_ids: list[str] = []
+
+        # --- PostgreSQL ---
+        try:
+            from sqlalchemy import delete as sa_delete
+            from sqlalchemy import select
+
+            from marketing_project.models.db_models import JobModel
+            from marketing_project.services.database import get_database_manager
+
+            db_manager = get_database_manager()
+            if db_manager.is_initialized:
+                async with db_manager.get_session() as session:
+                    # Collect job IDs first so we can purge Redis too
+                    rows = await session.execute(
+                        select(JobModel.job_id).where(JobModel.created_at < before)
+                    )
+                    deleted_ids = [r[0] for r in rows.all()]
+                    if deleted_ids:
+                        await session.execute(
+                            sa_delete(JobModel).where(JobModel.created_at < before)
+                        )
+                        await session.commit()
+                        deleted_count += len(deleted_ids)
+                        logger.info(
+                            f"Deleted {len(deleted_ids)} jobs from PostgreSQL (before {before})"
+                        )
+        except Exception as e:
+            logger.warning(f"Failed to delete old jobs from PostgreSQL: {e}")
+
+        # --- Redis ---
+        if deleted_ids:
+            try:
+                job_keys = [f"{JOB_KEY_PREFIX}{jid}" for jid in deleted_ids]
+                # Batch to avoid oversized Redis pipelines (100 keys per round-trip)
+                _REDIS_DELETE_BATCH_SIZE = 100
+                for i in range(0, len(job_keys), _REDIS_DELETE_BATCH_SIZE):
+                    batch_keys = job_keys[i : i + _REDIS_DELETE_BATCH_SIZE]
+                    batch_ids = deleted_ids[i : i + _REDIS_DELETE_BATCH_SIZE]
+                    if not batch_keys:
+                        continue
+
+                    async def _del_batch(
+                        redis_client: redis.Redis,
+                        _keys=batch_keys,
+                        _ids=batch_ids,
+                    ):
+                        pipe = redis_client.pipeline()
+                        pipe.delete(*_keys)
+                        for _jid in _ids:
+                            pipe.srem(JOB_INDEX_KEY, _jid)
+                        return await pipe.execute()
+
+                    await self._redis_manager.execute(_del_batch)
+                logger.info(
+                    f"Removed {len(deleted_ids)} job keys from Redis (before {before})"
+                )
+            except Exception as e:
+                logger.warning(f"Failed to delete old job keys from Redis: {e}")
+
+            # --- In-memory cache ---
+            for jid in deleted_ids:
+                self._jobs.pop(jid, None)
+
+        return deleted_count
 
     async def cancel_job(self, job_id: str) -> bool:
         """

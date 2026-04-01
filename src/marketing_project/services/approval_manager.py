@@ -734,9 +734,14 @@ class ApprovalManager:
             user_context=parent_user_context,
         )
 
-        # Link the retry job onto the waiting job so get_job_chain can find it
+        # Link the retry job onto the waiting job so get_job_chain can find it.
+        # Mark the approval_job as FAILED so the aggregation in update_parent_job_status
+        # skips it (it is now superseded by the retry job).
         if approval_job:
+            from marketing_project.services.job_manager import JobStatus
+
             approval_job.metadata["retry_job_id"] = retry_job_id
+            approval_job.status = JobStatus.FAILED
             await job_manager._save_job(approval_job)
 
         await job_manager.submit_to_arq(
