@@ -840,7 +840,7 @@ class SEOKeywordsPlugin(PipelineStepPlugin):
         content: Dict[str, Any],
         context: Dict[str, Any],
         pipeline: Any,
-    ) -> "SEOKeywordsLLMResult":
+    ) -> "SEOKeywordsResult":
         """
         Run the LLM-heavy keyword composition step.
 
