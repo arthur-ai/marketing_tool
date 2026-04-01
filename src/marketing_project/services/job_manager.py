@@ -1585,6 +1585,12 @@ class JobManager:
         deleted_ids: list[str] = []
 
         # --- PostgreSQL ---
+        # IMPORTANT: only populate deleted_ids AFTER a successful commit so that
+        # the Redis/in-memory purge below is not triggered when the DELETE fails.
+        # If we populate deleted_ids from the SELECT and then the DELETE/commit
+        # fails, we would end up with jobs still in PostgreSQL but evicted from
+        # Redis and the in-memory cache, causing ghost 404s.
+        pg_success = False
         try:
             from sqlalchemy import delete as sa_delete
             from sqlalchemy import select
@@ -1599,16 +1605,22 @@ class JobManager:
                     rows = await session.execute(
                         select(JobModel.job_id).where(JobModel.created_at < before)
                     )
-                    deleted_ids = [r[0] for r in rows.all()]
-                    if deleted_ids:
+                    candidate_ids = [r[0] for r in rows.all()]
+                    if candidate_ids:
                         await session.execute(
                             sa_delete(JobModel).where(JobModel.created_at < before)
                         )
                         await session.commit()
+                        deleted_ids = candidate_ids  # only set after successful commit
                         deleted_count += len(deleted_ids)
+                        pg_success = True
                         logger.info(
                             f"Deleted {len(deleted_ids)} jobs from PostgreSQL (before {before})"
                         )
+            else:
+                logger.warning(
+                    "delete_jobs_before: PostgreSQL not initialized — skipping DB deletion"
+                )
         except Exception as e:
             logger.warning(f"Failed to delete old jobs from PostgreSQL: {e}")
 

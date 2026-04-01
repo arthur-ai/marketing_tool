@@ -740,9 +740,14 @@ class ApprovalManager:
         if approval_job:
             from marketing_project.services.job_manager import JobStatus
 
-            approval_job.metadata["retry_job_id"] = retry_job_id
-            approval_job.status = JobStatus.FAILED
-            await job_manager._save_job(approval_job)
+            # Guard against concurrent rejection calls: only transition if still
+            # WAITING_FOR_APPROVAL. A concurrent call may have already set FAILED
+            # and linked a different retry_job_id; overwriting it would orphan
+            # the first retry job.
+            if approval_job.status == JobStatus.WAITING_FOR_APPROVAL:
+                approval_job.metadata["retry_job_id"] = retry_job_id
+                approval_job.status = JobStatus.FAILED
+                await job_manager._save_job(approval_job)
 
         await job_manager.submit_to_arq(
             retry_job_id,
