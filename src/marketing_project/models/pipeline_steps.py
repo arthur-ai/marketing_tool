@@ -65,25 +65,13 @@ class KeywordCluster(BaseModel):
     )
 
 
-class SEOKeywordsResult(BaseModel):
-    """Result from SEO Keywords extraction step."""
+class SEOKeywordsLLMResult(BaseModel):
+    """LLM-facing schema for SEO keywords extraction. Minimal by design.
 
-    # Exclude metadata/enrichment fields to stay under Anthropic's grammar compilation
-    # limit (~16 Optional fields). Core extraction fields are kept; metadata and
-    # duplicate/deprecated fields are excluded and will be None downstream.
-    _llm_exclude_fields: ClassVar[FrozenSet[str]] = frozenset(
-        {
-            "keyword_density",  # deprecated (use keyword_density_analysis)
-            "keyword_density_analysis",  # detailed analysis, secondary enrichment
-            "primary_keywords_metadata",  # metadata enrichment
-            "secondary_keywords_metadata",  # metadata enrichment
-            "long_tail_keywords_metadata",  # metadata enrichment
-            "keyword_clusters",  # grouping, secondary
-            "search_volume_summary",  # summary stats, secondary
-            "relevance_score",  # secondary metric (also has ge/le)
-            "profound_personas_used",  # internal tracking; LLM cannot know this
-        }
-    )
+    Only the fields the LLM must fill in semantically. Dict fields, metadata,
+    and enrichment fields are computed programmatically in the plugin after the
+    LLM call — they never reach the Anthropic grammar compiler.
+    """
 
     main_keyword: str = Field(
         description="The single most important keyword for this content - the primary focus"
@@ -100,6 +88,23 @@ class SEOKeywordsResult(BaseModel):
     long_tail_keywords: Optional[List[str]] = Field(
         description="Long-tail keyword opportunities (5-8 keywords)", default=None
     )
+    search_intent: str = Field(
+        description="User search intent (informational/transactional/navigational/commercial)"
+    )
+    optimization_recommendations: Optional[List[str]] = Field(
+        description="Specific actions to improve keyword performance", default=None
+    )
+    confidence_score: Optional[float] = Field(
+        None,
+        ge=0.0,
+        le=1.0,
+        description="Model's confidence in keyword analysis quality (0-1)",
+    )
+
+
+class SEOKeywordsResult(SEOKeywordsLLMResult):
+    """Full SEO keywords result including programmatically computed enrichment fields."""
+
     keyword_density: Optional[Dict[str, float]] = Field(
         description="Keyword frequency analysis (deprecated: use keyword_density_analysis instead)",
         default=None,
@@ -107,9 +112,6 @@ class SEOKeywordsResult(BaseModel):
     keyword_density_analysis: Optional[List[KeywordDensityAnalysis]] = Field(
         description="Detailed keyword density analysis with placement recommendations",
         default=None,
-    )
-    search_intent: str = Field(
-        description="User search intent (informational/transactional/navigational/commercial)"
     )
     keyword_difficulty: Optional[Dict[str, float]] = Field(
         description="Keyword difficulty scores per keyword (0-100 scale)", default=None
@@ -156,17 +158,8 @@ class SEOKeywordsResult(BaseModel):
         description="Total estimated monthly search volume by keyword category",
         default=None,
     )
-    optimization_recommendations: Optional[List[str]] = Field(
-        description="Specific actions to improve keyword performance", default=None
-    )
 
-    # Quality and confidence metrics
-    confidence_score: Optional[float] = Field(
-        None,
-        ge=0.0,
-        le=1.0,
-        description="Model's confidence in keyword analysis quality (0-1)",
-    )
+    # Quality and enrichment metrics
     relevance_score: Optional[float] = Field(
         None, ge=0.0, le=100.0, description="Overall keyword relevance score (0-100)"
     )
