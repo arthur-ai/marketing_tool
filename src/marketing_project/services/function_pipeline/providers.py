@@ -168,9 +168,9 @@ def _make_schema_anthropic_safe(schema: dict) -> dict:
     }
 
     if schema.get("type") == "object":
-        # Don't overwrite if already set to a schema dict (Dict[str, X] pattern)
-        if not isinstance(schema.get("additionalProperties"), dict):
-            schema["additionalProperties"] = False
+        # Always set additionalProperties: false — Anthropic rejects any dict value
+        # (e.g. Dict[str, str] produces {"additionalProperties": {"type": "string"}}).
+        schema["additionalProperties"] = False
         if "properties" in schema:
             schema["properties"] = {
                 k: _make_schema_anthropic_safe(v)

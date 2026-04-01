@@ -10,6 +10,7 @@ import logging
 import os
 import re
 import uuid
+from datetime import datetime, timezone
 from typing import List, Optional
 
 import redis.asyncio as _aioredis
@@ -544,6 +545,88 @@ async def delete_all_jobs(user: UserContext = Depends(require_roles(["admin"])))
         logger.error(f"Failed to delete all jobs: {e}")
         raise HTTPException(
             status_code=500, detail=f"Failed to delete all jobs: {str(e)}"
+        )
+
+
+@router.delete(
+    "/before", summary="Delete all jobs created before a given datetime (admin only)"
+)
+async def delete_jobs_before(
+    before: datetime = Query(
+        ...,
+        description="ISO 8601 datetime — all jobs created strictly before this time will be deleted",
+    ),
+    user: UserContext = Depends(require_roles(["admin"])),
+):
+    """
+    Hard-delete all jobs created before a given datetime from all storage layers.
+
+    This will:
+    - Reject any pending approvals for matching jobs
+    - Delete matching jobs from PostgreSQL and Redis
+    - Purge in-memory cache for those jobs
+
+    The `before` parameter must be an ISO 8601 datetime string (e.g. ``2024-01-15T12:00:00Z``).
+
+    WARNING: This is a destructive operation and cannot be undone.
+    """
+    try:
+        # Normalise to UTC-aware datetime so PostgreSQL comparisons are unambiguous.
+        # Use astimezone (not replace) so tz-aware inputs are also normalised to UTC.
+        if before.tzinfo is None:
+            before = before.replace(tzinfo=timezone.utc)
+        else:
+            before = before.astimezone(timezone.utc)
+
+        if before > datetime.now(timezone.utc):
+            raise HTTPException(
+                status_code=400,
+                detail="'before' must be in the past — refusing to delete future jobs",
+            )
+
+        manager = get_job_manager()
+
+        # Reject any pending approvals tied to jobs that will be deleted.
+        # We fetch *all* pending approvals and filter by job creation time to
+        # avoid a separate "list jobs before date" round-trip.
+        approval_manager = await get_approval_manager()
+        pending_approvals = await approval_manager.list_approvals(status="pending")
+        rejected_count = 0
+        for approval in pending_approvals:
+            try:
+                job = await manager.get_job(approval.job_id)
+                if job and job.created_at and job.created_at < before:
+                    await approval_manager.decide_approval(
+                        approval.id,
+                        ApprovalDecisionRequest(
+                            decision="reject",
+                            comment=f"Job deleted by admin (bulk delete before {before.isoformat()})",
+                            reviewed_by=user.username,
+                            auto_retry=False,  # Don't spawn retry jobs for jobs about to be deleted
+                        ),
+                    )
+                    rejected_count += 1
+            except Exception as e:
+                logger.warning(
+                    f"Failed to reject approval {approval.id} during delete_jobs_before: {e}"
+                )
+
+        deleted_count = await manager.delete_jobs_before(before)
+
+        return {
+            "success": True,
+            "message": f"Deleted {deleted_count} jobs created before {before.isoformat()}",
+            "deleted_count": deleted_count,
+            "approvals_rejected": rejected_count,
+            "before": before.isoformat(),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete jobs before {before}: {e}")
+        raise HTTPException(
+            status_code=500, detail="Internal server error during job deletion"
         )
 
 
