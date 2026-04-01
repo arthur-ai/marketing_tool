@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.4.0] - 2026-04-01
+
+### Fixed
+- Arthur model cleanup: removed `model` attribute from `FunctionPipeline` and `SocialMediaPipeline` (now sourced from Arthur prompt client); fixed `self.model` reference in `social_media_pipeline.py` metadata dict
+- Removed dead `pg_success` variable from `delete_jobs_before` — `deleted_ids` already serves as the success signal
+- Test suite updated to mock `call_llm_structured` (providers layer) instead of `AsyncOpenAI.beta.chat.completions.parse`, matching the new LiteLLM provider path
+- `test_step_retry_service` fixture now mocks `fetch_arthur_prompt` so `StepRetryService` can initialize without real Arthur credentials
+
 ## [0.1.3.0] - 2026-04-01
 
 ### Added
