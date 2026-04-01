@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.2.0] - 2026-04-01
+
+### Fixed
+- `SEOKeywordsComposer.compose_result()` was silently discarding all LLM keyword output: `isinstance(llm_result, SEOKeywordsResult)` returned `False` for `SEOKeywordsLLMResult` instances (parent class is not an instance of child), causing `_build_result({})` to run with an empty dict and return `main_keyword="keyword"` for every pipeline run. Fixed by checking `isinstance(llm_result, SEOKeywordsLLMResult)` first, then upgrading to `SEOKeywordsResult` via `model_validate()`.
+- `_execute_keyword_steps` return type annotation in `SEOKeywordsPlugin` corrected from `SEOKeywordsLLMResult` to `SEOKeywordsResult`.
+
+### Tests
+- Regression test added: `test_compose_result_upgrades_llm_base_to_full_result` verifies the LLM base type upgrade path and confirms real keywords are preserved (not the `"keyword"` default).
+
 ## [0.1.1.0] - 2026-03-31
 
 ### Added
