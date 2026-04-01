@@ -965,19 +965,6 @@ class TranscriptDurationExtractionResult(BaseModel):
 class TranscriptPreprocessingApprovalResult(BaseModel):
     """Result from Transcript Preprocessing Approval step."""
 
-    # Exclude enrichment and complex nested fields to stay under Anthropic's grammar
-    # compilation limit. Core validation fields are kept. Excluded fields will be
-    # None/empty downstream — all guarded by `if result.x:` checks in execute().
-    _llm_exclude_fields: ClassVar[FrozenSet[str]] = frozenset(
-        {
-            "quality_metrics",  # nested QualityMetrics model, secondary
-            "conversation_flow",  # nested ConversationFlow model, secondary
-            "speaking_time_per_speaker",  # computable from transcript, secondary
-            "detected_language",  # enrichment, secondary
-            "key_topics",  # enrichment, handled by downstream steps
-        }
-    )
-
     is_valid: bool = Field(
         description="Overall validation status - true if all transcript fields are valid"
     )
@@ -1117,92 +1104,67 @@ def _fix_anyof_additional_properties(schema: Dict[str, Any], model_class: type) 
                     anyof_schema["additionalProperties"] = False
 
 
-class BlogPostPreprocessingApprovalResult(BaseModel):
-    """Result from Blog Post Preprocessing Approval step."""
+class BlogPostPreprocessingApprovalLLMResult(BaseModel):
+    """LLM-facing schema for blog post preprocessing approval. Minimal by design.
 
-    # Fields excluded from the LLM schema (kept in model for downstream use but
-    # not requested from the LLM — either computable programmatically or unused
-    # downstream). Anthropic enforces a ≤24 optional-parameter limit per schema.
-    _llm_exclude_fields: ClassVar[FrozenSet[str]] = frozenset(
-        {
-            # Structural analysis — computable programmatically, not needed from LLM
-            "headings",
-            "sections",
-            "paragraph_count",
-            "list_count",
-            "link_count",
-            "content_structure",
-            "quality_metrics",
-            # Scoring fields — secondary enrichment, reduce Optional count for Anthropic
-            # grammar compilation limit (~12-16 Optional fields max)
-            "completeness_score",
-            "shareability_score",
-            "engagement_potential",
-            "cta_detected",
-            # Sentiment enrichment — excluded to stay under Anthropic grammar limits;
-            # values remain None and are safely skipped in execute() merge logic
-            "overall_sentiment",
-            "sentiment_score",
-            "sentiment_confidence",
-            "sentiment_by_section",
-            "emotional_tone",
-            "readability_score",
-            # Keyword/topic enrichment — handled by downstream SEO steps
-            "potential_keywords",
-            "key_topics",
-            "detected_language",
-            "inferred_categories",
-            "seo_opportunities",
-        }
-    )
+    Only semantic fields the LLM must fill in. Deterministic fields (word_count,
+    reading_time, content_summary, etc.) are computed programmatically in the plugin.
+    Keeping this schema small prevents AnthropicException: Schema is too complex.
+    """
 
     is_valid: bool = Field(
-        description="Overall validation status - true if all blog post fields are valid"
+        description="True if all required blog post fields are valid"
     )
-    title_validated: bool = Field(
-        description="Title validation status - true if title is valid"
-    )
+    title_validated: bool = Field(description="True if title is present and non-empty")
     content_validated: bool = Field(
-        description="Content validation status - true if content is valid"
+        description="True if content is present and non-empty"
     )
     author_validated: bool = Field(
-        description="Author validation status - true if author is valid or extracted"
+        description="True if author is valid or was extracted from content"
     )
     category_validated: bool = Field(
-        description="Category validation status - true if category is valid or extracted"
+        description="True if category is valid or was extracted from content"
     )
     tags_validated: bool = Field(
-        description="Tags validation status - true if tags are valid or extracted"
+        description="True if tags are valid or were extracted from content"
     )
     validation_issues: List[str] = Field(
-        default_factory=list,
-        description="List of validation issues found (empty if all valid)",
+        default_factory=list, description="Specific issues found"
     )
-    author: Optional[str] = Field(None, description="Extracted/confirmed author name")
-    category: Optional[str] = Field(None, description="Extracted/confirmed category")
+    author: Optional[str] = Field(
+        None, description="Author name extracted from content"
+    )
+    category: Optional[str] = Field(None, description="Category inferred from content")
     tags: List[str] = Field(
-        default_factory=list,
-        description="Extracted/confirmed tags list",
+        default_factory=list, description="Tags extracted from content"
     )
+    requires_approval: bool = Field(description="True if human approval is required")
+    approval_suggestions: List[str] = Field(
+        default_factory=list, description="Suggestions for reviewer"
+    )
+    confidence_score: Optional[float] = Field(
+        None, description="Confidence in preprocessing quality (0-1)"
+    )
+
+
+class BlogPostPreprocessingApprovalResult(BlogPostPreprocessingApprovalLLMResult):
+    """Full result including programmatically computed enrichment fields.
+
+    Inherits all LLM fields from BlogPostPreprocessingApprovalLLMResult.
+    Enrichment fields are computed in the plugin's execute() method and
+    are never sent to the LLM.
+    """
+
+    model_config = ConfigDict(json_schema_extra=_fix_anyof_additional_properties)
+
+    # Enrichment fields — all Optional/list with defaults so
+    # BlogPostPreprocessingApprovalResult(**llm_result.model_dump()) works cleanly
     word_count: Optional[int] = Field(None, description="Calculated word count")
     reading_time: Optional[float] = Field(
         None, description="Calculated reading time in minutes"
     )
     content_summary: Optional[str] = Field(
         None, description="Summary of content for review (first 500 chars)"
-    )
-    confidence_score: Optional[float] = Field(
-        None,
-        ge=0.0,
-        le=1.0,
-        description="Confidence in preprocessing quality (0-1)",
-    )
-    requires_approval: bool = Field(
-        description="Whether human approval is required before proceeding"
-    )
-    approval_suggestions: List[str] = Field(
-        default_factory=list,
-        description="Suggestions for reviewer on what to check",
     )
     # Sentiment fields
     overall_sentiment: Optional[str] = Field(
@@ -1327,8 +1289,6 @@ class BlogPostPreprocessingApprovalResult(BaseModel):
         None,
         description="Detailed content structure analysis",
     )
-
-    model_config = ConfigDict(json_schema_extra=_fix_anyof_additional_properties)
 
     @field_validator("word_count", mode="before")
     @classmethod

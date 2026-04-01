@@ -260,3 +260,97 @@ async def test_admin_endpoints_deny_non_admin(override_auth_user):
     """Non-admin user should be denied from admin endpoints."""
     response = client.get("/api/v1/onboarding-examples/admin")
     assert response.status_code in (401, 403)
+
+
+# ---------------------------------------------------------------------------
+# Error path tests to cover missed lines (65-67, 85-87, 109-111, 134-136, 157-159)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_list_active_examples_service_error(override_auth_user):
+    """Test list_active_examples returns 500 when service raises (lines 46-50)."""
+    with patch(
+        "marketing_project.api.onboarding_examples.get_onboarding_examples_manager"
+    ) as mock:
+        mgr = MagicMock()
+        mgr.list_active = AsyncMock(side_effect=Exception("DB error"))
+        mgr.count_active = AsyncMock(return_value=0)
+        mock.return_value = mgr
+
+        response = client.get("/api/v1/onboarding-examples")
+        assert response.status_code == 500
+
+
+@pytest.mark.asyncio
+async def test_list_all_examples_service_error(override_auth_admin):
+    """Test list_all_examples returns 500 when service raises (lines 65-69)."""
+    with patch(
+        "marketing_project.api.onboarding_examples.get_onboarding_examples_manager"
+    ) as mock:
+        mgr = MagicMock()
+        mgr.list_all = AsyncMock(side_effect=Exception("DB error"))
+        mgr.count_all = AsyncMock(return_value=0)
+        mock.return_value = mgr
+
+        response = client.get("/api/v1/onboarding-examples/admin")
+        assert response.status_code == 500
+
+
+@pytest.mark.asyncio
+async def test_create_example_service_error(override_auth_admin):
+    """Test create_example returns 500 when service raises (lines 85-89)."""
+    with patch(
+        "marketing_project.api.onboarding_examples.get_onboarding_examples_manager"
+    ) as mock:
+        mgr = MagicMock()
+        mgr.create = AsyncMock(side_effect=Exception("DB write error"))
+        mock.return_value = mgr
+
+        payload = {"title": "New Example", "job_type": "blog", "input_data": {}}
+        response = client.post("/api/v1/onboarding-examples/admin", json=payload)
+        assert response.status_code == 500
+
+
+@pytest.mark.asyncio
+async def test_get_example_service_error(override_auth_admin):
+    """Test get_example returns 500 when service raises (lines 109-113)."""
+    with patch(
+        "marketing_project.api.onboarding_examples.get_onboarding_examples_manager"
+    ) as mock:
+        mgr = MagicMock()
+        mgr.get = AsyncMock(side_effect=Exception("DB read error"))
+        mock.return_value = mgr
+
+        response = client.get("/api/v1/onboarding-examples/admin/1")
+        assert response.status_code == 500
+
+
+@pytest.mark.asyncio
+async def test_update_example_service_error(override_auth_admin):
+    """Test update_example returns 500 when service raises (lines 134-138)."""
+    with patch(
+        "marketing_project.api.onboarding_examples.get_onboarding_examples_manager"
+    ) as mock:
+        mgr = MagicMock()
+        mgr.update = AsyncMock(side_effect=Exception("DB write error"))
+        mock.return_value = mgr
+
+        response = client.patch(
+            "/api/v1/onboarding-examples/admin/1", json={"title": "Updated"}
+        )
+        assert response.status_code == 500
+
+
+@pytest.mark.asyncio
+async def test_delete_example_service_error(override_auth_admin):
+    """Test delete_example returns 500 when service raises (lines 157-161)."""
+    with patch(
+        "marketing_project.api.onboarding_examples.get_onboarding_examples_manager"
+    ) as mock:
+        mgr = MagicMock()
+        mgr.delete = AsyncMock(side_effect=Exception("DB error"))
+        mock.return_value = mgr
+
+        response = client.delete("/api/v1/onboarding-examples/admin/1")
+        assert response.status_code == 500
