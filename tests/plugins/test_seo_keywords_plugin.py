@@ -6,7 +6,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from marketing_project.models.pipeline_steps import SEOKeywordsResult
+from marketing_project.models.pipeline_steps import (
+    SEOKeywordsLLMResult,
+    SEOKeywordsResult,
+)
 from marketing_project.plugins.seo_keywords.tasks import SEOKeywordsPlugin
 
 
@@ -42,8 +45,9 @@ class TestSEOKeywordsPlugin:
         assert seo_keywords_plugin.step_number == 2
 
     def test_response_model(self, seo_keywords_plugin):
-        """Test response_model property."""
-        assert seo_keywords_plugin.response_model == SEOKeywordsResult
+        """Test response_model is the LLM base class (not the full result)."""
+        assert seo_keywords_plugin.response_model is SEOKeywordsLLMResult
+        assert seo_keywords_plugin.response_model is not SEOKeywordsResult
 
     def test_get_required_context_keys(self, seo_keywords_plugin):
         """Test get_required_context_keys method."""

@@ -7,7 +7,10 @@ This composer merges results from different engines based on field-level configu
 import logging
 from typing import Any, Dict, List, Optional
 
-from marketing_project.models.pipeline_steps import SEOKeywordsResult
+from marketing_project.models.pipeline_steps import (
+    SEOKeywordsLLMResult,
+    SEOKeywordsResult,
+)
 from marketing_project.services.engines.composer import EngineComposer
 
 logger = logging.getLogger(__name__)
@@ -95,8 +98,11 @@ class SEOKeywordsComposer:
                     context,
                     pipeline,
                 )
-                if isinstance(llm_result, SEOKeywordsResult):
-                    return llm_result
+                if isinstance(llm_result, SEOKeywordsLLMResult):
+                    if isinstance(llm_result, SEOKeywordsResult):
+                        return llm_result
+                    # LLM engine returned base type; upgrade to full result
+                    return SEOKeywordsResult.model_validate(llm_result.model_dump())
             except Exception as e:
                 logger.warning(
                     f"LLM extraction failed, falling back to field-by-field: {e}"

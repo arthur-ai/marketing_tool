@@ -7,7 +7,7 @@ This engine wraps the existing LLM-based keyword extraction logic.
 import logging
 from typing import Any, Dict, Optional
 
-from marketing_project.models.pipeline_steps import SEOKeywordsResult
+from marketing_project.models.pipeline_steps import SEOKeywordsLLMResult
 from marketing_project.plugins.base import PipelineStepPlugin
 from marketing_project.services.engines.base import Engine
 
@@ -51,7 +51,7 @@ class LLMSEOKeywordsEngine(Engine):
         inputs: Dict[str, Any],
         context: Dict[str, Any],
         pipeline: Optional[Any] = None,
-    ) -> SEOKeywordsResult:
+    ) -> SEOKeywordsLLMResult:
         """
         Execute the LLM-based extraction.
 
@@ -62,7 +62,7 @@ class LLMSEOKeywordsEngine(Engine):
             pipeline: FunctionPipeline instance (required)
 
         Returns:
-            Complete SEOKeywordsResult from LLM
+            SEOKeywordsLLMResult from LLM (caller upgrades to SEOKeywordsResult)
 
         Raises:
             ValueError: If operation is not 'extract_all' or pipeline is missing
