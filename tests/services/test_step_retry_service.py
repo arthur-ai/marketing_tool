@@ -26,25 +26,39 @@ from marketing_project.services.step_retry_service import (
 
 
 @pytest.fixture
-def step_retry_service():
+def mock_arthur_prompt():
+    """Mock fetch_arthur_prompt to return a valid result."""
+    from marketing_project.services.arthur_prompt_client import ArthurPromptResult
+
+    mock_result = ArthurPromptResult(
+        system_content="You are a helpful assistant.",
+        user_template="Process the following content: {{ input_content }}",
+        model_name=None,
+        model_provider=None,
+    )
+    with patch(
+        "marketing_project.services.arthur_prompt_client.fetch_arthur_prompt",
+        new=AsyncMock(return_value=mock_result),
+    ):
+        yield mock_result
+
+
+@pytest.fixture
+def step_retry_service(mock_arthur_prompt):
     """Create a StepRetryService instance for testing."""
     with patch("marketing_project.services.function_pipeline.pipeline.AsyncOpenAI"):
-        service = StepRetryService(model="gpt-5.1", temperature=0.7, lang="en")
+        service = StepRetryService(temperature=0.7, lang="en")
         # Mock the pipeline
         service.pipeline = MagicMock()
         service.pipeline._call_function = AsyncMock()
-        service.pipeline._get_system_instruction = MagicMock(
-            return_value="System instruction"
-        )
         return service
 
 
 def test_step_retry_service_initialization():
     """Test StepRetryService initialization."""
     with patch("marketing_project.services.function_pipeline.pipeline.AsyncOpenAI"):
-        service = StepRetryService(model="gpt-4", temperature=0.5, lang="es")
+        service = StepRetryService(temperature=0.5, lang="es")
         assert service.pipeline is not None
-        assert service.pipeline.model == "gpt-4"
         assert service.pipeline.temperature == 0.5
         assert service.pipeline.lang == "es"
 

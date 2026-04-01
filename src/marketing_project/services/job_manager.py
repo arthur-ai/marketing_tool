@@ -1590,7 +1590,6 @@ class JobManager:
         # If we populate deleted_ids from the SELECT and then the DELETE/commit
         # fails, we would end up with jobs still in PostgreSQL but evicted from
         # Redis and the in-memory cache, causing ghost 404s.
-        pg_success = False
         try:
             from sqlalchemy import delete as sa_delete
             from sqlalchemy import select
@@ -1613,7 +1612,6 @@ class JobManager:
                         await session.commit()
                         deleted_ids = candidate_ids  # only set after successful commit
                         deleted_count += len(deleted_ids)
-                        pg_success = True
                         logger.info(
                             f"Deleted {len(deleted_ids)} jobs from PostgreSQL (before {before})"
                         )

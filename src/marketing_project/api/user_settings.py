@@ -15,11 +15,7 @@ from sqlalchemy import select
 
 from marketing_project.middleware.keycloak_auth import get_current_user
 from marketing_project.middleware.rbac import require_roles
-from marketing_project.models.db_models import (
-    ApprovalSettingsModel,
-    PipelineSettingsModel,
-    UserSettingsModel,
-)
+from marketing_project.models.db_models import ApprovalSettingsModel, UserSettingsModel
 from marketing_project.models.user_context import UserContext
 from marketing_project.models.user_settings_models import (
     ResolvedUserSettings,
@@ -33,7 +29,6 @@ logger = logging.getLogger("marketing_project.api.user_settings")
 router = APIRouter()
 
 # Global setting defaults (used when neither global nor user settings exist)
-_DEFAULT_MODEL = "gpt-5.1"
 _DEFAULT_TEMPERATURE = 0.7
 _DEFAULT_OPTIONAL_STEPS = ["suggested_links", "design_kit"]
 _DEFAULT_APPROVAL_AGENTS = [
@@ -58,7 +53,7 @@ async def resolve_user_settings(user_id: str) -> ResolvedUserSettings:
 
     Resolution order (higher = wins):
       1. Hard-coded fallback defaults
-      2. Active global PipelineSettingsModel / ApprovalSettingsModel rows
+      2. Active global ApprovalSettingsModel row
       3. UserSettingsModel row for this user_id (if any)
 
     The result is a fully-specified ResolvedUserSettings suitable for
@@ -67,7 +62,6 @@ async def resolve_user_settings(user_id: str) -> ResolvedUserSettings:
     db_manager = get_database_manager()
 
     # ── Global defaults ──────────────────────────────────────────────────────
-    global_model = _DEFAULT_MODEL
     global_temperature = _DEFAULT_TEMPERATURE
     global_disabled_steps: list = []
     global_require_approval = False
@@ -78,27 +72,6 @@ async def resolve_user_settings(user_id: str) -> ResolvedUserSettings:
     if db_manager.is_initialized:
         try:
             async with db_manager.get_session() as session:
-                # Global pipeline settings
-                pipeline_row = (
-                    await session.execute(
-                        select(PipelineSettingsModel)
-                        .where(PipelineSettingsModel.is_active == True)  # noqa: E712
-                        .order_by(PipelineSettingsModel.id.desc())
-                        .limit(1)
-                    )
-                ).scalar_one_or_none()
-
-                if pipeline_row:
-                    data = pipeline_row.to_dict().get("settings_data", {})
-                    cfg = data.get("pipeline_config", {})
-                    global_model = cfg.get("default_model", global_model)
-                    global_temperature = cfg.get(
-                        "default_temperature", global_temperature
-                    )
-                    # optional_steps → treat non-optional steps as disabled by default
-                    # (optional_steps are the ones that CAN be skipped by user)
-                    # We keep global_disabled_steps = [] here since disabling is per-user
-
                 # Global approval settings
                 approval_row = (
                     await session.execute(
@@ -166,9 +139,6 @@ async def resolve_user_settings(user_id: str) -> ResolvedUserSettings:
             if ud["approval_timeout_seconds"] is not None
             else global_timeout_seconds
         )
-        preferred_model = (
-            ud["preferred_model"] if ud["preferred_model"] is not None else global_model
-        )
         preferred_temperature = (
             ud["preferred_temperature"]
             if ud["preferred_temperature"] is not None
@@ -180,7 +150,6 @@ async def resolve_user_settings(user_id: str) -> ResolvedUserSettings:
         approval_agents = global_approval_agents
         auto_approve_threshold = global_auto_approve_threshold
         approval_timeout_seconds = global_timeout_seconds
-        preferred_model = global_model
         preferred_temperature = global_temperature
 
     return ResolvedUserSettings(
@@ -189,7 +158,6 @@ async def resolve_user_settings(user_id: str) -> ResolvedUserSettings:
         approval_agents=approval_agents,
         auto_approve_threshold=auto_approve_threshold,
         approval_timeout_seconds=approval_timeout_seconds,
-        preferred_model=preferred_model,
         preferred_temperature=float(preferred_temperature),
     )
 
@@ -266,7 +234,6 @@ async def upsert_my_settings(
                 row.approval_agents = settings.approval_agents
                 row.auto_approve_threshold = settings.auto_approve_threshold
                 row.approval_timeout_seconds = settings.approval_timeout_seconds
-                row.preferred_model = settings.preferred_model
                 row.preferred_temperature = settings.preferred_temperature
             else:
                 row = UserSettingsModel(
@@ -276,7 +243,6 @@ async def upsert_my_settings(
                     approval_agents=settings.approval_agents,
                     auto_approve_threshold=settings.auto_approve_threshold,
                     approval_timeout_seconds=settings.approval_timeout_seconds,
-                    preferred_model=settings.preferred_model,
                     preferred_temperature=settings.preferred_temperature,
                 )
                 session.add(row)
@@ -393,7 +359,6 @@ async def admin_update_user_settings(
                 row.approval_agents = settings.approval_agents
                 row.auto_approve_threshold = settings.auto_approve_threshold
                 row.approval_timeout_seconds = settings.approval_timeout_seconds
-                row.preferred_model = settings.preferred_model
                 row.preferred_temperature = settings.preferred_temperature
             else:
                 row = UserSettingsModel(
@@ -403,7 +368,6 @@ async def admin_update_user_settings(
                     approval_agents=settings.approval_agents,
                     auto_approve_threshold=settings.auto_approve_threshold,
                     approval_timeout_seconds=settings.approval_timeout_seconds,
-                    preferred_model=settings.preferred_model,
                     preferred_temperature=settings.preferred_temperature,
                 )
                 session.add(row)

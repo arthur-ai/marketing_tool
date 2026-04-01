@@ -912,7 +912,7 @@ class StepResultManager:
                     total_exec_time / chain_metrics["total_steps"]
                 )
 
-            # Estimate cost (rough calculation: $0.01 per 1K tokens for gpt-5.1)
+            # Estimate cost (rough calculation: $0.01 per 1K tokens — actual costs vary by model)
             # This is a simplified estimate - actual costs vary by model
             total_tokens = chain_metrics.get("total_tokens_used") or 0
             chain_metrics["estimated_cost_usd"] = (total_tokens / 1000) * 0.01

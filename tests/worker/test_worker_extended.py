@@ -462,7 +462,6 @@ async def test_process_social_media_job_with_pipeline_config(
 ):
     content_json = '{"id": "sm-1", "title": "Title", "content": "Content"}'
     pipeline_config_data = {
-        "default_model": "gpt-5.1",
         "default_temperature": 0.7,
         "default_max_retries": 3,
         "step_configs": {},
@@ -645,7 +644,6 @@ async def test_process_multi_platform_no_job(mock_ctx, mock_job_manager):
 async def test_process_multi_platform_with_pipeline_config(mock_ctx, mock_job_manager):
     content_json = '{"id": "mp-1", "title": "Title", "content": "Content"}'
     config_data = {
-        "default_model": "gpt-5.1",
         "default_temperature": 0.5,
         "default_max_retries": 2,
         "step_configs": {},

@@ -65,20 +65,15 @@ STEP_NUMBER_MAP = {
 class StepRetryService:
     """Service for retrying individual pipeline steps."""
 
-    def __init__(
-        self, model: str = "gpt-5.1", temperature: float = 0.7, lang: str = "en"
-    ):
+    def __init__(self, temperature: float = 0.7, lang: str = "en"):
         """
         Initialize the step retry service.
 
         Args:
-            model: OpenAI model to use
             temperature: Sampling temperature
             lang: Language for prompts
         """
-        self.pipeline = FunctionPipeline(
-            model=model, temperature=temperature, lang=lang
-        )
+        self.pipeline = FunctionPipeline(temperature=temperature, lang=lang)
 
     async def retry_step(
         self,
@@ -124,21 +119,45 @@ class StepRetryService:
             response_model = STEP_MODEL_MAP[step_name]
             step_number = STEP_NUMBER_MAP[step_name]
 
-            # Build the prompt from input data
-            prompt = self._build_prompt(step_name, input_data, context, user_guidance)
+            # Fetch prompt and system instruction from Arthur
+            from jinja2 import Environment as _JinjaEnv
+
+            from marketing_project.plugins.context_utils import ContextTransformer
+            from marketing_project.services.arthur_prompt_client import (
+                fetch_arthur_prompt,
+            )
+
+            arthur_result = await fetch_arthur_prompt(step_name)
+            if arthur_result is None:
+                raise RuntimeError(
+                    f"Arthur prompt unavailable for step '{step_name}'. "
+                    "Ensure ARTHUR_BASE_URL, ARTHUR_API_KEY, and ARTHUR_TASK_ID are set."
+                )
+            prompt_context = ContextTransformer.prepare_template_context(context or {})
+            prompt = (
+                _JinjaEnv(autoescape=False)
+                .from_string(arthur_result.user_template)
+                .render(**prompt_context)
+            )
+            if user_guidance:
+                prompt += (
+                    f"\n\nIMPORTANT: User feedback for improvement:\n{user_guidance}\n\n"
+                    "Please incorporate this feedback into your response."
+                )
 
             # Execute the step using the function pipeline
             # Skip approval check when retrying (step has already been approved)
             result = await self.pipeline._call_function(
                 prompt=prompt,
-                system_instruction=self.pipeline._get_system_instruction(
-                    step_name, context
-                ),
+                system_instruction=arthur_result.system_content,
                 response_model=response_model,
                 step_name=step_name,
                 step_number=step_number,
                 context=context,
                 job_id=None,  # Skip approval check during retry (already approved)
+                model_override=arthur_result.model_name,
+                provider_override=arthur_result.model_provider,
+                model_config=arthur_result.model_config,
             )
 
             execution_time = time.time() - start_time

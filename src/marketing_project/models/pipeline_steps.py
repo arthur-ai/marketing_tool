@@ -1352,7 +1352,7 @@ class PipelineStepConfig(BaseModel):
     step_name: str = Field(description="Name of the pipeline step")
     model: Optional[str] = Field(
         None,
-        description="OpenAI model to use for this step (e.g., 'gpt-4o-mini', 'gpt-4o', 'gpt-5.1', 'gpt-5.2')",
+        description="Model override for this step — takes precedence over Arthur's model when set",
     )
     temperature: Optional[float] = Field(
         None, ge=0.0, le=2.0, description="Sampling temperature for this step"
@@ -1369,9 +1369,6 @@ class PipelineStepConfig(BaseModel):
 class PipelineConfig(BaseModel):
     """Configuration for the entire pipeline."""
 
-    default_model: str = Field(
-        default="gpt-5.1", description="Default OpenAI model for all steps"
-    )
     default_temperature: float = Field(
         default=0.7, ge=0.0, le=2.0, description="Default sampling temperature"
     )
@@ -1404,14 +1401,13 @@ class PipelineConfig(BaseModel):
         # Return default config for this step
         return PipelineStepConfig(
             step_name=step_name,
-            model=self.default_model,
             temperature=self.default_temperature,
             max_retries=self.default_max_retries,
         )
 
-    def get_step_model(self, step_name: str) -> str:
-        """Get model for a specific step."""
-        return self.get_step_config(step_name).model or self.default_model
+    def get_step_model(self, step_name: str) -> Optional[str]:
+        """Get per-step model override if configured. Arthur supplies the model in practice."""
+        return self.get_step_config(step_name).model
 
     def get_step_temperature(self, step_name: str) -> float:
         """Get temperature for a specific step."""
