@@ -136,7 +136,11 @@ async def process_blog_job(ctx, content_json: str, job_id: str, **kwargs) -> Dic
         await job_manager.update_job_progress(job_id, 10, "Starting blog processing")
 
         # Process the blog post
-        result_json = await process_blog_post(content_json, job_id=job_id)
+        result_json = await process_blog_post(
+            content_json,
+            job_id=job_id,
+            user_settings=job.metadata.get("user_settings") if job else None,
+        )
         result_dict = json.loads(result_json)
 
         if result_dict.get("status") == "error":
@@ -227,7 +231,11 @@ async def process_release_notes_job(
         )
 
         # Process the release notes
-        result_json = await process_release_notes(content_json, job_id=job_id)
+        result_json = await process_release_notes(
+            content_json,
+            job_id=job_id,
+            user_settings=job.metadata.get("user_settings") if job else None,
+        )
         result_dict = json.loads(result_json)
 
         if result_dict.get("status") == "error":
@@ -340,9 +348,12 @@ async def process_transcript_job(ctx, content_json: str, job_id: str, **kwargs) 
                 f"ARQ Worker: Could not get output_content_type from metadata: {e}"
             )
 
-        # Process the transcript (pass output_content_type explicitly)
+        # Process the transcript (pass output_content_type and user_settings explicitly)
         result_json = await process_transcript(
-            content_json, job_id=job_id, output_content_type=output_content_type
+            content_json,
+            job_id=job_id,
+            output_content_type=output_content_type,
+            user_settings=job.metadata.get("user_settings") if job else None,
         )
         result_dict = json.loads(result_json)
 

@@ -314,6 +314,7 @@ class ApprovalManager:
         confidence_score: Optional[float] = None,
         suggestions: Optional[List[str]] = None,
         pipeline_step: Optional[str] = None,
+        settings_override: Optional[ApprovalSettings] = None,
     ) -> ApprovalRequest:
         """
         Create a new approval request.
@@ -329,6 +330,9 @@ class ApprovalManager:
             confidence_score: Agent's confidence in output (0-1)
             suggestions: Optional suggestions for reviewer
             pipeline_step: Actual pipeline step name for retry (defaults to agent_name)
+            settings_override: Per-user ApprovalSettings to use for auto-approve threshold
+                instead of the global settings. Constructed by approval_helper from
+                context["user_settings"].
 
         Returns:
             Created approval request
@@ -350,14 +354,19 @@ class ApprovalManager:
             suggestions=suggestions,
         )
 
+        # Use per-user settings if provided, else global.
+        _effective_settings = (
+            settings_override if settings_override is not None else self.settings
+        )
+
         # Check auto-approval threshold
         if (
-            self.settings.auto_approve_threshold is not None
+            _effective_settings.auto_approve_threshold is not None
             and confidence_score is not None
-            and confidence_score >= self.settings.auto_approve_threshold
+            and confidence_score >= _effective_settings.auto_approve_threshold
         ):
             logger.info(
-                f"Auto-approving {approval_id} (confidence: {confidence_score:.2f} >= {self.settings.auto_approve_threshold})"
+                f"Auto-approving {approval_id} (confidence: {confidence_score:.2f} >= {_effective_settings.auto_approve_threshold})"
             )
             approval.status = "approved"
             approval.reviewed_at = datetime.now(timezone.utc)

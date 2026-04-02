@@ -516,6 +516,7 @@ class FunctionPipeline:
         content_type: str = "blog_post",
         output_content_type: Optional[str] = None,
         pipeline_config: Optional[PipelineConfig] = None,
+        user_settings: Optional[dict] = None,
     ) -> Dict[str, Any]:
         """
         Execute the complete 7-step content pipeline using function calling.
@@ -529,6 +530,9 @@ class FunctionPipeline:
             content_type: Type of content being processed
             output_content_type: Optional output content type (defaults to content_type)
             pipeline_config: Optional PipelineConfig for per-step model configuration
+            user_settings: Optional resolved user settings dict (from job.metadata) for
+                per-user approval gate overrides. Injected into pipeline_context so
+                approval_helper can prefer user settings over global.
 
         Returns:
             Dictionary with complete pipeline results including all step outputs
@@ -648,6 +652,9 @@ class FunctionPipeline:
         # link the resume job under job.pipeline (not under a step span).
         if _job_root_traceparent:
             pipeline_context["__job_root_traceparent__"] = _job_root_traceparent
+        # Inject per-user settings so approval_helper can prefer user gate over global.
+        if user_settings:
+            pipeline_context["user_settings"] = user_settings
 
         results = {}
         quality_warnings = []
@@ -1182,6 +1189,9 @@ class FunctionPipeline:
             )
             if _resumed_traceparent:
                 pipeline_context["__job_root_traceparent__"] = _resumed_traceparent
+            # Re-inject per-user settings so a second approval gate uses user prefs.
+            if saved_context.get("user_settings"):
+                pipeline_context["user_settings"] = saved_context["user_settings"]
             # Add all saved step results to context
             for step_name in all_step_names:
                 if step_name in results:

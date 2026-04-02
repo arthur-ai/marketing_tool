@@ -82,6 +82,7 @@ async def process_transcript(
     content_data: str,
     job_id: Optional[str] = None,
     output_content_type: Optional[str] = None,
+    user_settings: Optional[dict] = None,
 ) -> str:
     """
     Process transcript content through the AI function pipeline.
@@ -168,6 +169,7 @@ async def process_transcript(
                 job_id=job_id,
                 content_type="transcript",
                 output_content_type=output_content_type,
+                user_settings=user_settings,
             )
 
             logger.info(

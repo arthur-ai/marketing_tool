@@ -847,3 +847,91 @@ async def get_upload_status(
         raise HTTPException(
             status_code=500, detail=f"Failed to get upload status: {str(e)}"
         )
+
+
+_VALID_CONTENT_TYPES = {"blog_post", "transcript", "release_notes"}
+
+
+@router.delete("/content/{content_type}/{file_id}")
+async def delete_content_item(
+    content_type: str,
+    file_id: str,
+    user: UserContext = Depends(get_current_user),
+):
+    """
+    Delete an uploaded content item.
+
+    Only the uploader or an admin may delete a file. Non-UUID file_id values
+    are rejected to prevent path traversal. S3-uploaded files (no local meta)
+    return 404.
+    """
+    # Validate content_type
+    if content_type not in _VALID_CONTENT_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid content_type. Allowed: {', '.join(sorted(_VALID_CONTENT_TYPES))}",
+        )
+
+    # Validate file_id is a UUID — prevents path traversal
+    try:
+        uuid.UUID(file_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="file_id must be a valid UUID")
+
+    # Load ownership metadata from the sidecar written at upload time
+    meta_path = os.path.join(UPLOAD_DIR, f"{file_id}.meta.json")
+    if not os.path.exists(meta_path):
+        raise HTTPException(status_code=404, detail="Content item not found")
+
+    try:
+        with open(meta_path) as mf:
+            meta = json.load(mf)
+    except (json.JSONDecodeError, OSError) as e:
+        logger.error(f"Failed to read meta for {file_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to read content metadata")
+
+    # Authorisation: owner or admin
+    is_admin = user.has_any_role(["admin", "marketing_admin"])
+    if meta.get("uploaded_by") != user.user_id and not is_admin:
+        raise HTTPException(
+            status_code=403, detail="Not authorised to delete this file"
+        )
+
+    # Remove the content file from the content directory (glob by file_id prefix)
+    content_type_dir = os.path.join(CONTENT_DIR, f"{content_type}s")
+    deleted_content = False
+    if os.path.isdir(content_type_dir):
+        for entry in os.listdir(content_type_dir):
+            if entry.startswith(file_id):
+                try:
+                    os.remove(os.path.join(content_type_dir, entry))
+                    deleted_content = True
+                    logger.info(
+                        f"Deleted content file {entry} for file_id={file_id} by user={user.user_id}"
+                    )
+                except OSError as e:
+                    logger.error(f"Failed to delete content file {entry}: {e}")
+                    raise HTTPException(
+                        status_code=500, detail="Failed to delete content file"
+                    )
+                break
+
+    # Remove the meta sidecar
+    try:
+        os.remove(meta_path)
+        logger.info(
+            f"Deleted meta sidecar for file_id={file_id} by user={user.user_id}"
+        )
+    except OSError as e:
+        logger.error(f"Failed to delete meta file for {file_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete content metadata")
+
+    if not deleted_content:
+        logger.warning(
+            f"No content file found for file_id={file_id} in {content_type_dir}; meta deleted"
+        )
+
+    return JSONResponse(
+        status_code=200,
+        content={"message": "Content item deleted successfully", "file_id": file_id},
+    )

@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, Optional
 
+from marketing_project.models.approval_models import ApprovalSettings
 from marketing_project.services.approval_manager import get_approval_manager
 
 # Imported at module level so tests can patch approval_helper.get_current_traceparent.
@@ -153,22 +154,53 @@ async def check_and_create_approval_request(
     # The worker initialises the manager once from DB at startup; the API reloads on every
     # user-facing request where staleness would actually matter.
     manager = await get_approval_manager(reload_from_db=False)
-    settings = manager.settings
+
+    # Prefer per-user settings from pipeline_context over global settings.
+    # user_settings is injected by execute_pipeline() from job.metadata["user_settings"]
+    # (a ResolvedUserSettings.model_dump()). If absent or malformed, fall back to global.
+    settings_override: Optional[ApprovalSettings] = None
+    _user_settings_dict = context.get("user_settings")
+    if _user_settings_dict and isinstance(_user_settings_dict, dict):
+        try:
+            settings_override = ApprovalSettings(
+                require_approval=_user_settings_dict["require_approval"],
+                approval_agents=_user_settings_dict.get(
+                    "approval_agents", manager.settings.approval_agents
+                ),
+                auto_approve_threshold=_user_settings_dict.get(
+                    "auto_approve_threshold"
+                ),
+                timeout_seconds=_user_settings_dict.get("timeout_seconds"),
+            )
+            logger.info(
+                f"[APPROVAL] Source: user (require_approval={settings_override.require_approval}) for job {job_id}"
+            )
+        except (KeyError, TypeError, ValueError) as e:
+            logger.warning(
+                f"[APPROVAL] Corrupt user_settings in context for job {job_id}, falling back to global: {e}"
+            )
+            settings_override = None
+    else:
+        logger.info(f"[APPROVAL] Source: global for job {job_id}")
+
+    _effective_settings = (
+        settings_override if settings_override is not None else manager.settings
+    )
 
     # Check if approvals are enabled
-    if not settings.require_approval:
+    if not _effective_settings.require_approval:
         logger.info(
-            f"[APPROVAL] Approvals disabled globally, skipping approval check for {agent_name} in job {job_id}"
+            f"[APPROVAL] Approvals disabled, skipping approval check for {agent_name} in job {job_id}"
         )
         return ApprovalResult(status=ApprovalStatus.NOT_REQUIRED)
 
     # Check if this agent requires approval
     logger.info(
-        f"[APPROVAL] Checking if {agent_name} requires approval. Enabled agents: {settings.approval_agents}, require_approval={settings.require_approval}"
+        f"[APPROVAL] Checking if {agent_name} requires approval. Enabled agents: {_effective_settings.approval_agents}, require_approval={_effective_settings.require_approval}"
     )
-    if agent_name not in settings.approval_agents:
+    if agent_name not in _effective_settings.approval_agents:
         logger.info(
-            f"[APPROVAL] Agent '{agent_name}' not in approval_agents list ({settings.approval_agents}), skipping approval. "
+            f"[APPROVAL] Agent '{agent_name}' not in approval_agents list ({_effective_settings.approval_agents}), skipping approval. "
             f"To enable approvals for this step, add '{agent_name}' to the approval_agents list in settings. "
             f"Pipeline will continue without approval."
         )
@@ -178,7 +210,7 @@ async def check_and_create_approval_request(
         f"[APPROVAL] Agent '{agent_name}' requires approval, creating approval request for job {job_id}..."
     )
 
-    # Create approval request
+    # Create approval request (pass settings_override for atomic auto-approve check)
     approval = await manager.create_approval_request(
         job_id=job_id,
         agent_name=agent_name,
@@ -188,6 +220,7 @@ async def check_and_create_approval_request(
         confidence_score=confidence_score,
         suggestions=suggestions,
         pipeline_step=agent_name,
+        settings_override=settings_override,
     )
 
     logger.info(

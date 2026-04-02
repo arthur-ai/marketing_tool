@@ -35,6 +35,7 @@ async def process_blog_post(
     content_data: str,
     job_id: Optional[str] = None,
     output_content_type: Optional[str] = None,
+    user_settings: Optional[dict] = None,
 ) -> str:
     """
     Process blog post content through the AI function pipeline.
@@ -155,6 +156,7 @@ async def process_blog_post(
                     job_id=job_id,
                     content_type="blog_post",
                     output_content_type=output_content_type,
+                    user_settings=user_settings,
                 )
 
                 logger.info("Blog Processor: Function pipeline completed successfully")
