@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.5.0] - 2026-04-02
+
+### Added
+- **Content item delete endpoint** — `DELETE /api/v1/content/{content_type}/{file_id}` lets users remove uploaded files they own; admins can delete any item. UUID validation on `file_id` prevents path traversal; allowlist on `content_type` prevents directory escape.
+- **Per-user approval overrides** — jobs can now carry a `user_settings` dict in metadata that overrides global approval settings (enable/disable approvals, agent list, auto-approve threshold, timeout) for that specific job. Falls back to global settings if absent or malformed.
+
+### Changed
+- `approval_helper.check_and_create_approval_request` reads `context["user_settings"]` and constructs a per-job `ApprovalSettings` override before consulting the global manager
+- `ApprovalManager.create_approval_request` accepts an optional `settings_override` parameter for atomic auto-approve threshold evaluation against per-user settings
+- All three processors (`blog_processor`, `releasenotes_processor`, `transcript_processor`) and `worker.py` thread `user_settings` from job metadata through to pipeline context
+
 ## [0.1.4.0] - 2026-04-01
 
 ### Fixed
