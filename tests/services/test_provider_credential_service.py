@@ -331,15 +331,20 @@ class TestProviderCredentialServiceGetDecryptionError:
         mock_db = MagicMock()
         mock_db.get_session = MagicMock(return_value=mock_session)
 
+        logger_name = "marketing_project.services.provider_credential_service"
         with patch(
             "marketing_project.services.provider_credential_service.get_database_manager",
             return_value=mock_db,
         ):
-            with caplog.at_level(logging.ERROR):
+            with patch.object(
+                logging.getLogger(logger_name), "error"
+            ) as mock_log_error:
                 result = await svc.get("openai")
 
         assert result is None
-        assert any("ENCRYPTION_KEY" in r.message for r in caplog.records)
+        assert mock_log_error.called
+        logged_messages = " ".join(str(call) for call in mock_log_error.call_args_list)
+        assert "ENCRYPTION_KEY" in logged_messages
 
 
 class TestProviderCredentialServiceDelete:

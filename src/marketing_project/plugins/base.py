@@ -48,46 +48,6 @@ class PipelineStepPlugin(ABC):
         """Set the model configuration for this step."""
         self._model_config = value
 
-    def get_model_config(
-        self,
-        default_model: str = "gpt-5.1",
-        default_temperature: float = 0.7,
-        default_max_retries: int = 2,
-    ) -> PipelineStepConfig:
-        """
-        Get model configuration for this step with defaults applied.
-
-        Args:
-            default_model: Default model to use if not configured
-            default_temperature: Default temperature to use if not configured
-            default_max_retries: Default max retries to use if not configured
-
-        Returns:
-            PipelineStepConfig with step-specific values or defaults
-        """
-        if self._model_config:
-            # Merge with defaults for any None values
-            return PipelineStepConfig(
-                step_name=self.step_name,
-                model=self._model_config.model or default_model,
-                temperature=(
-                    self._model_config.temperature
-                    if self._model_config.temperature is not None
-                    else default_temperature
-                ),
-                max_retries=(
-                    self._model_config.max_retries
-                    if self._model_config.max_retries is not None
-                    else default_max_retries
-                ),
-            )
-        return PipelineStepConfig(
-            step_name=self.step_name,
-            model=default_model,
-            temperature=default_temperature,
-            max_retries=default_max_retries,
-        )
-
     @property
     @abstractmethod
     def step_name(self) -> str:

@@ -1,0 +1,15 @@
+[run]
+source = src/marketing_project
+omit =
+    */services/engines/seo_keywords/local_semantic_engine.py
+    */services/competitor_research_service.py
+    */services/telemetry.py
+    */services/database_source.py
+    */services/s3_storage.py
+    */services/web_scraping_source.py
+    */services/api_source.py
+    */services/arthur_prompt_client.py
+
+[report]
+fail_under = 70
+show_missing = True

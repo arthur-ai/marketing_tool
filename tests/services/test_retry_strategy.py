@@ -2,7 +2,7 @@
 Tests for retry strategy service.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -83,7 +83,7 @@ class TestCircuitBreaker:
         """Test can_attempt in open state."""
         cb = CircuitBreaker(recovery_timeout=60)
         cb.state = CircuitState.OPEN
-        cb.last_failure_time = datetime.utcnow() - timedelta(seconds=30)
+        cb.last_failure_time = datetime.now(timezone.utc) - timedelta(seconds=30)
 
         assert cb.can_attempt() is False
 
@@ -91,7 +91,7 @@ class TestCircuitBreaker:
         """Test can_attempt in open state after recovery timeout."""
         cb = CircuitBreaker(recovery_timeout=60)
         cb.state = CircuitState.OPEN
-        cb.last_failure_time = datetime.utcnow() - timedelta(seconds=61)
+        cb.last_failure_time = datetime.now(timezone.utc) - timedelta(seconds=61)
 
         assert cb.can_attempt() is True
         assert cb.state == CircuitState.HALF_OPEN
@@ -223,7 +223,7 @@ class TestRetryStrategy:
         """Test should_retry when circuit breaker is open."""
         strategy = RetryStrategy()
         strategy.circuit_breaker.state = CircuitState.OPEN
-        strategy.circuit_breaker.last_failure_time = datetime.utcnow()
+        strategy.circuit_breaker.last_failure_time = datetime.now(timezone.utc)
 
         assert strategy.should_retry(0, ErrorType.NETWORK) is False
 
@@ -279,7 +279,7 @@ class TestRetryStrategy:
         """Test execute_with_retry when circuit breaker is open."""
         strategy = RetryStrategy()
         strategy.circuit_breaker.state = CircuitState.OPEN
-        strategy.circuit_breaker.last_failure_time = datetime.utcnow()
+        strategy.circuit_breaker.last_failure_time = datetime.now(timezone.utc)
 
         async def mock_func():
             return "success"

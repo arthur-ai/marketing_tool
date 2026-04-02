@@ -57,14 +57,14 @@ async def test_save_settings(approval_manager, mock_redis_manager):
 @pytest.mark.asyncio
 async def test_list_approvals(approval_manager):
     """Test list_approvals method."""
-    await approval_manager.create_approval_request(
+    req1 = await approval_manager.create_approval_request(
         job_id="job-1",
         agent_name="seo_keywords",
         step_name="seo_keywords",
         input_data={},
         output_data={},
     )
-    await approval_manager.create_approval_request(
+    req2 = await approval_manager.create_approval_request(
         job_id="job-2",
         agent_name="marketing_brief",
         step_name="marketing_brief",
@@ -72,7 +72,28 @@ async def test_list_approvals(approval_manager):
         output_data={},
     )
 
-    approvals = await approval_manager.list_approvals(status="pending")
+    # list_approvals reads from DB; mock it to return the two in-flight requests
+    mock_row1 = MagicMock()
+    mock_row1.to_approval_request.return_value = req1
+    mock_row2 = MagicMock()
+    mock_row2.to_approval_request.return_value = req2
+
+    with patch(
+        "marketing_project.services.approval_manager.get_database_manager"
+    ) as mock_db:
+        mock_db_mgr = MagicMock()
+        mock_db_mgr.is_initialized = True
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = [mock_row1, mock_row2]
+        mock_session = AsyncMock()
+        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_db_mgr.get_session.return_value.__aenter__ = AsyncMock(
+            return_value=mock_session
+        )
+        mock_db_mgr.get_session.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_db.return_value = mock_db_mgr
+
+        approvals = await approval_manager.list_approvals(status="pending")
 
     assert len(approvals) >= 2
     assert all(a.status == "pending" for a in approvals)
@@ -80,7 +101,9 @@ async def test_list_approvals(approval_manager):
 
 @pytest.mark.asyncio
 async def test_wait_for_approval(approval_manager):
-    """Test wait_for_approval method."""
+    """Test wait_for_approval returns approved request when approved in background."""
+    import asyncio
+
     request = await approval_manager.create_approval_request(
         job_id="job-1",
         agent_name="seo_keywords",
@@ -89,28 +112,53 @@ async def test_wait_for_approval(approval_manager):
         output_data={},
     )
 
-    # Approve in background
-    async def approve_later():
-        import asyncio
+    # Approved copy to return once the decision is made
+    approved_request = request.model_copy(update={"status": "approved"})
 
-        await asyncio.sleep(0.1)
-        # Make sure approval exists in memory before deciding
-        if request.id not in approval_manager._approvals:
-            approval_manager._approvals[request.id] = request
-        await approval_manager.decide_approval(
-            request.id, ApprovalDecisionRequest(decision="approve")
-        )
+    get_calls = 0
 
-    # Start approval in background
-    import asyncio
+    async def mock_get_approval(approval_id):
+        nonlocal get_calls
+        get_calls += 1
+        # First two calls return pending (wait_for_approval initial + decide_approval check)
+        # Subsequent calls return approved (wait_for_approval polling)
+        if get_calls <= 2:
+            return request
+        return approved_request
 
-    task = asyncio.create_task(approve_later())
+    with patch.object(approval_manager, "get_approval", side_effect=mock_get_approval):
+        # Also patch _load_approval_from_redis_cache so decide_approval can find the request
+        with (
+            patch.object(
+                approval_manager,
+                "_load_approval_from_redis_cache",
+                new_callable=AsyncMock,
+                return_value=request,
+            ),
+            patch.object(
+                approval_manager, "_cache_approval_in_redis", new_callable=AsyncMock
+            ),
+            patch(
+                "marketing_project.services.approval_manager.get_database_manager"
+            ) as mock_db,
+            patch.object(
+                approval_manager._redis_manager, "execute", new_callable=AsyncMock
+            ),
+            patch.object(
+                approval_manager, "get_redis", new_callable=AsyncMock, return_value=None
+            ),
+        ):
+            mock_db.return_value.is_initialized = False
 
-    # Wait for approval
-    result = await approval_manager.wait_for_approval(request.id, timeout=2.0)
+            async def approve_later():
+                await asyncio.sleep(0.1)
+                await approval_manager.decide_approval(
+                    request.id, ApprovalDecisionRequest(decision="approve")
+                )
 
-    # Wait for background task to complete
-    await task
+            task = asyncio.create_task(approve_later())
+            result = await approval_manager.wait_for_approval(request.id, timeout=2.0)
+            await task
 
     assert result is not None
     assert result.status == "approved"
@@ -142,7 +190,7 @@ async def test_delete_all_approvals(approval_manager):
 
 @pytest.mark.asyncio
 async def test_clear_job_approvals(approval_manager):
-    """Test clear_job_approvals method."""
+    """Test delete_all_approvals (clears all approvals from Redis/DB)."""
     await approval_manager.create_approval_request(
         job_id="job-1",
         agent_name="seo_keywords",
@@ -151,10 +199,16 @@ async def test_clear_job_approvals(approval_manager):
         output_data={},
     )
 
-    approval_manager.clear_job_approvals("job-1")
+    with patch.object(
+        approval_manager._redis_manager,
+        "execute",
+        new_callable=AsyncMock,
+        return_value=set(),
+    ):
+        result = await approval_manager.delete_all_approvals()
 
-    # Should not raise exception
-    assert True
+    assert isinstance(result, int)
+    assert result >= 0
 
 
 @pytest.mark.asyncio

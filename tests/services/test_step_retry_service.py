@@ -10,7 +10,11 @@ from marketing_project.models.pipeline_steps import (
     ArticleGenerationResult,
     ContentFormattingResult,
     DesignKitResult,
+    HeaderStructure,
+    KeywordMap,
     MarketingBriefResult,
+    OGTags,
+    ReadabilityOptimization,
     SEOKeywordsResult,
     SEOOptimizationResult,
     SuggestedLinksResult,
@@ -22,25 +26,39 @@ from marketing_project.services.step_retry_service import (
 
 
 @pytest.fixture
-def step_retry_service():
+def mock_arthur_prompt():
+    """Mock fetch_arthur_prompt to return a valid result."""
+    from marketing_project.services.arthur_prompt_client import ArthurPromptResult
+
+    mock_result = ArthurPromptResult(
+        system_content="You are a helpful assistant.",
+        user_template="Process the following content: {{ input_content }}",
+        model_name=None,
+        model_provider=None,
+    )
+    with patch(
+        "marketing_project.services.arthur_prompt_client.fetch_arthur_prompt",
+        new=AsyncMock(return_value=mock_result),
+    ):
+        yield mock_result
+
+
+@pytest.fixture
+def step_retry_service(mock_arthur_prompt):
     """Create a StepRetryService instance for testing."""
     with patch("marketing_project.services.function_pipeline.pipeline.AsyncOpenAI"):
-        service = StepRetryService(model="gpt-5.1", temperature=0.7, lang="en")
+        service = StepRetryService(temperature=0.7, lang="en")
         # Mock the pipeline
         service.pipeline = MagicMock()
         service.pipeline._call_function = AsyncMock()
-        service.pipeline._get_system_instruction = MagicMock(
-            return_value="System instruction"
-        )
         return service
 
 
 def test_step_retry_service_initialization():
     """Test StepRetryService initialization."""
     with patch("marketing_project.services.function_pipeline.pipeline.AsyncOpenAI"):
-        service = StepRetryService(model="gpt-4", temperature=0.5, lang="es")
+        service = StepRetryService(temperature=0.5, lang="es")
         assert service.pipeline is not None
-        assert service.pipeline.model == "gpt-4"
         assert service.pipeline.temperature == 0.5
         assert service.pipeline.lang == "es"
 
@@ -180,6 +198,18 @@ async def test_retry_step_seo_optimization_success(step_retry_service):
         meta_title="Meta Title",
         meta_description="Meta description",
         slug="test-slug",
+        og_tags=OGTags(
+            og_title="Test",
+            og_description="Test description",
+            og_image="https://example.com/img.jpg",
+            og_type="article",
+        ),
+        confidence_score=0.9,
+        seo_score=85.0,
+        header_structure=HeaderStructure(),
+        keyword_map=KeywordMap(),
+        readability_optimization=ReadabilityOptimization(),
+        modification_report=[],
     )
 
     step_retry_service.pipeline._call_function = AsyncMock(return_value=mock_result)
@@ -284,11 +314,11 @@ async def test_retry_step_design_kit_success(step_retry_service):
     step_retry_service.pipeline._call_function = AsyncMock(return_value=mock_result)
 
     result = await step_retry_service.retry_step(
-        "design_kit", input_data, context=context
+        "brand_kit", input_data, context=context
     )
 
     assert result["status"] == "success"
-    assert result["step_name"] == "design_kit"
+    assert result["step_name"] == "brand_kit"
 
 
 @pytest.mark.asyncio
@@ -534,7 +564,7 @@ def test_build_prompt_design_kit(step_retry_service):
         "seo_keywords": {"main_keyword": "test keyword"},
     }
 
-    prompt = step_retry_service._build_prompt("design_kit", input_data, context=context)
+    prompt = step_retry_service._build_prompt("brand_kit", input_data, context=context)
 
     assert "Title" in prompt
     assert "Developers" in prompt

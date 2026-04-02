@@ -35,6 +35,21 @@ def mock_keycloak_env(monkeypatch):
     monkeypatch.setenv("KEYCLOAK_REALM", "test-realm")
     monkeypatch.setenv("KEYCLOAK_CLIENT_ID", "test-client")
     monkeypatch.setenv("KEYCLOAK_PUBLIC_KEY", mock_keycloak_public_key())
+    # Patch module-level constants that were already read at import time
+    with (
+        patch(
+            "marketing_project.middleware.keycloak_auth.KEYCLOAK_SERVER_URL",
+            "https://test-keycloak.com",
+        ),
+        patch(
+            "marketing_project.middleware.keycloak_auth.KEYCLOAK_REALM", "test-realm"
+        ),
+        patch(
+            "marketing_project.middleware.keycloak_auth.KEYCLOAK_CLIENT_ID",
+            "test-client",
+        ),
+    ):
+        yield
 
 
 @pytest.fixture
@@ -143,21 +158,41 @@ class TestKeycloakIntegration:
     @pytest.mark.asyncio
     async def test_public_key_from_jwks(self, mock_keycloak_env):
         """Test extracting public key from JWKS using token kid."""
+        import base64
+
+        from cryptography.hazmat.primitives.serialization import load_pem_private_key
+
         token = create_test_jwt()
+
+        # Build a valid JWK from the test RSA private key
+        private_key_bytes = get_test_private_key().encode()
+        _priv = load_pem_private_key(private_key_bytes, password=None)
+        _pub_numbers = _priv.public_key().public_numbers()
+
+        def _int_to_base64url(n: int) -> str:
+            length = (n.bit_length() + 7) // 8
+            return (
+                base64.urlsafe_b64encode(n.to_bytes(length, "big"))
+                .rstrip(b"=")
+                .decode()
+            )
+
         mock_jwks = {
             "keys": [
                 {
                     "kid": "test-kid",
                     "kty": "RSA",
+                    "alg": "RS256",
                     "use": "sig",
-                    "n": "test-n",
-                    "e": "AQAB",
+                    "n": _int_to_base64url(_pub_numbers.n),
+                    "e": _int_to_base64url(_pub_numbers.e),
                 }
             ]
         }
 
-        # Mock get_unverified_header to return our test kid
-        with patch("jwt.get_unverified_header") as mock_header:
+        # Mock get_unverified_header to return our test kid.
+        # keycloak_auth.py uses `from jose import jwt`, so patch jose.jwt.
+        with patch("jose.jwt.get_unverified_header") as mock_header:
             mock_header.return_value = {"kid": "test-kid", "alg": "RS256"}
 
             public_key = get_public_key_from_jwks(token, mock_jwks)

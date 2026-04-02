@@ -88,6 +88,7 @@ class Job(BaseModel):
     current_step: Optional[str] = None
     result: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
+    error_message: Optional[str] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -188,6 +189,7 @@ class JobManager:
                     existing_job.current_step = job.current_step
                     existing_job.result = job.result
                     existing_job.error = job.error
+                    existing_job.error_message = job.error_message
                     existing_job.job_metadata = job.metadata
                     if job.started_at:
                         existing_job.started_at = job.started_at
@@ -206,6 +208,7 @@ class JobManager:
                         current_step=job.current_step,
                         result=job.result,
                         error=job.error,
+                        error_message=job.error_message,
                         job_metadata=job.metadata,
                         created_at=job.created_at,
                         started_at=job.started_at,
@@ -481,6 +484,7 @@ class JobManager:
         except Exception as e:
             job.status = JobStatus.FAILED
             job.error = f"Failed to submit to ARQ: {str(e)}"
+            job.error_message = job.error
             # Save failed status to Redis
             await self._save_job(job)
             logger.error(f"Failed to submit job {job_id} to ARQ: {e}")
@@ -673,6 +677,7 @@ class JobManager:
                         f"ARQ result likely expired"
                     )
                     job.error = f"Job exceeded maximum age ({JOB_MAX_AGE}s) - ARQ result expired"
+                    job.error_message = job.error
                     job.status = JobStatus.FAILED
                     job.completed_at = datetime.now(timezone.utc)
                     return job
@@ -771,6 +776,7 @@ class JobManager:
                                 exc_info=True,
                             )
                             job.error = f"Job execution failed: {error_msg}"
+                            job.error_message = job.error
                             job.status = JobStatus.FAILED
                             job.completed_at = datetime.now(timezone.utc)
                             await self._save_job(job)
@@ -781,6 +787,7 @@ class JobManager:
                                 exc_info=True,
                             )
                             job.error = f"Error retrieving job result: {str(e)}"
+                            job.error_message = job.error
                             job.status = JobStatus.FAILED
                             job.completed_at = datetime.now(timezone.utc)
                             await self._save_job(job)
@@ -817,6 +824,7 @@ class JobManager:
                             f"result may have expired (ARQ TTL: {ARQ_RESULT_TTL}s)"
                         )
                         job.error = "Job not found in ARQ - result may have expired"
+                        job.error_message = job.error
                         job.status = JobStatus.FAILED
                         job.completed_at = datetime.now(timezone.utc)
                         await self._save_job(job)
@@ -857,15 +865,27 @@ class JobManager:
                 job.current_step = current_step
             await self._save_job(job)
 
-    async def update_job_status(self, job_id: str, status: JobStatus) -> None:
+    async def update_job_status(
+        self,
+        job_id: str,
+        status: JobStatus,
+        error_message: Optional[str] = None,
+    ) -> None:
         """
         Update job status and save to Redis.
 
         Args:
             job_id: ID of the job to update
             status: New job status
+            error_message: Optional worker error message (for FAILED status)
         """
         job = await self.get_job(job_id, _skip_arq_poll=True)
+        if not job:
+            logger.warning(
+                f"update_job_status: job {job_id} not found in any store — "
+                f"status update to {status.value} silently skipped"
+            )
+            return
         if job:
             job.status = status
             # Keep metadata.status in sync with job.status for frontend compatibility
@@ -873,6 +893,11 @@ class JobManager:
             if status == JobStatus.WAITING_FOR_APPROVAL:
                 # Mark as completed time if waiting for approval (job is "done" but waiting)
                 job.completed_at = datetime.now(timezone.utc)
+            if status == JobStatus.FAILED:
+                job.completed_at = datetime.now(timezone.utc)
+            if error_message is not None:
+                job.error_message = error_message
+                job.error = error_message  # keep legacy field in sync
             await self._save_job(job)
             logger.info(f"Updated job {job_id} status to {status.value}")
 
@@ -910,7 +935,18 @@ class JobManager:
             for subjob_id in subjob_ids:
                 subjob = await self.get_job(subjob_id)
                 if subjob:
+                    # Skip superseded jobs — they have been replaced by a newer retry or
+                    # resume job and should not influence parent status aggregation.
+                    if subjob.metadata.get("retry_job_id") or subjob.metadata.get(
+                        JobMetadataKeys.RESUME_JOB_ID
+                    ):
+                        continue
                     subjob_statuses.append(subjob.status)
+
+            # If all subjobs are superseded there's nothing to aggregate yet —
+            # the successor retry/resume jobs will trigger another call when they finish.
+            if not subjob_statuses:
+                return
 
             # Determine aggregated status
             if all(s == JobStatus.COMPLETED for s in subjob_statuses):
@@ -1530,6 +1566,97 @@ class JobManager:
         except Exception as e:
             logger.error(f"Failed to delete all jobs: {e}", exc_info=True)
             raise
+
+    async def delete_jobs_before(self, before: datetime) -> int:
+        """
+        Hard-delete all jobs created before a given datetime from all storage layers.
+
+        Deletes matching jobs from PostgreSQL, Redis, and in-memory storage.
+        Associated approvals are NOT automatically rejected here — callers that
+        need approval clean-up should handle that before invoking this method.
+
+        Args:
+            before: Delete jobs whose created_at timestamp is older than this value.
+
+        Returns:
+            Number of job records deleted.
+        """
+        deleted_count = 0
+        deleted_ids: list[str] = []
+
+        # --- PostgreSQL ---
+        # IMPORTANT: only populate deleted_ids AFTER a successful commit so that
+        # the Redis/in-memory purge below is not triggered when the DELETE fails.
+        # If we populate deleted_ids from the SELECT and then the DELETE/commit
+        # fails, we would end up with jobs still in PostgreSQL but evicted from
+        # Redis and the in-memory cache, causing ghost 404s.
+        try:
+            from sqlalchemy import delete as sa_delete
+            from sqlalchemy import select
+
+            from marketing_project.models.db_models import JobModel
+            from marketing_project.services.database import get_database_manager
+
+            db_manager = get_database_manager()
+            if db_manager.is_initialized:
+                async with db_manager.get_session() as session:
+                    # Collect job IDs first so we can purge Redis too
+                    rows = await session.execute(
+                        select(JobModel.job_id).where(JobModel.created_at < before)
+                    )
+                    candidate_ids = [r[0] for r in rows.all()]
+                    if candidate_ids:
+                        await session.execute(
+                            sa_delete(JobModel).where(JobModel.created_at < before)
+                        )
+                        await session.commit()
+                        deleted_ids = candidate_ids  # only set after successful commit
+                        deleted_count += len(deleted_ids)
+                        logger.info(
+                            f"Deleted {len(deleted_ids)} jobs from PostgreSQL (before {before})"
+                        )
+            else:
+                logger.warning(
+                    "delete_jobs_before: PostgreSQL not initialized — skipping DB deletion"
+                )
+        except Exception as e:
+            logger.warning(f"Failed to delete old jobs from PostgreSQL: {e}")
+
+        # --- Redis ---
+        if deleted_ids:
+            try:
+                job_keys = [f"{JOB_KEY_PREFIX}{jid}" for jid in deleted_ids]
+                # Batch to avoid oversized Redis pipelines (100 keys per round-trip)
+                _REDIS_DELETE_BATCH_SIZE = 100
+                for i in range(0, len(job_keys), _REDIS_DELETE_BATCH_SIZE):
+                    batch_keys = job_keys[i : i + _REDIS_DELETE_BATCH_SIZE]
+                    batch_ids = deleted_ids[i : i + _REDIS_DELETE_BATCH_SIZE]
+                    if not batch_keys:
+                        continue
+
+                    async def _del_batch(
+                        redis_client: redis.Redis,
+                        _keys=batch_keys,
+                        _ids=batch_ids,
+                    ):
+                        pipe = redis_client.pipeline()
+                        pipe.delete(*_keys)
+                        for _jid in _ids:
+                            pipe.srem(JOB_INDEX_KEY, _jid)
+                        return await pipe.execute()
+
+                    await self._redis_manager.execute(_del_batch)
+                logger.info(
+                    f"Removed {len(deleted_ids)} job keys from Redis (before {before})"
+                )
+            except Exception as e:
+                logger.warning(f"Failed to delete old job keys from Redis: {e}")
+
+            # --- In-memory cache ---
+            for jid in deleted_ids:
+                self._jobs.pop(jid, None)
+
+        return deleted_count
 
     async def cancel_job(self, job_id: str) -> bool:
         """

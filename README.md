@@ -42,7 +42,7 @@
 - **Docker & Kubernetes** deployment with HPA and monitoring
 - **AWS CloudFormation** templates for complete infrastructure deployment
 - **CI/CD Pipeline** with security scanning and performance testing
-- **Comprehensive Testing** with 70+ tests covering all critical paths
+- **Comprehensive Testing** with 1,350+ tests covering all critical paths
 - **API Documentation** with Swagger/OpenAPI
 - **Monitoring & Observability** with Prometheus and Grafana
 
@@ -157,15 +157,36 @@ The Marketing Project provides a comprehensive REST API with enterprise-grade se
 | `GET` | `/api/v1/jobs/{job_id}/result` | Get completed job results | API Key |
 | `GET` | `/api/v1/jobs` | List all jobs with filtering | API Key |
 
+### **Onboarding Examples Endpoints**
+
+| Method | Endpoint | Description | Authentication |
+|--------|----------|-------------|----------------|
+| `GET` | `/api/v1/onboarding-examples` | List active quick-start job templates | JWT |
+| `GET` | `/api/v1/onboarding-examples/admin` | List all templates including inactive (admin) | JWT (admin) |
+| `POST` | `/api/v1/onboarding-examples/admin` | Create a new template (admin) | JWT (admin) |
+| `GET` | `/api/v1/onboarding-examples/admin/{id}` | Get single template by ID (admin) | JWT (admin) |
+| `PATCH` | `/api/v1/onboarding-examples/admin/{id}` | Update a template (admin) | JWT (admin) |
+| `DELETE` | `/api/v1/onboarding-examples/admin/{id}` | Delete a template (admin) | JWT (admin) |
+
+### **Analytics & Quality Endpoints**
+
+| Method | Endpoint | Description | Authentication |
+|--------|----------|-------------|----------------|
+| `GET` | `/api/v1/analytics/dashboard` | Dashboard statistics (admin) | JWT (admin) |
+| `GET` | `/api/v1/analytics/quality-scores` | Per-job quality score history with pagination | JWT (admin) |
+| `GET` | `/api/v1/analytics/monitoring/unified` | Unified monitoring metrics | JWT (admin) |
+| `GET` | `/api/v1/analytics/monitoring/cost` | Cost tracking metrics | JWT (admin) |
+| `GET` | `/api/v1/analytics/monitoring/quality` | Quality trend analysis | JWT (admin) |
+
 ### **Health & Monitoring Endpoints**
 
 | Method | Endpoint | Description | Authentication |
 |--------|----------|-------------|----------------|
 | `GET` | `/api/v1/health` | Health check for Kubernetes probes | None |
 | `GET` | `/api/v1/ready` | Readiness check for Kubernetes probes | None |
-| `GET` | `/api/v1/performance/summary` | Get performance summary and metrics | API Key |
-| `GET` | `/api/v1/security/audit` | Get security audit logs | API Key |
-| `GET` | `/api/v1/cache/stats` | Get cache statistics | API Key |
+| `GET` | `/api/v1/performance/summary` | Get performance summary and metrics | JWT |
+| `GET` | `/api/v1/security/audit` | Get security audit logs | JWT |
+| `GET` | `/api/v1/cache/stats` | Get cache statistics | JWT |
 
 ### **Authentication**
 
@@ -413,7 +434,7 @@ marketing-project/
 │   ├── middleware/             # FastAPI middleware (auth, logging, cors)
 │   ├── models/                 # Pydantic data models
 │   └── config/                 # Configuration management
-├── tests/                      # Test suite (70+ tests)
+├── tests/                      # Test suite (1,350+ tests)
 │   ├── api/                    # API endpoint tests
 │   ├── services/               # Service layer tests
 │   └── plugins/                # Plugin tests

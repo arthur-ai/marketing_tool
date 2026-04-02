@@ -10,6 +10,7 @@ import logging
 import os
 import re
 import uuid
+from datetime import datetime, timezone
 from typing import List, Optional
 
 import redis.asyncio as _aioredis
@@ -39,6 +40,10 @@ from ..services.job_manager import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# Module-level set to hold strong references to fire-and-forget background tasks,
+# preventing them from being garbage-collected before they complete.
+_background_tasks: set = set()
 
 
 class JobResponse(BaseModel):
@@ -543,6 +548,88 @@ async def delete_all_jobs(user: UserContext = Depends(require_roles(["admin"])))
         )
 
 
+@router.delete(
+    "/before", summary="Delete all jobs created before a given datetime (admin only)"
+)
+async def delete_jobs_before(
+    before: datetime = Query(
+        ...,
+        description="ISO 8601 datetime — all jobs created strictly before this time will be deleted",
+    ),
+    user: UserContext = Depends(require_roles(["admin"])),
+):
+    """
+    Hard-delete all jobs created before a given datetime from all storage layers.
+
+    This will:
+    - Reject any pending approvals for matching jobs
+    - Delete matching jobs from PostgreSQL and Redis
+    - Purge in-memory cache for those jobs
+
+    The `before` parameter must be an ISO 8601 datetime string (e.g. ``2024-01-15T12:00:00Z``).
+
+    WARNING: This is a destructive operation and cannot be undone.
+    """
+    try:
+        # Normalise to UTC-aware datetime so PostgreSQL comparisons are unambiguous.
+        # Use astimezone (not replace) so tz-aware inputs are also normalised to UTC.
+        if before.tzinfo is None:
+            before = before.replace(tzinfo=timezone.utc)
+        else:
+            before = before.astimezone(timezone.utc)
+
+        if before > datetime.now(timezone.utc):
+            raise HTTPException(
+                status_code=400,
+                detail="'before' must be in the past — refusing to delete future jobs",
+            )
+
+        manager = get_job_manager()
+
+        # Reject any pending approvals tied to jobs that will be deleted.
+        # We fetch *all* pending approvals and filter by job creation time to
+        # avoid a separate "list jobs before date" round-trip.
+        approval_manager = await get_approval_manager()
+        pending_approvals = await approval_manager.list_approvals(status="pending")
+        rejected_count = 0
+        for approval in pending_approvals:
+            try:
+                job = await manager.get_job(approval.job_id)
+                if job and job.created_at and job.created_at < before:
+                    await approval_manager.decide_approval(
+                        approval.id,
+                        ApprovalDecisionRequest(
+                            decision="reject",
+                            comment=f"Job deleted by admin (bulk delete before {before.isoformat()})",
+                            reviewed_by=user.username,
+                            auto_retry=False,  # Don't spawn retry jobs for jobs about to be deleted
+                        ),
+                    )
+                    rejected_count += 1
+            except Exception as e:
+                logger.warning(
+                    f"Failed to reject approval {approval.id} during delete_jobs_before: {e}"
+                )
+
+        deleted_count = await manager.delete_jobs_before(before)
+
+        return {
+            "success": True,
+            "message": f"Deleted {deleted_count} jobs created before {before.isoformat()}",
+            "deleted_count": deleted_count,
+            "approvals_rejected": rejected_count,
+            "before": before.isoformat(),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete jobs before {before}: {e}")
+        raise HTTPException(
+            status_code=500, detail="Internal server error during job deletion"
+        )
+
+
 @router.delete("/clear-arq", summary="Clear all ARQ jobs")
 async def clear_all_arq_jobs(user: UserContext = Depends(require_roles(["admin"]))):
     """
@@ -968,6 +1055,56 @@ async def stream_job_progress(
     )
 
 
+async def _persist_quality_score(
+    job_id: str,
+    word_count: int,
+    flesch_kincaid_grade: float,
+    has_headings: bool,
+    keyword_match_pct: float,
+    profound_personas_used: Optional[list],
+) -> None:
+    """Fire-and-forget: persist computed quality metrics to the quality_scores table.
+
+    Uses an upsert so that repeated calls (e.g. from a polling frontend) refresh
+    the metrics in-place rather than growing unbounded rows per job.
+    """
+    try:
+        from datetime import datetime, timezone
+
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+        from ..models.db_models import QualityScoreModel
+        from ..services.database import get_database_manager
+
+        db = get_database_manager()
+        async with db.get_session() as session:
+            stmt = (
+                pg_insert(QualityScoreModel)
+                .values(
+                    job_id=job_id,
+                    word_count=word_count,
+                    flesch_kincaid_grade=flesch_kincaid_grade,
+                    has_headings=has_headings,
+                    keyword_match_pct=keyword_match_pct,
+                    profound_personas_used=profound_personas_used,
+                )
+                .on_conflict_do_update(
+                    index_elements=["job_id"],
+                    set_={
+                        "word_count": word_count,
+                        "flesch_kincaid_grade": flesch_kincaid_grade,
+                        "has_headings": has_headings,
+                        "keyword_match_pct": keyword_match_pct,
+                        "profound_personas_used": profound_personas_used,
+                        "computed_at": datetime.now(timezone.utc),
+                    },
+                )
+            )
+            await session.execute(stmt)
+    except Exception as exc:
+        logger.warning(f"Failed to persist quality score for job {job_id}: {exc}")
+
+
 @router.get("/{job_id}/quality")
 async def get_job_quality(job_id: str, user: UserContext = Depends(get_current_user)):
     """
@@ -1081,6 +1218,21 @@ async def get_job_quality(job_id: str, user: UserContext = Depends(get_current_u
             warnings.append("Output is very short (< 100 words)")
         if keyword_match_pct < 50 and topic:
             warnings.append("Less than 50% of topic keywords appear in the output")
+
+        # Persist quality metrics asynchronously — fire-and-forget so latency is unaffected.
+        # Keep a strong reference in _background_tasks to prevent GC before completion.
+        _task = asyncio.create_task(
+            _persist_quality_score(
+                job_id=job_id,
+                word_count=word_count,
+                flesch_kincaid_grade=fk_grade,
+                has_headings=has_headings,
+                keyword_match_pct=keyword_match_pct,
+                profound_personas_used=profound_personas_used,
+            )
+        )
+        _background_tasks.add(_task)
+        _task.add_done_callback(_background_tasks.discard)
 
         return {
             "success": True,

@@ -21,6 +21,9 @@ from marketing_project.api.feedback import router as feedback_router
 from marketing_project.api.health import router as health_router
 from marketing_project.api.internal_docs import router as internal_docs_router
 from marketing_project.api.jobs import router as jobs_router
+from marketing_project.api.onboarding_examples import (
+    router as onboarding_examples_router,
+)
 from marketing_project.api.processors import router as processors_router
 from marketing_project.api.profound_settings import router as profound_settings_router
 from marketing_project.api.provider_settings import router as provider_settings_router
@@ -227,6 +230,17 @@ def register_routes() -> APIRouter:
         prefix="/competitor-research",
         tags=["Competitor Research"],
     )
+
+    # ========================================
+    # ONBOARDING EXAMPLES ROUTES
+    # ========================================
+    # GET  /api/v1/onboarding-examples              - [Auth] List active examples
+    # GET  /api/v1/onboarding-examples/admin        - [Admin] List all examples
+    # POST /api/v1/onboarding-examples/admin        - [Admin] Create example
+    # GET  /api/v1/onboarding-examples/admin/{id}   - [Admin] Get one
+    # PATCH /api/v1/onboarding-examples/admin/{id}  - [Admin] Update
+    # DELETE /api/v1/onboarding-examples/admin/{id} - [Admin] Delete
+    api_router.include_router(onboarding_examples_router, tags=["Onboarding Examples"])
 
     return api_router
 

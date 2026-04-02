@@ -346,7 +346,6 @@ def compile_pipeline_result(
     content_type: str,
     execution_time: float,
     total_tokens: int,
-    model: str,
     step_info: List[Any],
     failed_steps: Optional[List[Dict[str, Any]]] = None,
     quality_warnings: Optional[List[str]] = None,
@@ -360,7 +359,6 @@ def compile_pipeline_result(
         content_type: Content type
         execution_time: Total execution time
         total_tokens: Total tokens used
-        model: Model used
         step_info: List of step info objects
         failed_steps: Optional list of failed steps
         quality_warnings: Optional list of quality warnings
@@ -395,7 +393,6 @@ def compile_pipeline_result(
         "steps_completed": len(results),
         "execution_time_seconds": execution_time,
         "total_tokens_used": total_tokens,
-        "model": model,
         "completed_at": datetime.now(timezone.utc).isoformat(),
         "step_info": [
             (

@@ -9,7 +9,11 @@ import re
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
-from marketing_project.models.pipeline_steps import EngineConfig, SEOKeywordsResult
+from marketing_project.models.pipeline_steps import (
+    EngineConfig,
+    SEOKeywordsLLMResult,
+    SEOKeywordsResult,
+)
 from marketing_project.plugins.base import PipelineStepPlugin
 from marketing_project.services.engines.composer import EngineComposer
 from marketing_project.services.engines.registry import register_engine
@@ -37,8 +41,8 @@ class SEOKeywordsPlugin(PipelineStepPlugin):
         return 2
 
     @property
-    def response_model(self) -> type[SEOKeywordsResult]:
-        return SEOKeywordsResult
+    def response_model(self) -> type[SEOKeywordsLLMResult]:
+        return SEOKeywordsLLMResult
 
     def get_required_context_keys(self) -> list[str]:
         return ["input_content"]
@@ -731,10 +735,13 @@ class SEOKeywordsPlugin(PipelineStepPlugin):
         # to the LLM prompt template. Fails silently if not configured.
         await self._inject_profound_personas(context, content)
 
-        # Step 6: Compose result from engines
-        result = await self._execute_keyword_steps(
+        # Step 6: Compose result from engines (returns SEOKeywordsLLMResult)
+        llm_result = await self._execute_keyword_steps(
             seo_composer, content, context, pipeline
         )
+
+        # Upgrade from LLM base type to full result type
+        result = SEOKeywordsResult(**llm_result.model_dump())
 
         # Step 7: Post-process keywords
         result = self._post_process_keywords(result, context)
@@ -776,12 +783,25 @@ class SEOKeywordsPlugin(PipelineStepPlugin):
                     "_execution_step_number", self.step_number
                 )
 
-                # Get prompt and system instruction for approval context
-                prompt_context = self._build_prompt_context(context)
-                prompt = pipeline._get_user_prompt(self.step_name, prompt_context)
-                system_instruction = pipeline._get_system_instruction(
-                    self.step_name, context=prompt_context
+                # Get prompt and system instruction for approval context via Arthur
+                from jinja2 import Environment as _JinjaEnv
+
+                from marketing_project.services.arthur_prompt_client import (
+                    fetch_arthur_prompt as _fetch_arthur,
                 )
+
+                prompt_context = self._build_prompt_context(context)
+                _arthur = await _fetch_arthur(self.step_name)
+                if _arthur is not None:
+                    prompt = (
+                        _JinjaEnv(autoescape=False)
+                        .from_string(_arthur.user_template)
+                        .render(**prompt_context)
+                    )
+                    system_instruction = _arthur.system_content
+                else:
+                    prompt = f"Process content for {self.step_name} step."
+                    system_instruction = ""
 
                 # Check approval
                 approval_result = await check_step_approval(

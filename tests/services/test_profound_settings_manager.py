@@ -193,3 +193,257 @@ async def test_get_profound_client_falls_back_to_env_on_db_error():
 
     assert client.api_key == "env-fallback"
     assert cat_id == "env-cat"
+
+
+# ---------------------------------------------------------------------------
+# Additional tests for ProfoundSettingsManager (covering missed lines)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_uses_db_session(monkeypatch):
+    """Test get() successfully fetches from DB (lines 35-37)."""
+    from marketing_project.services.profound_settings_manager import (
+        ProfoundSettingsManager,
+    )
+
+    mock_record = MagicMock()
+    mock_db = MagicMock()
+    session = MagicMock()
+    result_mock = MagicMock()
+    result_mock.scalars.return_value.first.return_value = mock_record
+    session.__aenter__ = AsyncMock(return_value=session)
+    session.__aexit__ = AsyncMock(return_value=None)
+    session.execute = AsyncMock(return_value=result_mock)
+    mock_db.get_session = MagicMock(return_value=session)
+
+    with patch(
+        "marketing_project.services.profound_settings_manager.get_database_manager",
+        return_value=mock_db,
+    ):
+        mgr = ProfoundSettingsManager()
+        result = await mgr.get()
+
+    assert result == mock_record
+
+
+@pytest.mark.asyncio
+async def test_get_handles_invalid_token_error(monkeypatch):
+    """Test get() handles InvalidToken decryption error (lines 40-45)."""
+    from marketing_project.services.profound_settings_manager import (
+        ProfoundSettingsManager,
+    )
+
+    class InvalidTokenError(Exception):
+        pass
+
+    InvalidTokenError.__name__ = "InvalidToken"
+
+    mock_db = MagicMock()
+    session = MagicMock()
+    session.__aenter__ = AsyncMock(side_effect=InvalidTokenError("bad token"))
+    session.__aexit__ = AsyncMock(return_value=None)
+    mock_db.get_session = MagicMock(return_value=session)
+
+    with patch(
+        "marketing_project.services.profound_settings_manager.get_database_manager",
+        return_value=mock_db,
+    ):
+        mgr = ProfoundSettingsManager()
+        result = await mgr.get()
+
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_get_handles_generic_exception(monkeypatch):
+    """Test get() handles generic exception (lines 46-48)."""
+    from marketing_project.services.profound_settings_manager import (
+        ProfoundSettingsManager,
+    )
+
+    mock_db = MagicMock()
+    session = MagicMock()
+    session.__aenter__ = AsyncMock(side_effect=RuntimeError("DB unavailable"))
+    session.__aexit__ = AsyncMock(return_value=None)
+    mock_db.get_session = MagicMock(return_value=session)
+
+    with patch(
+        "marketing_project.services.profound_settings_manager.get_database_manager",
+        return_value=mock_db,
+    ):
+        mgr = ProfoundSettingsManager()
+        result = await mgr.get()
+
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_upsert_creates_new_record():
+    """Test upsert creates a new record when none exists (lines 57-59)."""
+    from marketing_project.models.profound_models import ProfoundSettingsRequest
+    from marketing_project.services.profound_settings_manager import (
+        ProfoundSettingsManager,
+    )
+
+    mock_db = MagicMock()
+    session = MagicMock()
+    result_mock = MagicMock()
+    result_mock.scalars.return_value.first.return_value = None  # No existing record
+    session.__aenter__ = AsyncMock(return_value=session)
+    session.__aexit__ = AsyncMock(return_value=None)
+    session.execute = AsyncMock(return_value=result_mock)
+    session.add = MagicMock()
+    mock_db.get_session = MagicMock(return_value=session)
+
+    req = ProfoundSettingsRequest(
+        is_enabled=True, api_key="new-key", default_category_id="cat-1"
+    )
+
+    with patch(
+        "marketing_project.services.profound_settings_manager.get_database_manager",
+        return_value=mock_db,
+    ):
+        mgr = ProfoundSettingsManager()
+        await mgr.upsert(req)
+
+    session.add.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_upsert_updates_existing_record():
+    """Test upsert updates an existing record (lines 60-65)."""
+    from marketing_project.models.profound_models import ProfoundSettingsRequest
+    from marketing_project.services.profound_settings_manager import (
+        ProfoundSettingsManager,
+    )
+
+    existing_record = MagicMock()
+    existing_record.is_enabled = False
+    existing_record.api_key = "old-key"
+    existing_record.default_category_id = "old-cat"
+
+    mock_db = MagicMock()
+    session = MagicMock()
+    result_mock = MagicMock()
+    result_mock.scalars.return_value.first.return_value = existing_record
+    session.__aenter__ = AsyncMock(return_value=session)
+    session.__aexit__ = AsyncMock(return_value=None)
+    session.execute = AsyncMock(return_value=result_mock)
+    mock_db.get_session = MagicMock(return_value=session)
+
+    req = ProfoundSettingsRequest(
+        is_enabled=True, api_key="new-key", default_category_id="new-cat"
+    )
+
+    with patch(
+        "marketing_project.services.profound_settings_manager.get_database_manager",
+        return_value=mock_db,
+    ):
+        mgr = ProfoundSettingsManager()
+        await mgr.upsert(req)
+
+    assert existing_record.is_enabled is True
+    assert existing_record.api_key == "new-key"
+    assert existing_record.default_category_id == "new-cat"
+
+
+@pytest.mark.asyncio
+async def test_upsert_with_none_api_key_does_not_overwrite():
+    """Test upsert with None api_key doesn't overwrite existing (line 62)."""
+    from marketing_project.models.profound_models import ProfoundSettingsRequest
+    from marketing_project.services.profound_settings_manager import (
+        ProfoundSettingsManager,
+    )
+
+    existing_record = MagicMock()
+    existing_record.api_key = "existing-key"
+
+    mock_db = MagicMock()
+    session = MagicMock()
+    result_mock = MagicMock()
+    result_mock.scalars.return_value.first.return_value = existing_record
+    session.__aenter__ = AsyncMock(return_value=session)
+    session.__aexit__ = AsyncMock(return_value=None)
+    session.execute = AsyncMock(return_value=result_mock)
+    mock_db.get_session = MagicMock(return_value=session)
+
+    req = ProfoundSettingsRequest(
+        is_enabled=True, api_key=None, default_category_id=None
+    )
+
+    with patch(
+        "marketing_project.services.profound_settings_manager.get_database_manager",
+        return_value=mock_db,
+    ):
+        mgr = ProfoundSettingsManager()
+        await mgr.upsert(req)
+
+    # api_key not reassigned
+    assert existing_record.api_key == "existing-key"
+
+
+@pytest.mark.asyncio
+async def test_delete_when_record_exists():
+    """Test delete returns True when record exists (lines 70-76)."""
+    from marketing_project.services.profound_settings_manager import (
+        ProfoundSettingsManager,
+    )
+
+    existing_record = MagicMock()
+    mock_db = MagicMock()
+    session = MagicMock()
+    result_mock = MagicMock()
+    result_mock.scalars.return_value.first.return_value = existing_record
+    session.__aenter__ = AsyncMock(return_value=session)
+    session.__aexit__ = AsyncMock(return_value=None)
+    session.execute = AsyncMock(return_value=result_mock)
+    session.delete = AsyncMock()
+    mock_db.get_session = MagicMock(return_value=session)
+
+    with patch(
+        "marketing_project.services.profound_settings_manager.get_database_manager",
+        return_value=mock_db,
+    ):
+        mgr = ProfoundSettingsManager()
+        result = await mgr.delete()
+
+    assert result is True
+    session.delete.assert_called_once_with(existing_record)
+
+
+@pytest.mark.asyncio
+async def test_delete_when_no_record():
+    """Test delete returns False when no record exists (lines 73-74)."""
+    from marketing_project.services.profound_settings_manager import (
+        ProfoundSettingsManager,
+    )
+
+    mock_db = MagicMock()
+    session = MagicMock()
+    result_mock = MagicMock()
+    result_mock.scalars.return_value.first.return_value = None
+    session.__aenter__ = AsyncMock(return_value=session)
+    session.__aexit__ = AsyncMock(return_value=None)
+    session.execute = AsyncMock(return_value=result_mock)
+    mock_db.get_session = MagicMock(return_value=session)
+
+    with patch(
+        "marketing_project.services.profound_settings_manager.get_database_manager",
+        return_value=mock_db,
+    ):
+        mgr = ProfoundSettingsManager()
+        result = await mgr.delete()
+
+    assert result is False
+
+
+def test_get_profound_settings_manager_singleton():
+    """Test get_profound_settings_manager returns singleton."""
+    from marketing_project.services.profound_settings_manager import (
+        get_profound_settings_manager,
+    )
+
+    m1 = get_profound_settings_manager()
+    m2 = get_profound_settings_manager()
+    assert m1 is m2

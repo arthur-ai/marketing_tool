@@ -283,7 +283,6 @@ class UserSettingsModel(Base):
                 else None
             ),
             "approval_timeout_seconds": self.approval_timeout_seconds,
-            "preferred_model": self.preferred_model,
             "preferred_temperature": (
                 float(self.preferred_temperature)
                 if self.preferred_temperature is not None
@@ -316,7 +315,10 @@ class JobModel(Base):
     progress = Column(Integer, default=0, nullable=False)  # 0-100
     current_step = Column(String, nullable=True)  # Current step name
     result = Column(JSONB, nullable=True)  # Job result data
-    error = Column(Text, nullable=True)  # Error message if failed
+    error = Column(Text, nullable=True)  # Error message if failed (legacy)
+    error_message = Column(
+        Text, nullable=True
+    )  # Worker error message (top-level, surfaced to frontend)
     job_metadata = Column(
         JSONB, nullable=False, default={}
     )  # Additional metadata (renamed from 'metadata' to avoid SQLAlchemy reserved name)
@@ -371,6 +373,7 @@ class JobModel(Base):
                 )
             ),
             "error": self.error,
+            "error_message": self.error_message,
             "metadata": (
                 self.job_metadata
                 if isinstance(self.job_metadata, dict)
@@ -672,3 +675,72 @@ class ProfoundSettingsModel(Base):
         onupdate=func.now(),
         nullable=False,
     )
+
+
+class OnboardingExampleModel(Base):
+    """Quick-start job templates shown on the job creation page."""
+
+    __tablename__ = "onboarding_examples"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    title = Column(String(200), nullable=False)
+    description = Column(Text, nullable=True)
+    job_type = Column(String(100), nullable=False)
+    input_data = Column(JSONB, nullable=False, default=dict)
+    display_order = Column(Integer, nullable=False, default=0)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    __table_args__ = (Index("idx_onboarding_examples_job_type", "job_type"),)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "title": self.title,
+            "description": self.description,
+            "job_type": self.job_type,
+            "input_data": self.input_data or {},
+            "display_order": self.display_order,
+            "is_active": self.is_active,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+class QualityScoreModel(Base):
+    """Persists computed quality metrics per job for trend analysis."""
+
+    __tablename__ = "quality_scores"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    job_id = Column(String(255), nullable=False, index=True)
+    word_count = Column(Integer, nullable=True)
+    flesch_kincaid_grade = Column(Float, nullable=True)
+    has_headings = Column(Boolean, nullable=True)
+    keyword_match_pct = Column(Float, nullable=True)
+    profound_personas_used = Column(JSONB, nullable=True)
+    computed_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (Index("idx_quality_scores_job_id", "job_id"),)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "job_id": self.job_id,
+            "word_count": self.word_count,
+            "flesch_kincaid_grade": self.flesch_kincaid_grade,
+            "has_headings": self.has_headings,
+            "keyword_match_pct": self.keyword_match_pct,
+            "profound_personas_used": self.profound_personas_used,
+            "computed_at": self.computed_at.isoformat() if self.computed_at else None,
+        }

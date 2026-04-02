@@ -110,7 +110,7 @@ async def test_initialize_success(db_manager):
     async def mock_begin():
         yield mock_conn
 
-    mock_engine.begin = MagicMock(return_value=mock_begin())
+    mock_engine.begin = mock_begin
 
     with patch.dict(
         os.environ, {"DATABASE_URL": "postgresql+asyncpg://user:pass@localhost/db"}
@@ -165,7 +165,7 @@ async def test_create_tables_success(db_manager):
     async def mock_begin():
         yield mock_conn
 
-    mock_engine.begin = MagicMock(return_value=mock_begin())
+    mock_engine.begin = mock_begin
 
     db_manager._initialized = True
     db_manager._engine = mock_engine
@@ -255,7 +255,7 @@ async def test_health_check_success(db_manager):
     async def mock_begin():
         yield mock_conn
 
-    mock_engine.begin = MagicMock(return_value=mock_begin())
+    mock_engine.begin = mock_begin
 
     db_manager._initialized = True
     db_manager._engine = mock_engine

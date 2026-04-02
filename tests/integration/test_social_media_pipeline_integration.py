@@ -198,7 +198,7 @@ class TestEndToEndPipeline:
     async def test_linkedin_pipeline_execution(self):
         """Test complete LinkedIn pipeline execution."""
         with patch(
-            "marketing_project.services.social_media_pipeline.AsyncOpenAI"
+            "marketing_project.services.social_media_pipeline.AsyncOpenAI", create=True
         ) as mock_openai:
             mock_client = create_mock_openai_client()
             mock_openai.return_value = mock_client
@@ -209,8 +209,12 @@ class TestEndToEndPipeline:
         # Skip if API key not available
         import os
 
-        if not os.getenv("OPENAI_API_KEY"):
-            pytest.skip("OpenAI API key not available")
+        if (
+            not os.getenv("OPENAI_API_KEY")
+            or not os.getenv("ARTHUR_API_KEY")
+            or not os.getenv("ANTHROPIC_API_KEY")
+        ):
+            pytest.skip("Required API keys not available for integration test")
 
         result = await pipeline.execute_pipeline(
             content_json=content_json,
@@ -243,7 +247,7 @@ class TestEndToEndPipeline:
     async def test_hackernews_pipeline_execution(self):
         """Test complete HackerNews pipeline execution."""
         with patch(
-            "marketing_project.services.social_media_pipeline.AsyncOpenAI"
+            "marketing_project.services.social_media_pipeline.AsyncOpenAI", create=True
         ) as mock_openai:
             mock_client = create_mock_openai_client()
             mock_openai.return_value = mock_client
@@ -252,8 +256,12 @@ class TestEndToEndPipeline:
 
         import os
 
-        if not os.getenv("OPENAI_API_KEY"):
-            pytest.skip("OpenAI API key not available")
+        if (
+            not os.getenv("OPENAI_API_KEY")
+            or not os.getenv("ARTHUR_API_KEY")
+            or not os.getenv("ANTHROPIC_API_KEY")
+        ):
+            pytest.skip("Required API keys not available for integration test")
 
         result = await pipeline.execute_pipeline(
             content_json=content_json,
@@ -281,7 +289,7 @@ class TestEndToEndPipeline:
     async def test_email_pipeline_execution_newsletter(self):
         """Test complete email pipeline execution (newsletter)."""
         with patch(
-            "marketing_project.services.social_media_pipeline.AsyncOpenAI"
+            "marketing_project.services.social_media_pipeline.AsyncOpenAI", create=True
         ) as mock_openai:
             mock_client = create_mock_openai_client()
             mock_openai.return_value = mock_client
@@ -290,8 +298,12 @@ class TestEndToEndPipeline:
 
         import os
 
-        if not os.getenv("OPENAI_API_KEY"):
-            pytest.skip("OpenAI API key not available")
+        if (
+            not os.getenv("OPENAI_API_KEY")
+            or not os.getenv("ARTHUR_API_KEY")
+            or not os.getenv("ANTHROPIC_API_KEY")
+        ):
+            pytest.skip("Required API keys not available for integration test")
 
         result = await pipeline.execute_pipeline(
             content_json=content_json,
@@ -320,7 +332,7 @@ class TestEndToEndPipeline:
     async def test_email_pipeline_execution_promotional(self):
         """Test complete email pipeline execution (promotional)."""
         with patch(
-            "marketing_project.services.social_media_pipeline.AsyncOpenAI"
+            "marketing_project.services.social_media_pipeline.AsyncOpenAI", create=True
         ) as mock_openai:
             mock_client = create_mock_openai_client()
             mock_openai.return_value = mock_client
@@ -329,8 +341,12 @@ class TestEndToEndPipeline:
 
         import os
 
-        if not os.getenv("OPENAI_API_KEY"):
-            pytest.skip("OpenAI API key not available")
+        if (
+            not os.getenv("OPENAI_API_KEY")
+            or not os.getenv("ARTHUR_API_KEY")
+            or not os.getenv("ANTHROPIC_API_KEY")
+        ):
+            pytest.skip("Required API keys not available for integration test")
 
         result = await pipeline.execute_pipeline(
             content_json=content_json,
@@ -351,7 +367,7 @@ class TestMultiPlatformGeneration:
     async def test_multi_platform_parallel_execution(self):
         """Test parallel execution for multiple platforms."""
         with patch(
-            "marketing_project.services.social_media_pipeline.AsyncOpenAI"
+            "marketing_project.services.social_media_pipeline.AsyncOpenAI", create=True
         ) as mock_openai:
             mock_client = create_mock_openai_client()
             mock_openai.return_value = mock_client
@@ -360,8 +376,12 @@ class TestMultiPlatformGeneration:
 
         import os
 
-        if not os.getenv("OPENAI_API_KEY"):
-            pytest.skip("OpenAI API key not available")
+        if (
+            not os.getenv("OPENAI_API_KEY")
+            or not os.getenv("ARTHUR_API_KEY")
+            or not os.getenv("ANTHROPIC_API_KEY")
+        ):
+            pytest.skip("Required API keys not available for integration test")
 
         import asyncio
 
@@ -393,7 +413,7 @@ class TestErrorScenarios:
     async def test_invalid_json_input(self):
         """Test handling of invalid JSON input."""
         with patch(
-            "marketing_project.services.social_media_pipeline.AsyncOpenAI"
+            "marketing_project.services.social_media_pipeline.AsyncOpenAI", create=True
         ) as mock_openai:
             mock_client = create_mock_openai_client()
             mock_openai.return_value = mock_client
@@ -411,7 +431,7 @@ class TestErrorScenarios:
     async def test_missing_required_fields(self):
         """Test handling of missing required fields."""
         with patch(
-            "marketing_project.services.social_media_pipeline.AsyncOpenAI"
+            "marketing_project.services.social_media_pipeline.AsyncOpenAI", create=True
         ) as mock_openai:
             mock_client = create_mock_openai_client()
             mock_openai.return_value = mock_client
@@ -436,7 +456,7 @@ class TestErrorScenarios:
     def test_invalid_platform(self):
         """Test handling of invalid platform."""
         with patch(
-            "marketing_project.services.social_media_pipeline.AsyncOpenAI"
+            "marketing_project.services.social_media_pipeline.AsyncOpenAI", create=True
         ) as mock_openai:
             mock_client = create_mock_openai_client()
             mock_openai.return_value = mock_client
@@ -454,7 +474,7 @@ class TestPerformanceBenchmarks:
     async def test_pipeline_execution_time(self):
         """Test that pipeline completes within reasonable time."""
         with patch(
-            "marketing_project.services.social_media_pipeline.AsyncOpenAI"
+            "marketing_project.services.social_media_pipeline.AsyncOpenAI", create=True
         ) as mock_openai:
             mock_client = create_mock_openai_client()
             mock_openai.return_value = mock_client
@@ -463,8 +483,12 @@ class TestPerformanceBenchmarks:
 
         import os
 
-        if not os.getenv("OPENAI_API_KEY"):
-            pytest.skip("OpenAI API key not available")
+        if (
+            not os.getenv("OPENAI_API_KEY")
+            or not os.getenv("ARTHUR_API_KEY")
+            or not os.getenv("ANTHROPIC_API_KEY")
+        ):
+            pytest.skip("Required API keys not available for integration test")
 
         start_time = time.time()
         result = await pipeline.execute_pipeline(
@@ -487,7 +511,7 @@ class TestPerformanceBenchmarks:
     async def test_token_usage_tracking(self):
         """Test that token usage is tracked."""
         with patch(
-            "marketing_project.services.social_media_pipeline.AsyncOpenAI"
+            "marketing_project.services.social_media_pipeline.AsyncOpenAI", create=True
         ) as mock_openai:
             mock_client = create_mock_openai_client()
             mock_openai.return_value = mock_client
@@ -496,8 +520,12 @@ class TestPerformanceBenchmarks:
 
         import os
 
-        if not os.getenv("OPENAI_API_KEY"):
-            pytest.skip("OpenAI API key not available")
+        if (
+            not os.getenv("OPENAI_API_KEY")
+            or not os.getenv("ARTHUR_API_KEY")
+            or not os.getenv("ANTHROPIC_API_KEY")
+        ):
+            pytest.skip("Required API keys not available for integration test")
 
         result = await pipeline.execute_pipeline(
             content_json=content_json,
@@ -521,7 +549,7 @@ class TestContentValidation:
     async def test_content_length_validation(self):
         """Test that content length validation works in pipeline."""
         with patch(
-            "marketing_project.services.social_media_pipeline.AsyncOpenAI"
+            "marketing_project.services.social_media_pipeline.AsyncOpenAI", create=True
         ) as mock_openai:
             mock_client = create_mock_openai_client()
             mock_openai.return_value = mock_client
@@ -537,8 +565,12 @@ class TestContentValidation:
 
         import os
 
-        if not os.getenv("OPENAI_API_KEY"):
-            pytest.skip("OpenAI API key not available")
+        if (
+            not os.getenv("OPENAI_API_KEY")
+            or not os.getenv("ARTHUR_API_KEY")
+            or not os.getenv("ANTHROPIC_API_KEY")
+        ):
+            pytest.skip("Required API keys not available for integration test")
 
         result = await pipeline.execute_pipeline(
             content_json=content_json,
@@ -575,7 +607,7 @@ class TestPlatformSpecificFeatures:
     async def test_linkedin_hashtags(self):
         """Test that LinkedIn posts include hashtags."""
         with patch(
-            "marketing_project.services.social_media_pipeline.AsyncOpenAI"
+            "marketing_project.services.social_media_pipeline.AsyncOpenAI", create=True
         ) as mock_openai:
             mock_client = create_mock_openai_client()
             mock_openai.return_value = mock_client
@@ -584,8 +616,12 @@ class TestPlatformSpecificFeatures:
 
         import os
 
-        if not os.getenv("OPENAI_API_KEY"):
-            pytest.skip("OpenAI API key not available")
+        if (
+            not os.getenv("OPENAI_API_KEY")
+            or not os.getenv("ARTHUR_API_KEY")
+            or not os.getenv("ANTHROPIC_API_KEY")
+        ):
+            pytest.skip("Required API keys not available for integration test")
 
         result = await pipeline.execute_pipeline(
             content_json=content_json,
@@ -611,7 +647,7 @@ class TestPlatformSpecificFeatures:
     async def test_email_subject_line(self):
         """Test that email posts include subject line."""
         with patch(
-            "marketing_project.services.social_media_pipeline.AsyncOpenAI"
+            "marketing_project.services.social_media_pipeline.AsyncOpenAI", create=True
         ) as mock_openai:
             mock_client = create_mock_openai_client(platform="email")
             mock_openai.return_value = mock_client
@@ -620,8 +656,12 @@ class TestPlatformSpecificFeatures:
 
         import os
 
-        if not os.getenv("OPENAI_API_KEY"):
-            pytest.skip("OpenAI API key not available")
+        if (
+            not os.getenv("OPENAI_API_KEY")
+            or not os.getenv("ARTHUR_API_KEY")
+            or not os.getenv("ANTHROPIC_API_KEY")
+        ):
+            pytest.skip("Required API keys not available for integration test")
 
         result = await pipeline.execute_pipeline(
             content_json=content_json,

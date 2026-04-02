@@ -56,10 +56,12 @@ except ImportError:
 
 # Imported at module level so tests can patch worker.TraceContextTextMapPropagator.
 try:
+    from opentelemetry import context as context_api
     from opentelemetry.trace.propagation.tracecontext import (
         TraceContextTextMapPropagator,
     )
 except ImportError:  # pragma: no cover
+    context_api = None  # type: ignore[assignment]
     TraceContextTextMapPropagator = None  # type: ignore[assignment,misc]
 
 # Configure Python root logger to INFO so marketing_project.* logs are visible in CloudWatch.
@@ -80,6 +82,17 @@ def _flush_telemetry(job_id: str) -> None:
         flush_telemetry(job_id)
     except Exception as e:
         logger.warning(f"Telemetry flush error for job {job_id}: {e}")
+
+
+_ERROR_MSG_MAX_LEN = 500
+
+
+def _fmt_error(e: Exception) -> str:
+    """Format an exception as a short, truncated error message for job status storage."""
+    msg = f"{type(e).__name__}: {e}"
+    if len(msg) > _ERROR_MSG_MAX_LEN:
+        return msg[: _ERROR_MSG_MAX_LEN - 3] + "..."
+    return msg
 
 
 # ARQ Job Functions
@@ -149,7 +162,17 @@ async def process_blog_job(ctx, content_json: str, job_id: str, **kwargs) -> Dic
 
     except Exception as e:
         logger.error(f"ARQ Worker: Blog job {job_id} failed: {e}")
-        await emit_error(job_id, str(e))
+        try:
+            await job_manager.update_job_status(
+                job_id,
+                JobStatus.FAILED,
+                error_message=_fmt_error(e),
+            )
+            await emit_error(job_id, str(e))
+        except Exception as _status_err:
+            logger.warning(
+                f"Failed to record failure status for blog job {job_id}: {_status_err}"
+            )
         if job_span:
             set_span_attribute(job_span, "job.status", "failed")
             record_span_exception(job_span, e)
@@ -233,7 +256,17 @@ async def process_release_notes_job(
 
     except Exception as e:
         logger.error(f"ARQ Worker: Release notes job {job_id} failed: {e}")
-        await emit_error(job_id, str(e))
+        try:
+            await job_manager.update_job_status(
+                job_id,
+                JobStatus.FAILED,
+                error_message=_fmt_error(e),
+            )
+            await emit_error(job_id, str(e))
+        except Exception as _status_err:
+            logger.warning(
+                f"Failed to record failure status for release notes job {job_id}: {_status_err}"
+            )
         if job_span:
             set_span_attribute(job_span, "job.status", "failed")
             record_span_exception(job_span, e)
@@ -335,7 +368,17 @@ async def process_transcript_job(ctx, content_json: str, job_id: str, **kwargs) 
 
     except Exception as e:
         logger.error(f"ARQ Worker: Transcript job {job_id} failed: {e}")
-        await emit_error(job_id, str(e))
+        try:
+            await job_manager.update_job_status(
+                job_id,
+                JobStatus.FAILED,
+                error_message=_fmt_error(e),
+            )
+            await emit_error(job_id, str(e))
+        except Exception as _status_err:
+            logger.warning(
+                f"Failed to record failure status for transcript job {job_id}: {_status_err}"
+            )
         if job_span:
             set_span_attribute(job_span, "job.status", "failed")
             record_span_exception(job_span, e)
@@ -428,9 +471,8 @@ async def process_social_media_job(
 
             pipeline = SocialMediaPipeline(
                 pipeline_config=PipelineConfig(
-                    default_model="gpt-5.1",
                     default_temperature=0.7,
-                    default_max_retries=2,
+                    default_max_retries=3,
                     step_configs={},
                 )
             )
@@ -477,6 +519,17 @@ async def process_social_media_job(
 
     except Exception as e:
         logger.error(f"ARQ Worker: Social media job {job_id} failed: {e}")
+        try:
+            await job_manager.update_job_status(
+                job_id,
+                JobStatus.FAILED,
+                error_message=_fmt_error(e),
+            )
+            await emit_error(job_id, str(e))
+        except Exception as _status_err:
+            logger.warning(
+                f"Failed to record failure status for social media job {job_id}: {_status_err}"
+            )
         if job_span:
             set_span_attribute(job_span, "job.status", "failed")
             record_span_exception(job_span, e)
@@ -579,9 +632,8 @@ async def process_multi_platform_social_media_job(
 
             pipeline = SocialMediaPipeline(
                 pipeline_config=PipelineConfig(
-                    default_model="gpt-5.1",
                     default_temperature=0.7,
-                    default_max_retries=2,
+                    default_max_retries=3,
                     step_configs={},
                 )
             )
@@ -622,6 +674,17 @@ async def process_multi_platform_social_media_job(
         logger.error(
             f"ARQ Worker: Multi-platform social media job {job_id} failed: {e}"
         )
+        try:
+            await job_manager.update_job_status(
+                job_id,
+                JobStatus.FAILED,
+                error_message=_fmt_error(e),
+            )
+            await emit_error(job_id, str(e))
+        except Exception as _status_err:
+            logger.warning(
+                f"Failed to record failure status for multi-platform social media job {job_id}: {_status_err}"
+            )
         if job_span:
             set_span_attribute(job_span, "job.status", "failed")
             record_span_exception(job_span, e)
@@ -678,9 +741,7 @@ async def analyze_brand_kit_batch_job(
         from marketing_project.plugins.brand_kit.tasks import BrandKitPlugin
         from marketing_project.services.function_pipeline import FunctionPipeline
 
-        pipeline = FunctionPipeline(
-            model=os.getenv("OPENAI_MODEL", "gpt-5.1"), temperature=0.7
-        )
+        pipeline = FunctionPipeline(temperature=0.7)
 
         plugin = BrandKitPlugin()
         analyses = []
@@ -769,9 +830,7 @@ async def synthesize_brand_kit_job(
         from marketing_project.plugins.brand_kit.tasks import BrandKitPlugin
         from marketing_project.services.function_pipeline import FunctionPipeline
 
-        pipeline = FunctionPipeline(
-            model=os.getenv("OPENAI_MODEL", "gpt-5.1"), temperature=0.7
-        )
+        pipeline = FunctionPipeline(temperature=0.7)
 
         plugin = BrandKitPlugin()
 
@@ -817,7 +876,7 @@ async def synthesize_brand_kit_job(
         raise
     finally:
         close_span(job_span)
-        _flush_telemetry(job_id)
+        _flush_telemetry(synthesis_job_id)
 
 
 async def refresh_brand_kit_job(
@@ -1271,19 +1330,24 @@ async def resume_pipeline_job(
                 )
 
     # Create root job span for this job execution.
-    # If the original job saved a traceparent into context_data, restore it so
-    # this span becomes a child of the original job's span — keeping the full
-    # pipeline run in one coherent trace across the approval gate.
+    # If the original job saved a traceparent into context_data, attach it as the
+    # current context so create_job_root_span() naturally parents the new span under
+    # the original job's span — keeping the full pipeline run in one coherent trace
+    # across the approval gate.
     job_span = None
+    _resume_ctx_token = None
     if is_tracing_available():
-        _parent_ctx = None
         _traceparent = context_data.get("traceparent")
-        if _traceparent:
+        if (
+            _traceparent
+            and context_api is not None
+            and TraceContextTextMapPropagator is not None
+        ):
             try:
-                if TraceContextTextMapPropagator is not None:
-                    _parent_ctx = TraceContextTextMapPropagator().extract(
-                        {"traceparent": _traceparent}
-                    )
+                _parent_ctx = TraceContextTextMapPropagator().extract(
+                    {"traceparent": _traceparent}
+                )
+                _resume_ctx_token = context_api.attach(_parent_ctx)
             except Exception as _tp_err:
                 logger.debug(f"Could not restore traceparent for resume job: {_tp_err}")
 
@@ -1292,7 +1356,6 @@ async def resume_pipeline_job(
             job_type="resume_pipeline",
             input_value=context_data,
             job=job,
-            parent_context=_parent_ctx,
             attributes={
                 "resume.original_job_id": original_job_id,
                 "resume.from_step": context_data.get("last_step_number", 0),
@@ -1314,9 +1377,7 @@ async def resume_pipeline_job(
         from marketing_project.services.function_pipeline import FunctionPipeline
 
         # Create pipeline and resume
-        pipeline = FunctionPipeline(
-            model=os.getenv("OPENAI_MODEL", "gpt-5.1"), temperature=0.7
-        )
+        pipeline = FunctionPipeline(temperature=0.7)
 
         # Determine content type from context
         content_type = context_data.get("content_type", "blog_post")
@@ -1374,6 +1435,17 @@ async def resume_pipeline_job(
 
     except Exception as e:
         logger.error(f"ARQ Worker: Resume job {job_id} failed: {e}")
+        try:
+            await job_manager.update_job_status(
+                job_id,
+                JobStatus.FAILED,
+                error_message=_fmt_error(e),
+            )
+            await emit_error(job_id, str(e))
+        except Exception as _status_err:
+            logger.warning(
+                f"Failed to record failure status for resume job {job_id}: {_status_err}"
+            )
         if job_span:
             set_span_attribute(job_span, "job.status", "failed")
             record_span_exception(job_span, e)
@@ -1381,6 +1453,11 @@ async def resume_pipeline_job(
         raise
     finally:
         close_span(job_span)
+        if _resume_ctx_token is not None and context_api is not None:
+            try:
+                context_api.detach(_resume_ctx_token)
+            except Exception:
+                pass
         _flush_telemetry(job_id)
 
 
@@ -1620,8 +1697,20 @@ async def retry_step_job(
             exc_info=True,
         )
         job_manager = get_job_manager()
-        await job_manager.update_job_status(job_id, JobStatus.FAILED)
-        await job_manager.update_job_progress(job_id, 0, f"Step retry failed: {str(e)}")
+        try:
+            await job_manager.update_job_status(
+                job_id,
+                JobStatus.FAILED,
+                error_message=_fmt_error(e),
+            )
+            await job_manager.update_job_progress(
+                job_id, 0, f"Step retry failed: {str(e)}"
+            )
+            await emit_error(job_id, str(e))
+        except Exception as _status_err:
+            logger.warning(
+                f"Failed to record failure status for retry step job {job_id}: {_status_err}"
+            )
         raise
     finally:
         close_span(job_span)
@@ -1730,15 +1819,25 @@ async def execute_single_step_job(
             set_span_attribute(job_span, "job.status", "failed")
             record_span_exception(job_span, e)
             set_span_status(job_span, StatusCode.ERROR if StatusCode else None, str(e))
-        await job_manager.update_job_status(job_id, JobStatus.FAILED)
-        await job_manager.update_job_progress(
-            job_id, 0, f"Step execution failed: {str(e)}"
-        )
-        # Fetch fresh state after status update to avoid overwriting FAILED with stale QUEUED
-        failed_job = await job_manager.get_job(job_id, _skip_arq_poll=True)
-        if failed_job:
-            failed_job.error = str(e)
-            await job_manager._save_job(failed_job)
+        try:
+            await job_manager.update_job_status(
+                job_id,
+                JobStatus.FAILED,
+                error_message=_fmt_error(e),
+            )
+            await job_manager.update_job_progress(
+                job_id, 0, f"Step execution failed: {str(e)}"
+            )
+            # Fetch fresh state after status update to avoid overwriting FAILED with stale QUEUED
+            failed_job = await job_manager.get_job(job_id, _skip_arq_poll=True)
+            if failed_job:
+                failed_job.error = str(e)
+                await job_manager._save_job(failed_job)
+            await emit_error(job_id, str(e))
+        except Exception as _status_err:
+            logger.warning(
+                f"Failed to record failure status for execute step job {job_id}: {_status_err}"
+            )
         raise
     finally:
         close_span(job_span)

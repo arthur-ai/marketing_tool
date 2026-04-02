@@ -151,22 +151,35 @@ class TranscriptPreprocessingApprovalPlugin(PipelineStepPlugin):
         logger.info("Step 1/3: Extracting transcript content")
         content_result = None
         try:
-            content_prompt = pipeline._get_user_prompt(
-                "transcript_content_extraction", prompt_context
+            from jinja2 import Environment as JinjaEnvironment
+
+            from marketing_project.services.arthur_prompt_client import (
+                fetch_arthur_prompt,
             )
-            content_system_instruction = pipeline._get_system_instruction(
-                "transcript_content_extraction", prompt_context
+
+            _arthur_content = await fetch_arthur_prompt("transcript_content_extraction")
+            if _arthur_content is None:
+                raise RuntimeError(
+                    "Arthur prompt unavailable for step 'transcript_content_extraction'."
+                )
+            _jenv = JinjaEnvironment(autoescape=False)
+            content_prompt = _jenv.from_string(_arthur_content.user_template).render(
+                **prompt_context
             )
+            content_system_instruction = _arthur_content.system_content
 
             # Skip approval on individual calls - will check on cumulative result
             content_result = await pipeline._call_function(
                 prompt=content_prompt,
                 system_instruction=content_system_instruction,
                 response_model=TranscriptContentExtractionResult,
-                step_name="transcript_content_extraction",  # Internal step name, approval skipped
+                step_name="transcript_content_extraction",
                 step_number=execution_step_number,
                 context=context,
                 job_id=None,  # Skip approval check for individual calls
+                model_override=_arthur_content.model_name,
+                provider_override=_arthur_content.model_provider,
+                model_config=_arthur_content.model_config,
             )
 
             # Log success/failure for content extraction
@@ -213,22 +226,30 @@ class TranscriptPreprocessingApprovalPlugin(PipelineStepPlugin):
         logger.info("Step 2/3: Extracting speakers")
         speakers_result = None
         try:
-            speakers_prompt = pipeline._get_user_prompt(
-                "transcript_speakers_extraction", prompt_context
+            _arthur_speakers = await fetch_arthur_prompt(
+                "transcript_speakers_extraction"
             )
-            speakers_system_instruction = pipeline._get_system_instruction(
-                "transcript_speakers_extraction", prompt_context
+            if _arthur_speakers is None:
+                raise RuntimeError(
+                    "Arthur prompt unavailable for step 'transcript_speakers_extraction'."
+                )
+            speakers_prompt = _jenv.from_string(_arthur_speakers.user_template).render(
+                **prompt_context
             )
+            speakers_system_instruction = _arthur_speakers.system_content
 
             # Skip approval on individual calls - will check on cumulative result
             speakers_result = await pipeline._call_function(
                 prompt=speakers_prompt,
                 system_instruction=speakers_system_instruction,
                 response_model=TranscriptSpeakersExtractionResult,
-                step_name="transcript_speakers_extraction",  # Internal step name, approval skipped
+                step_name="transcript_speakers_extraction",
                 step_number=execution_step_number,
                 context=context,
                 job_id=None,  # Skip approval check for individual calls
+                model_override=_arthur_speakers.model_name,
+                provider_override=_arthur_speakers.model_provider,
+                model_config=_arthur_speakers.model_config,
             )
 
             # Log success/failure for speakers extraction
@@ -275,22 +296,30 @@ class TranscriptPreprocessingApprovalPlugin(PipelineStepPlugin):
         logger.info("Step 3/3: Extracting duration")
         duration_result = None
         try:
-            duration_prompt = pipeline._get_user_prompt(
-                "transcript_duration_extraction", prompt_context
+            _arthur_duration = await fetch_arthur_prompt(
+                "transcript_duration_extraction"
             )
-            duration_system_instruction = pipeline._get_system_instruction(
-                "transcript_duration_extraction", prompt_context
+            if _arthur_duration is None:
+                raise RuntimeError(
+                    "Arthur prompt unavailable for step 'transcript_duration_extraction'."
+                )
+            duration_prompt = _jenv.from_string(_arthur_duration.user_template).render(
+                **prompt_context
             )
+            duration_system_instruction = _arthur_duration.system_content
 
             # Skip approval on individual calls - will check on cumulative result
             duration_result = await pipeline._call_function(
                 prompt=duration_prompt,
                 system_instruction=duration_system_instruction,
                 response_model=TranscriptDurationExtractionResult,
-                step_name="transcript_duration_extraction",  # Internal step name, approval skipped
+                step_name="transcript_duration_extraction",
                 step_number=execution_step_number,
                 context=context,
                 job_id=None,  # Skip approval check for individual calls
+                model_override=_arthur_duration.model_name,
+                provider_override=_arthur_duration.model_provider,
+                model_config=_arthur_duration.model_config,
             )
 
             # Log success/failure for duration extraction

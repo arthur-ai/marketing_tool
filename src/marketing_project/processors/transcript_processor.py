@@ -161,7 +161,7 @@ async def process_transcript(
             f"Transcript Processor: Running function-based pipeline with output_content_type={output_content_type}"
         )
         try:
-            pipeline = FunctionPipeline(model="gpt-5.1", temperature=0.7)
+            pipeline = FunctionPipeline(temperature=0.7)
 
             pipeline_result = await pipeline.execute_pipeline(
                 content_json=transcript_model.model_dump_json(),
@@ -173,6 +173,23 @@ async def process_transcript(
             logger.info(
                 "Transcript Processor: Function pipeline completed successfully"
             )
+
+            # Propagate pipeline-level failure so the worker marks the job failed
+            if pipeline_result.get("pipeline_status") == "failed":
+                error_msg = pipeline_result.get("metadata", {}).get(
+                    "error", "Pipeline reported failure"
+                )
+                logger.error(
+                    f"Transcript Processor: Pipeline returned failed status: {error_msg}"
+                )
+                return json.dumps(
+                    {
+                        "status": "error",
+                        "error": "pipeline_failed",
+                        "message": error_msg,
+                        "pipeline_result": pipeline_result,
+                    }
+                )
 
         except ValueError as e:
             # Approval rejected by user

@@ -8,7 +8,10 @@ before proceeding to SEO keywords extraction.
 import logging
 from typing import Any, Dict, Optional
 
-from marketing_project.models.pipeline_steps import BlogPostPreprocessingApprovalResult
+from marketing_project.models.pipeline_steps import (
+    BlogPostPreprocessingApprovalLLMResult,
+    BlogPostPreprocessingApprovalResult,
+)
 from marketing_project.plugins.base import PipelineStepPlugin
 
 logger = logging.getLogger("marketing_project.plugins.blog_post_preprocessing_approval")
@@ -26,8 +29,8 @@ class BlogPostPreprocessingApprovalPlugin(PipelineStepPlugin):
         return 1
 
     @property
-    def response_model(self) -> type[BlogPostPreprocessingApprovalResult]:
-        return BlogPostPreprocessingApprovalResult
+    def response_model(self) -> type[BlogPostPreprocessingApprovalLLMResult]:
+        return BlogPostPreprocessingApprovalLLMResult
 
     def get_required_context_keys(self) -> list[str]:
         return ["input_content"]
@@ -127,7 +130,7 @@ class BlogPostPreprocessingApprovalPlugin(PipelineStepPlugin):
 
         logger.info("Executing blog post preprocessing approval step")
 
-        # Execute the step using the base implementation
+        # Execute the step using the base implementation — returns BlogPostPreprocessingApprovalLLMResult
         result = await self._execute_step(context, pipeline, job_id)
 
         # Check if result is ApprovalRequiredSentinel (approval required, stop execution)
@@ -136,97 +139,81 @@ class BlogPostPreprocessingApprovalPlugin(PipelineStepPlugin):
         )
 
         if isinstance(result, ApprovalRequiredSentinel):
-            # Return the sentinel to stop pipeline execution
             return result
 
-        # Merge AI-extracted data back into input_content for subsequent steps
-        # This allows the pipeline to use extracted author, category, tags, etc.
+        # Upgrade from LLM base type to full result type
+        full_result = BlogPostPreprocessingApprovalResult(**result.model_dump())
+
+        # Programmatically fill deterministic enrichment fields
         input_content = context.get("input_content", {})
-        if isinstance(input_content, dict) and isinstance(
-            result, BlogPostPreprocessingApprovalResult
-        ):
+        content_str = (
+            input_content.get("content", "") if isinstance(input_content, dict) else ""
+        )
+        if content_str:
+            if full_result.word_count is None:
+                full_result.word_count = len(content_str.split())
+            if full_result.reading_time is None:
+                full_result.reading_time = round(full_result.word_count / 200, 1)
+            if full_result.content_summary is None:
+                full_result.content_summary = (
+                    content_str[:500] + "..." if len(content_str) > 500 else content_str
+                )
+        if full_result.confidence_score is None:
+            full_result.confidence_score = 1.0
+
+        # Merge AI-extracted data back into input_content for subsequent steps
+        if isinstance(input_content, dict):
             # Update author if AI extracted it and it's missing from input
-            if result.author and not input_content.get("author"):
-                input_content["author"] = result.author
+            if full_result.author and not input_content.get("author"):
+                input_content["author"] = full_result.author
                 logger.info(
-                    f"Merged AI-extracted author into input_content: {result.author}"
+                    f"Merged AI-extracted author into input_content: {full_result.author}"
                 )
 
             # Update category if AI extracted it and it's missing from input
-            if result.category and not input_content.get("category"):
-                input_content["category"] = result.category
+            if full_result.category and not input_content.get("category"):
+                input_content["category"] = full_result.category
                 logger.info(
-                    f"Merged AI-extracted category into input_content: {result.category}"
+                    f"Merged AI-extracted category into input_content: {full_result.category}"
                 )
 
             # Update tags if AI extracted them and they're missing from input
-            if result.tags and (
+            if full_result.tags and (
                 not input_content.get("tags") or len(input_content.get("tags", [])) == 0
             ):
-                input_content["tags"] = result.tags
+                input_content["tags"] = full_result.tags
                 logger.info(
-                    f"Merged AI-extracted tags into input_content: {result.tags}"
+                    f"Merged AI-extracted tags into input_content: {full_result.tags}"
                 )
 
-            # Update word_count if AI calculated it and it's missing from input
+            # Update word_count if computed and it's missing from input
             if (
-                result.word_count is not None
+                full_result.word_count is not None
                 and input_content.get("word_count") is None
             ):
-                input_content["word_count"] = result.word_count
+                input_content["word_count"] = full_result.word_count
                 logger.info(
-                    f"Merged AI-calculated word_count into input_content: {result.word_count}"
+                    f"Merged computed word_count into input_content: {full_result.word_count}"
                 )
 
-            # Update reading_time if AI calculated it and it's missing from input
+            # Update reading_time if computed and it's missing from input
             if (
-                result.reading_time is not None
+                full_result.reading_time is not None
                 and input_content.get("reading_time") is None
             ):
-                input_content["reading_time"] = result.reading_time
+                input_content["reading_time"] = full_result.reading_time
                 logger.info(
-                    f"Merged AI-calculated reading_time into input_content: {result.reading_time} minutes"
+                    f"Merged computed reading_time into input_content: {full_result.reading_time} minutes"
                 )
 
-            # Update snippet if AI generated it and it's missing from input
-            if result.content_summary and not input_content.get("snippet"):
-                # Use content_summary as snippet if snippet is missing
+            # Update snippet if content_summary generated it and it's missing from input
+            if full_result.content_summary and not input_content.get("snippet"):
                 input_content["snippet"] = (
-                    result.content_summary[:200]
-                    if len(result.content_summary) > 200
-                    else result.content_summary
+                    full_result.content_summary[:200]
+                    if len(full_result.content_summary) > 200
+                    else full_result.content_summary
                 )
                 logger.info("Updated snippet from content_summary")
-
-            # Merge sentiment and analysis data back to input_content
-            if result.overall_sentiment:
-                input_content["overall_sentiment"] = result.overall_sentiment
-            if result.sentiment_score is not None:
-                input_content["sentiment_score"] = result.sentiment_score
-            if result.emotional_tone:
-                input_content["emotional_tone"] = result.emotional_tone
-            if result.readability_score is not None:
-                input_content["readability_score"] = result.readability_score
-            if result.content_type:
-                input_content["content_type_classification"] = result.content_type
-            if result.target_audience:
-                input_content["target_audience"] = result.target_audience
-            if result.key_topics:
-                input_content["key_topics"] = result.key_topics
-            if result.detected_language:
-                input_content["detected_language"] = result.detected_language
-            if result.potential_keywords:
-                input_content["potential_keywords"] = result.potential_keywords
-
-            # Merge parsing information from result back to input_content
-            if result.parsing_confidence is not None:
-                input_content["parsing_confidence"] = result.parsing_confidence
-            if result.detected_format:
-                input_content["detected_format"] = result.detected_format
-            if result.parsing_warnings:
-                input_content["parsing_warnings"] = result.parsing_warnings
-            if result.quality_metrics:
-                input_content["quality_metrics"] = result.quality_metrics
 
             # Update context with modified input_content
             context["input_content"] = input_content
@@ -240,25 +227,19 @@ class BlogPostPreprocessingApprovalPlugin(PipelineStepPlugin):
 
             # Log if AI successfully auto-fixed issues
             if (
-                result.title_validated
-                and result.content_validated
-                and result.author_validated
-                and result.category_validated
-                and not result.requires_approval
+                full_result.title_validated
+                and full_result.content_validated
+                and full_result.author_validated
+                and full_result.category_validated
+                and not full_result.requires_approval
             ):
                 logger.info(
                     "AI successfully extracted missing data - approval not required"
                 )
 
-        # Only log details if result is not a sentinel
-        if isinstance(result, BlogPostPreprocessingApprovalResult):
-            logger.info(
-                f"Blog post preprocessing approval step completed. "
-                f"is_valid={result.is_valid}, requires_approval={result.requires_approval}, "
-                f"validation_issues={len(result.validation_issues)}"
-            )
-        else:
-            logger.info(
-                "Blog post preprocessing approval step completed with sentinel result"
-            )
-        return result
+        logger.info(
+            f"Blog post preprocessing approval step completed. "
+            f"is_valid={full_result.is_valid}, requires_approval={full_result.requires_approval}, "
+            f"validation_issues={len(full_result.validation_issues)}"
+        )
+        return full_result

@@ -37,15 +37,6 @@ VALID_APPROVAL_AGENTS = [
     "social_media_post_generation",
 ]
 
-VALID_MODELS = [
-    "gpt-4o",
-    "gpt-4o-mini",
-    "gpt-4-turbo",
-    "gpt-5.1",
-    "o1-preview",
-    "o1-mini",
-]
-
 
 class UserSettings(BaseModel):
     """
@@ -90,10 +81,6 @@ class UserSettings(BaseModel):
     )
 
     # LLM preferences
-    preferred_model: Optional[str] = Field(
-        None,
-        description=f"OpenAI model to use for this user's jobs. Valid values: {VALID_MODELS}",
-    )
     preferred_temperature: Optional[float] = Field(
         None,
         ge=0.0,
@@ -123,12 +110,6 @@ class UserSettings(BaseModel):
                 )
         return v
 
-    @validator("preferred_model")
-    def validate_preferred_model(cls, v):
-        if v is not None and v not in VALID_MODELS:
-            raise ValueError(f"Invalid model '{v}'. Must be one of: {VALID_MODELS}")
-        return v
-
 
 class UserSettingsResponse(UserSettings):
     """UserSettings with server-populated metadata fields."""
@@ -151,5 +132,4 @@ class ResolvedUserSettings(BaseModel):
     approval_agents: List[str]
     auto_approve_threshold: Optional[float]
     approval_timeout_seconds: Optional[int]
-    preferred_model: str
     preferred_temperature: float

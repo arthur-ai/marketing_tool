@@ -12,7 +12,9 @@ from marketing_project.services.social_media_pipeline import SocialMediaPipeline
 @pytest.fixture
 def mock_openai():
     """Mock OpenAI client."""
-    with patch("marketing_project.services.social_media_pipeline.AsyncOpenAI") as mock:
+    with patch(
+        "marketing_project.services.social_media_pipeline.AsyncOpenAI", create=True
+    ) as mock:
         mock_client = MagicMock()
         mock.return_value = mock_client
         yield mock_client

@@ -64,23 +64,47 @@ class TestSEOOptimizationPlugin:
     @pytest.mark.asyncio
     async def test_execute(self, seo_optimization_plugin, sample_context):
         """Test plugin execution."""
+        from marketing_project.models.pipeline_steps import (
+            HeaderStructure,
+            KeywordMap,
+            OGTags,
+            ReadabilityOptimization,
+        )
+
         mock_result = SEOOptimizationResult(
             optimized_content="Optimized content",
             meta_title="Test Meta Title",
             meta_description="Test meta description",
             slug="test-slug",
+            og_tags=OGTags(
+                og_title="Test",
+                og_description="Test description",
+                og_image="https://example.com/img.jpg",
+                og_type="article",
+            ),
+            confidence_score=0.9,
+            seo_score=85.0,
+            header_structure=HeaderStructure(),
+            keyword_map=KeywordMap(),
+            readability_optimization=ReadabilityOptimization(),
+            modification_report=[],
         )
 
-        mock_pipeline = MagicMock()
-        mock_pipeline._get_user_prompt = MagicMock(return_value="Test prompt")
-        mock_pipeline._get_system_instruction = MagicMock(
-            return_value="Test instruction"
+        from marketing_project.services.arthur_prompt_client import ArthurPromptResult
+
+        mock_arthur = ArthurPromptResult(
+            system_content="Test instruction", user_template="Test prompt"
         )
+        mock_pipeline = MagicMock()
         mock_pipeline._call_function = AsyncMock(return_value=mock_result)
 
-        result = await seo_optimization_plugin.execute(
-            sample_context, mock_pipeline, job_id="test-job"
-        )
+        with patch(
+            "marketing_project.services.arthur_prompt_client.fetch_arthur_prompt",
+            new=AsyncMock(return_value=mock_arthur),
+        ):
+            result = await seo_optimization_plugin.execute(
+                sample_context, mock_pipeline, job_id="test-job"
+            )
 
         assert isinstance(result, SEOOptimizationResult)
         mock_pipeline._call_function.assert_called_once()

@@ -11,7 +11,11 @@ import pytest
 from marketing_project.models.pipeline_steps import (
     ArticleGenerationResult,
     ContentFormattingResult,
+    HeaderStructure,
+    KeywordMap,
     MarketingBriefResult,
+    OGTags,
+    ReadabilityOptimization,
     SEOKeywordsResult,
     SEOOptimizationResult,
     SuggestedLinksResult,
@@ -52,7 +56,6 @@ class TestFunctionPipelineInitialization:
         mock_openai_class.return_value = mock_client
 
         pipeline = FunctionPipeline()
-        assert pipeline.model == "gpt-5.1"
         assert pipeline.temperature == 0.7
         assert pipeline.lang == "en"
         assert pipeline.step_info == []
@@ -63,8 +66,7 @@ class TestFunctionPipelineInitialization:
         mock_client = AsyncMock()
         mock_openai_class.return_value = mock_client
 
-        pipeline = FunctionPipeline(model="gpt-4", temperature=0.5, lang="es")
-        assert pipeline.model == "gpt-4"
+        pipeline = FunctionPipeline(temperature=0.5, lang="es")
         assert pipeline.temperature == 0.5
         assert pipeline.lang == "es"
 
@@ -133,6 +135,18 @@ class TestFunctionPipelineExecution:
                 meta_title="Test Meta Title",
                 meta_description="Test meta description",
                 slug="test-slug",
+                og_tags=OGTags(
+                    og_title="Test",
+                    og_description="Test description",
+                    og_image="https://example.com/img.jpg",
+                    og_type="article",
+                ),
+                confidence_score=0.9,
+                seo_score=85.0,
+                header_structure=HeaderStructure(),
+                keyword_map=KeywordMap(),
+                readability_optimization=ReadabilityOptimization(),
+                modification_report=[],
             )
         )
         mock_seo_opt.get_required_context_keys = lambda: []
@@ -485,26 +499,28 @@ class TestFunctionPipelineStepExecution:
     @patch("marketing_project.services.function_pipeline.pipeline.AsyncOpenAI")
     async def test_call_function(self, mock_openai_class):
         """Test _call_function method."""
-        mock_client = AsyncMock()
-        mock_response = MagicMock()
-        mock_choice = MagicMock()
-        mock_choice.message.parsed = SEOKeywordsResult(
+        mock_openai_class.return_value = MagicMock()
+
+        expected_result = SEOKeywordsResult(
             main_keyword="test",
             primary_keywords=["test"],
             search_intent="informational",
         )
-        mock_response.choices = [mock_choice]
-        mock_client.beta.chat.completions.parse = AsyncMock(return_value=mock_response)
-        mock_openai_class.return_value = mock_client
 
         pipeline = FunctionPipeline()
-        result = await pipeline._call_function(
-            prompt="Test prompt",
-            system_instruction="System instruction",
-            response_model=SEOKeywordsResult,
-            step_name="seo_keywords",
-            step_number=1,
-        )
+        with patch.object(
+            pipeline.llm_client,
+            "call_with_retries",
+            new_callable=AsyncMock,
+            return_value=(expected_result, MagicMock()),
+        ):
+            result = await pipeline._call_function(
+                prompt="Test prompt",
+                system_instruction="System instruction",
+                response_model=SEOKeywordsResult,
+                step_name="seo_keywords",
+                step_number=1,
+            )
 
         assert isinstance(result, SEOKeywordsResult)
         assert result.main_keyword == "test"

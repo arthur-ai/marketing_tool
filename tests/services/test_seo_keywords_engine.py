@@ -8,7 +8,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from marketing_project.models.pipeline_steps import SEOKeywordsResult
+from marketing_project.models.pipeline_steps import (
+    SEOKeywordsLLMResult,
+    SEOKeywordsResult,
+)
 from marketing_project.services.engines.composer import EngineComposer
 from marketing_project.services.engines.seo_keywords.composer import SEOKeywordsComposer
 from marketing_project.services.engines.seo_keywords.llm_engine import (
@@ -77,6 +80,36 @@ class TestSEOKeywordsComposer:
 
         assert isinstance(result, SEOKeywordsResult)
         assert result.main_keyword == "test"
+
+    @pytest.mark.asyncio
+    async def test_compose_result_upgrades_llm_base_to_full_result(
+        self, seo_keywords_composer, mock_engine_composer
+    ):
+        """Regression: LLM engine returns SEOKeywordsLLMResult (base), not SEOKeywordsResult.
+
+        Before the fix, isinstance(llm_result, SEOKeywordsResult) was False for
+        SEOKeywordsLLMResult instances, causing _build_result({}) to run with an
+        empty dict and return main_keyword="keyword" for every pipeline run.
+        """
+        content = {"title": "Test", "content": "Test content"}
+        context = {}
+
+        llm_base_result = SEOKeywordsLLMResult(
+            main_keyword="machine learning",
+            primary_keywords=["machine learning", "AI"],
+            search_intent="informational",
+        )
+        # Simulate LLM engine returning the base type (not the full result)
+        mock_engine_composer.execute_operation.return_value = llm_base_result
+
+        result = await seo_keywords_composer.compose_result(
+            content, context, pipeline=MagicMock()
+        )
+
+        assert isinstance(result, SEOKeywordsResult)
+        # The LLM's actual keyword must be preserved — NOT the "keyword" default
+        assert result.main_keyword == "machine learning"
+        assert result.primary_keywords == ["machine learning", "AI"]
 
     @pytest.mark.asyncio
     async def test_compose_result_with_field_overrides(

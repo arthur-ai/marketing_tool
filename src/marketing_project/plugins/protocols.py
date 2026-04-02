@@ -55,7 +55,7 @@ class PipelineProtocol(Protocol):
         step_name: str,
         step_number: int,
         context: Optional[Dict] = None,
-        max_retries: int = 2,
+        max_retries: int = 3,
         job_id: Optional[str] = None,
     ) -> BaseModel:
         """

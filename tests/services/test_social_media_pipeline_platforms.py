@@ -15,7 +15,7 @@ from marketing_project.services.social_media_pipeline import SocialMediaPipeline
 class TestPlatformCharacterLimits:
     """Test character limit validation for each platform."""
 
-    @patch("marketing_project.services.social_media_pipeline.AsyncOpenAI")
+    @patch("marketing_project.services.social_media_pipeline.AsyncOpenAI", create=True)
     def test_linkedin_character_limit(self, mock_openai):
         """Test LinkedIn character limit (3000 characters)."""
         pipeline = SocialMediaPipeline()
@@ -49,7 +49,7 @@ class TestPlatformCharacterLimits:
             assert warning is not None
             assert "exceeds" in warning.lower()
 
-    @patch("marketing_project.services.social_media_pipeline.AsyncOpenAI")
+    @patch("marketing_project.services.social_media_pipeline.AsyncOpenAI", create=True)
     def test_hackernews_character_limit(self, mock_openai):
         """Test HackerNews character limit (2000 characters)."""
         pipeline = SocialMediaPipeline()
@@ -81,7 +81,7 @@ class TestPlatformCharacterLimits:
             assert is_valid is False
             assert warning is not None
 
-    @patch("marketing_project.services.social_media_pipeline.AsyncOpenAI")
+    @patch("marketing_project.services.social_media_pipeline.AsyncOpenAI", create=True)
     def test_email_character_limit_newsletter(self, mock_openai):
         """Test email newsletter character limit (5000 characters)."""
         pipeline = SocialMediaPipeline()
@@ -125,7 +125,7 @@ class TestPlatformCharacterLimits:
             assert is_valid is False
             assert warning is not None
 
-    @patch("marketing_project.services.social_media_pipeline.AsyncOpenAI")
+    @patch("marketing_project.services.social_media_pipeline.AsyncOpenAI", create=True)
     def test_email_character_limit_promotional(self, mock_openai):
         """Test email promotional character limit (3000 characters)."""
         pipeline = SocialMediaPipeline()
@@ -173,7 +173,7 @@ class TestPlatformCharacterLimits:
 class TestPlatformConfig:
     """Test platform configuration loading and access."""
 
-    @patch("marketing_project.services.social_media_pipeline.AsyncOpenAI")
+    @patch("marketing_project.services.social_media_pipeline.AsyncOpenAI", create=True)
     def test_load_platform_config(self, mock_openai):
         """Test loading platform configuration."""
         pipeline = SocialMediaPipeline()
@@ -181,7 +181,7 @@ class TestPlatformConfig:
         assert isinstance(config, dict)
         assert "platforms" in config or len(config) == 0  # Allow empty config
 
-    @patch("marketing_project.services.social_media_pipeline.AsyncOpenAI")
+    @patch("marketing_project.services.social_media_pipeline.AsyncOpenAI", create=True)
     def test_get_platform_config_linkedin(self, mock_openai):
         """Test getting LinkedIn platform configuration."""
         pipeline = SocialMediaPipeline()
@@ -189,21 +189,21 @@ class TestPlatformConfig:
         # Config may be empty if file doesn't exist, so just check it's a dict
         assert isinstance(config, dict)
 
-    @patch("marketing_project.services.social_media_pipeline.AsyncOpenAI")
+    @patch("marketing_project.services.social_media_pipeline.AsyncOpenAI", create=True)
     def test_get_platform_config_hackernews(self, mock_openai):
         """Test getting HackerNews platform configuration."""
         pipeline = SocialMediaPipeline()
         config = pipeline._get_platform_config("hackernews")
         assert isinstance(config, dict)
 
-    @patch("marketing_project.services.social_media_pipeline.AsyncOpenAI")
+    @patch("marketing_project.services.social_media_pipeline.AsyncOpenAI", create=True)
     def test_get_platform_config_email(self, mock_openai):
         """Test getting email platform configuration."""
         pipeline = SocialMediaPipeline()
         config = pipeline._get_platform_config("email")
         assert isinstance(config, dict)
 
-    @patch("marketing_project.services.social_media_pipeline.AsyncOpenAI")
+    @patch("marketing_project.services.social_media_pipeline.AsyncOpenAI", create=True)
     def test_get_platform_config_invalid(self, mock_openai):
         """Test getting configuration for invalid platform."""
         pipeline = SocialMediaPipeline()
@@ -214,7 +214,7 @@ class TestPlatformConfig:
 class TestPlatformSpecificTemplates:
     """Test platform-specific template selection."""
 
-    @patch("marketing_project.services.social_media_pipeline.AsyncOpenAI")
+    @patch("marketing_project.services.social_media_pipeline.AsyncOpenAI", create=True)
     def test_get_system_instruction_platform_specific(self, mock_openai):
         """Test that platform-specific templates are selected when available."""
         pipeline = SocialMediaPipeline()
@@ -227,7 +227,7 @@ class TestPlatformSpecificTemplates:
         assert isinstance(instruction, str)
         assert len(instruction) > 0
 
-    @patch("marketing_project.services.social_media_pipeline.AsyncOpenAI")
+    @patch("marketing_project.services.social_media_pipeline.AsyncOpenAI", create=True)
     def test_get_system_instruction_fallback(self, mock_openai):
         """Test fallback to generic template when platform-specific not available."""
         pipeline = SocialMediaPipeline()
@@ -244,7 +244,7 @@ class TestPlatformSpecificTemplates:
 class TestPlatformQualityAssessment:
     """Test platform-specific quality score assessment."""
 
-    @patch("marketing_project.services.social_media_pipeline.AsyncOpenAI")
+    @patch("marketing_project.services.social_media_pipeline.AsyncOpenAI", create=True)
     def test_assess_platform_quality_linkedin(self, mock_openai):
         """Test quality assessment for LinkedIn."""
         from marketing_project.models.pipeline_steps import SocialMediaPostResult
@@ -262,7 +262,7 @@ class TestPlatformQualityAssessment:
         assert "linkedin_score" in scores
         assert scores["linkedin_score"] == 85.0
 
-    @patch("marketing_project.services.social_media_pipeline.AsyncOpenAI")
+    @patch("marketing_project.services.social_media_pipeline.AsyncOpenAI", create=True)
     def test_assess_platform_quality_hackernews(self, mock_openai):
         """Test quality assessment for HackerNews."""
         from marketing_project.models.pipeline_steps import SocialMediaPostResult
@@ -280,7 +280,7 @@ class TestPlatformQualityAssessment:
         assert "hackernews_score" in scores
         assert scores["hackernews_score"] == 90.0
 
-    @patch("marketing_project.services.social_media_pipeline.AsyncOpenAI")
+    @patch("marketing_project.services.social_media_pipeline.AsyncOpenAI", create=True)
     def test_assess_platform_quality_email(self, mock_openai):
         """Test quality assessment for Email."""
         from marketing_project.models.pipeline_steps import SocialMediaPostResult

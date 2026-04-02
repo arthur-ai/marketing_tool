@@ -65,8 +65,13 @@ class KeywordCluster(BaseModel):
     )
 
 
-class SEOKeywordsResult(BaseModel):
-    """Result from SEO Keywords extraction step."""
+class SEOKeywordsLLMResult(BaseModel):
+    """LLM-facing schema for SEO keywords extraction. Minimal by design.
+
+    Only the fields the LLM must fill in semantically. Dict fields, metadata,
+    and enrichment fields are computed programmatically in the plugin after the
+    LLM call — they never reach the Anthropic grammar compiler.
+    """
 
     main_keyword: str = Field(
         description="The single most important keyword for this content - the primary focus"
@@ -83,6 +88,23 @@ class SEOKeywordsResult(BaseModel):
     long_tail_keywords: Optional[List[str]] = Field(
         description="Long-tail keyword opportunities (5-8 keywords)", default=None
     )
+    search_intent: str = Field(
+        description="User search intent (informational/transactional/navigational/commercial)"
+    )
+    optimization_recommendations: Optional[List[str]] = Field(
+        description="Specific actions to improve keyword performance", default=None
+    )
+    confidence_score: Optional[float] = Field(
+        None,
+        ge=0.0,
+        le=1.0,
+        description="Model's confidence in keyword analysis quality (0-1)",
+    )
+
+
+class SEOKeywordsResult(SEOKeywordsLLMResult):
+    """Full SEO keywords result including programmatically computed enrichment fields."""
+
     keyword_density: Optional[Dict[str, float]] = Field(
         description="Keyword frequency analysis (deprecated: use keyword_density_analysis instead)",
         default=None,
@@ -90,9 +112,6 @@ class SEOKeywordsResult(BaseModel):
     keyword_density_analysis: Optional[List[KeywordDensityAnalysis]] = Field(
         description="Detailed keyword density analysis with placement recommendations",
         default=None,
-    )
-    search_intent: str = Field(
-        description="User search intent (informational/transactional/navigational/commercial)"
     )
     keyword_difficulty: Optional[Dict[str, float]] = Field(
         description="Keyword difficulty scores per keyword (0-100 scale)", default=None
@@ -139,17 +158,8 @@ class SEOKeywordsResult(BaseModel):
         description="Total estimated monthly search volume by keyword category",
         default=None,
     )
-    optimization_recommendations: Optional[List[str]] = Field(
-        description="Specific actions to improve keyword performance", default=None
-    )
 
-    # Quality and confidence metrics
-    confidence_score: Optional[float] = Field(
-        None,
-        ge=0.0,
-        le=1.0,
-        description="Model's confidence in keyword analysis quality (0-1)",
-    )
+    # Quality and enrichment metrics
     relevance_score: Optional[float] = Field(
         None, ge=0.0, le=100.0, description="Overall keyword relevance score (0-100)"
     )
@@ -251,6 +261,12 @@ class HeaderStructure(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    # Exclude count fields (computable from heading lists) and secondary notes to
+    # reduce Optional field count in $defs for Anthropic grammar compilation.
+    _llm_exclude_fields: ClassVar[FrozenSet[str]] = frozenset(
+        {"h1_count", "h2_count", "h3_count", "validation_notes"}
+    )
+
     h1_count: Optional[int] = Field(
         None, description="Number of H1 headings found (should be 1)"
     )
@@ -278,6 +294,9 @@ class KeywordPlacement(BaseModel):
     """Keyword placement information."""
 
     model_config = ConfigDict(extra="forbid")
+
+    # Exclude count (computable from locations list length) to reduce Optional fields.
+    _llm_exclude_fields: ClassVar[FrozenSet[str]] = frozenset({"count"})
 
     keyword: str = Field(description="The keyword")
     locations: Optional[List[str]] = Field(
@@ -307,6 +326,11 @@ class ReadabilityOptimization(BaseModel):
     """Readability analysis results."""
 
     model_config = ConfigDict(extra="forbid")
+
+    # Exclude secondary computed metrics to reduce Optional fields in $defs.
+    _llm_exclude_fields: ClassVar[FrozenSet[str]] = frozenset(
+        {"grade_level", "average_sentence_length"}
+    )
 
     score: Optional[float] = Field(
         None,
@@ -714,6 +738,20 @@ class AngleHookResult(BaseModel):
 class SocialMediaPostResult(BaseModel):
     """Result from Social Media Post Generation step."""
 
+    # Exclude platform-specific scores and A/B testing fields to stay under Anthropic's
+    # grammar compilation limit. The LLM knows which platform it's writing for and
+    # confidence_score covers overall quality. Excluded fields will be None downstream.
+    _llm_exclude_fields: ClassVar[FrozenSet[str]] = frozenset(
+        {
+            "linkedin_score",  # platform-specific score, secondary (ge/le)
+            "hackernews_score",  # platform-specific score, secondary (ge/le)
+            "email_score",  # platform-specific score, secondary (ge/le)
+            "engagement_score",  # secondary metric (ge/le)
+            "variations",  # A/B testing variants, secondary
+            "variation_id",  # A/B testing, secondary
+        }
+    )
+
     platform: str = Field(
         description="Social media platform: linkedin, hackernews, or email"
     )
@@ -1059,79 +1097,67 @@ def _fix_anyof_additional_properties(schema: Dict[str, Any], model_class: type) 
                     anyof_schema["additionalProperties"] = False
 
 
-class BlogPostPreprocessingApprovalResult(BaseModel):
-    """Result from Blog Post Preprocessing Approval step."""
+class BlogPostPreprocessingApprovalLLMResult(BaseModel):
+    """LLM-facing schema for blog post preprocessing approval. Minimal by design.
 
-    # Fields excluded from the LLM schema (kept in model for downstream use but
-    # not requested from the LLM — either computable programmatically or unused
-    # downstream). Anthropic enforces a ≤24 optional-parameter limit per schema.
-    _llm_exclude_fields: ClassVar[FrozenSet[str]] = frozenset(
-        {
-            "headings",
-            "sections",
-            "paragraph_count",
-            "list_count",
-            "link_count",
-            "completeness_score",
-            "shareability_score",
-            "engagement_potential",
-            "cta_detected",
-            "sentiment_confidence",
-            "sentiment_by_section",
-            "inferred_categories",
-            "seo_opportunities",
-            "content_structure",
-            "quality_metrics",
-        }
-    )
+    Only semantic fields the LLM must fill in. Deterministic fields (word_count,
+    reading_time, content_summary, etc.) are computed programmatically in the plugin.
+    Keeping this schema small prevents AnthropicException: Schema is too complex.
+    """
 
     is_valid: bool = Field(
-        description="Overall validation status - true if all blog post fields are valid"
+        description="True if all required blog post fields are valid"
     )
-    title_validated: bool = Field(
-        description="Title validation status - true if title is valid"
-    )
+    title_validated: bool = Field(description="True if title is present and non-empty")
     content_validated: bool = Field(
-        description="Content validation status - true if content is valid"
+        description="True if content is present and non-empty"
     )
     author_validated: bool = Field(
-        description="Author validation status - true if author is valid or extracted"
+        description="True if author is valid or was extracted from content"
     )
     category_validated: bool = Field(
-        description="Category validation status - true if category is valid or extracted"
+        description="True if category is valid or was extracted from content"
     )
     tags_validated: bool = Field(
-        description="Tags validation status - true if tags are valid or extracted"
+        description="True if tags are valid or were extracted from content"
     )
     validation_issues: List[str] = Field(
-        default_factory=list,
-        description="List of validation issues found (empty if all valid)",
+        default_factory=list, description="Specific issues found"
     )
-    author: Optional[str] = Field(None, description="Extracted/confirmed author name")
-    category: Optional[str] = Field(None, description="Extracted/confirmed category")
+    author: Optional[str] = Field(
+        None, description="Author name extracted from content"
+    )
+    category: Optional[str] = Field(None, description="Category inferred from content")
     tags: List[str] = Field(
-        default_factory=list,
-        description="Extracted/confirmed tags list",
+        default_factory=list, description="Tags extracted from content"
     )
+    requires_approval: bool = Field(description="True if human approval is required")
+    approval_suggestions: List[str] = Field(
+        default_factory=list, description="Suggestions for reviewer"
+    )
+    confidence_score: Optional[float] = Field(
+        None, description="Confidence in preprocessing quality (0-1)"
+    )
+
+
+class BlogPostPreprocessingApprovalResult(BlogPostPreprocessingApprovalLLMResult):
+    """Full result including programmatically computed enrichment fields.
+
+    Inherits all LLM fields from BlogPostPreprocessingApprovalLLMResult.
+    Enrichment fields are computed in the plugin's execute() method and
+    are never sent to the LLM.
+    """
+
+    model_config = ConfigDict(json_schema_extra=_fix_anyof_additional_properties)
+
+    # Enrichment fields — all Optional/list with defaults so
+    # BlogPostPreprocessingApprovalResult(**llm_result.model_dump()) works cleanly
     word_count: Optional[int] = Field(None, description="Calculated word count")
     reading_time: Optional[float] = Field(
         None, description="Calculated reading time in minutes"
     )
     content_summary: Optional[str] = Field(
         None, description="Summary of content for review (first 500 chars)"
-    )
-    confidence_score: Optional[float] = Field(
-        None,
-        ge=0.0,
-        le=1.0,
-        description="Confidence in preprocessing quality (0-1)",
-    )
-    requires_approval: bool = Field(
-        description="Whether human approval is required before proceeding"
-    )
-    approval_suggestions: List[str] = Field(
-        default_factory=list,
-        description="Suggestions for reviewer on what to check",
     )
     # Sentiment fields
     overall_sentiment: Optional[str] = Field(
@@ -1257,8 +1283,6 @@ class BlogPostPreprocessingApprovalResult(BaseModel):
         description="Detailed content structure analysis",
     )
 
-    model_config = ConfigDict(json_schema_extra=_fix_anyof_additional_properties)
-
     @field_validator("word_count", mode="before")
     @classmethod
     def coerce_word_count_to_int(cls, v: Any) -> Optional[int]:
@@ -1328,7 +1352,7 @@ class PipelineStepConfig(BaseModel):
     step_name: str = Field(description="Name of the pipeline step")
     model: Optional[str] = Field(
         None,
-        description="OpenAI model to use for this step (e.g., 'gpt-4o-mini', 'gpt-4o', 'gpt-5.1', 'gpt-5.2')",
+        description="Model override for this step — takes precedence over Arthur's model when set",
     )
     temperature: Optional[float] = Field(
         None, ge=0.0, le=2.0, description="Sampling temperature for this step"
@@ -1345,14 +1369,11 @@ class PipelineStepConfig(BaseModel):
 class PipelineConfig(BaseModel):
     """Configuration for the entire pipeline."""
 
-    default_model: str = Field(
-        default="gpt-5.1", description="Default OpenAI model for all steps"
-    )
     default_temperature: float = Field(
         default=0.7, ge=0.0, le=2.0, description="Default sampling temperature"
     )
     default_max_retries: int = Field(
-        default=2, ge=0, description="Default maximum number of retries"
+        default=3, ge=0, description="Default maximum number of retries"
     )
     step_configs: Dict[str, PipelineStepConfig] = Field(
         default_factory=dict,
@@ -1380,14 +1401,13 @@ class PipelineConfig(BaseModel):
         # Return default config for this step
         return PipelineStepConfig(
             step_name=step_name,
-            model=self.default_model,
             temperature=self.default_temperature,
             max_retries=self.default_max_retries,
         )
 
-    def get_step_model(self, step_name: str) -> str:
-        """Get model for a specific step."""
-        return self.get_step_config(step_name).model or self.default_model
+    def get_step_model(self, step_name: str) -> Optional[str]:
+        """Get per-step model override if configured. Arthur supplies the model in practice."""
+        return self.get_step_config(step_name).model
 
     def get_step_temperature(self, step_name: str) -> float:
         """Get temperature for a specific step."""
