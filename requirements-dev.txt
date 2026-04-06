@@ -10,7 +10,7 @@ aiofiles==25.1.0
     #   python-keycloak
 aiohappyeyeballs==2.6.1
     # via aiohttp
-aiohttp==3.13.3
+aiohttp==3.13.5
     # via
     #   -r requirements.in
     #   langchain-community
@@ -27,13 +27,15 @@ annotated-doc==0.0.4
     #   typer
 annotated-types==0.7.0
     # via pydantic
-anthropic==0.84.0
-    # via -r requirements.in
+anthropic==0.89.0
+    # via
+    #   -r requirements.in
+    #   any-llm-sdk
 any-agent[langchain]==1.18.0
     # via -r requirements.in
-any-llm-sdk==1.10.0
+any-llm-sdk==1.13.0
     # via any-agent
-anyio==4.12.1
+anyio==4.13.0
     # via
     #   anthropic
     #   httpx
@@ -48,7 +50,7 @@ arq==0.27.0
     # via -r requirements.in
 asyncpg==0.31.0
     # via -r requirements.in
-attrs==25.4.0
+attrs==26.1.0
     # via
     #   aiohttp
     #   jsonschema
@@ -59,11 +61,11 @@ beautifulsoup4==4.14.3
     # via -r requirements.in
 bertopic==0.17.4
     # via -r requirements.in
-black==26.1.0
+black==26.3.1
     # via -r requirements-dev.in
-boto3==1.42.62
+boto3==1.42.83
     # via -r requirements.in
-botocore==1.42.62
+botocore==1.42.83
     # via
     #   boto3
     #   s3transfer
@@ -78,9 +80,9 @@ cffi==2.0.0
     # via cryptography
 cfgv==3.5.0
     # via pre-commit
-charset-normalizer==3.4.5
+charset-normalizer==3.4.7
     # via requests
-click==8.3.1
+click==8.3.2
     # via
     #   -r requirements.in
     #   arq
@@ -91,17 +93,23 @@ click==8.3.1
     #   typer
     #   uvicorn
     #   yake
-coverage[toml]==7.13.4
+coverage[toml]==7.13.5
     # via pytest-cov
-cryptography==46.0.5
+cryptography==46.0.6
     # via
     #   -r requirements.in
     #   jwcrypto
     #   pyjwt
     #   python-jose
+cuda-bindings==13.2.0
+    # via torch
+cuda-pathfinder==1.5.1
+    # via cuda-bindings
+cuda-toolkit[cublas,cudart,cufft,cufile,cupti,curand,cusolver,cusparse,nvjitlink,nvrtc,nvtx]==13.0.2
+    # via torch
 dataclasses-json==0.6.7
     # via langchain-community
-dateparser==1.3.0
+dateparser==1.4.0
     # via -r requirements.in
 deprecation==2.1.0
     # via python-keycloak
@@ -117,25 +125,25 @@ dnspython==2.8.0
     #   pymongo
 docstring-parser==0.17.0
     # via anthropic
-ecdsa==0.19.1
+ecdsa==0.19.2
     # via python-jose
 email-validator==2.3.0
     # via
     #   fastapi
     #   pydantic
-fastapi[standard]==0.135.1
+fastapi[standard]==0.135.3
     # via -r requirements.in
 fastapi-cli[standard]==0.0.24
     # via fastapi
-fastapi-cloud-cli==0.14.0
+fastapi-cloud-cli==0.15.1
     # via fastapi-cli
-fastar==0.8.0
+fastar==0.9.0
     # via fastapi-cloud-cli
 fastuuid==0.14.0
     # via litellm
 feedparser==6.0.12
     # via -r requirements.in
-filelock==3.25.0
+filelock==3.25.2
     # via
     #   huggingface-hub
     #   python-discovery
@@ -147,30 +155,30 @@ frozenlist==1.8.0
     # via
     #   aiohttp
     #   aiosignal
-fsspec==2026.2.0
+fsspec==2026.3.0
     # via
     #   huggingface-hub
     #   torch
 gensim==4.4.0
     # via -r requirements.in
-googleapis-common-protos==1.72.0
+googleapis-common-protos==1.74.0
     # via
     #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-exporter-otlp-proto-http
 greenlet==3.3.2
     # via sqlalchemy
-grpcio==1.78.0
+grpcio==1.80.0
     # via opentelemetry-exporter-otlp-proto-grpc
 h11==0.16.0
     # via
     #   httpcore
     #   uvicorn
     #   wsproto
-hdbscan==0.8.41
+hdbscan==0.8.42
     # via bertopic
-hf-xet==1.3.2
+hf-xet==1.4.3
     # via huggingface-hub
-hiredis==3.3.0
+hiredis==3.3.1
     # via redis
 httpcore==1.0.9
     # via httpx
@@ -195,12 +203,12 @@ httpx-sse==0.4.3
     # via
     #   langchain-community
     #   mcp
-huggingface-hub==1.6.0
+huggingface-hub==1.9.0
     # via
     #   sentence-transformers
     #   tokenizers
     #   transformers
-identify==2.6.17
+identify==2.6.18
     # via pre-commit
 idna==3.11
     # via
@@ -242,7 +250,7 @@ joblib==1.5.3
     #   scikit-learn
 jsonpatch==1.33
     # via langchain-core
-jsonpointer==3.0.0
+jsonpointer==3.1.1
     # via jsonpatch
 jsonschema==4.26.0
     # via
@@ -254,15 +262,15 @@ jwcrypto==1.5.6
     # via python-keycloak
 keybert==0.9.0
     # via -r requirements.in
-langchain==1.2.10
+langchain==1.2.15
     # via
     #   -r requirements.in
     #   any-agent
-langchain-classic==1.0.1
+langchain-classic==1.0.3
     # via langchain-community
 langchain-community==0.4.1
     # via -r requirements.in
-langchain-core==1.2.17
+langchain-core==1.2.26
     # via
     #   langchain
     #   langchain-classic
@@ -273,15 +281,15 @@ langchain-core==1.2.17
     #   langgraph
     #   langgraph-checkpoint
     #   langgraph-prebuilt
-langchain-mcp-adapters==0.2.1
+langchain-mcp-adapters==0.2.2
     # via any-agent
-langchain-openai==1.1.10
+langchain-openai==1.1.12
     # via -r requirements.in
 langchain-text-splitters==1.1.1
     # via langchain-classic
 langdetect==1.0.9
     # via -r requirements.in
-langgraph==1.0.10
+langgraph==1.1.6
     # via
     #   any-agent
     #   langchain
@@ -289,18 +297,18 @@ langgraph-checkpoint==4.0.1
     # via
     #   langgraph
     #   langgraph-prebuilt
-langgraph-prebuilt==1.0.8
+langgraph-prebuilt==1.0.9
     # via langgraph
-langgraph-sdk==0.3.9
+langgraph-sdk==0.3.12
     # via langgraph
-langsmith==0.7.13
+langsmith==0.7.25
     # via
     #   langchain-classic
     #   langchain-community
     #   langchain-core
-litellm==1.82.0
+litellm==1.83.0
     # via -r requirements.in
-llvmlite==0.46.0
+llvmlite==0.47.0
     # via
     #   bertopic
     #   numba
@@ -315,7 +323,7 @@ marshmallow==3.26.2
     # via dataclasses-json
 mccabe==0.7.0
     # via flake8
-mcp==1.26.0
+mcp==1.27.0
     # via
     #   any-agent
     #   langchain-mcp-adapters
@@ -333,22 +341,24 @@ mypy-extensions==1.1.0
     # via
     #   black
     #   typing-inspect
-narwhals==2.17.0
+narwhals==2.18.1
     # via plotly
 networkx==3.6.1
     # via
     #   -r requirements.in
     #   torch
     #   yake
-nltk==3.9.3
-    # via rake-nltk
+nltk==3.9.4
+    # via
+    #   rake-nltk
+    #   textstat
 nodeenv==1.10.0
     # via pre-commit
-numba==0.64.0
+numba==0.65.0
     # via
     #   pynndescent
     #   umap-learn
-numpy==2.4.2
+numpy==2.4.4
     # via
     #   bertopic
     #   gensim
@@ -363,7 +373,46 @@ numpy==2.4.2
     #   transformers
     #   umap-learn
     #   yake
-openai==2.26.0
+nvidia-cublas==13.1.0.3
+    # via
+    #   cuda-toolkit
+    #   nvidia-cudnn-cu13
+    #   nvidia-cusolver
+nvidia-cuda-cupti==13.0.85
+    # via cuda-toolkit
+nvidia-cuda-nvrtc==13.0.88
+    # via cuda-toolkit
+nvidia-cuda-runtime==13.0.96
+    # via cuda-toolkit
+nvidia-cudnn-cu13==9.19.0.56
+    # via torch
+nvidia-cufft==12.0.0.61
+    # via cuda-toolkit
+nvidia-cufile==1.15.1.6
+    # via cuda-toolkit
+nvidia-curand==10.4.0.35
+    # via cuda-toolkit
+nvidia-cusolver==12.0.4.66
+    # via cuda-toolkit
+nvidia-cusparse==12.6.3.3
+    # via
+    #   cuda-toolkit
+    #   nvidia-cusolver
+nvidia-cusparselt-cu13==0.8.0
+    # via torch
+nvidia-nccl-cu13==2.28.9
+    # via torch
+nvidia-nvjitlink==13.0.88
+    # via
+    #   cuda-toolkit
+    #   nvidia-cufft
+    #   nvidia-cusolver
+    #   nvidia-cusparse
+nvidia-nvshmem-cu13==3.4.5
+    # via torch
+nvidia-nvtx==13.0.85
+    # via cuda-toolkit
+openai==2.30.0
     # via
     #   -r requirements.in
     #   any-llm-sdk
@@ -371,9 +420,9 @@ openai==2.26.0
     #   litellm
 openinference-instrumentation==0.1.46
     # via openinference-instrumentation-openai
-openinference-instrumentation-openai==0.1.41
+openinference-instrumentation-openai==0.1.44
     # via -r requirements.in
-openinference-semantic-conventions==0.1.27
+openinference-semantic-conventions==0.1.28
     # via
     #   openinference-instrumentation
     #   openinference-instrumentation-openai
@@ -416,7 +465,7 @@ opentelemetry-semantic-conventions==0.61b0
     #   openinference-instrumentation-openai
     #   opentelemetry-instrumentation
     #   opentelemetry-sdk
-orjson==3.11.7
+orjson==3.11.8
     # via
     #   langgraph-sdk
     #   langsmith
@@ -439,11 +488,11 @@ packaging==26.0
     #   pytesseract
     #   pytest
     #   transformers
-pandas==3.0.1
+pandas==3.0.2
     # via bertopic
 pathspec==1.0.4
     # via black
-pillow==12.1.1
+pillow==12.2.0
     # via
     #   -r requirements.in
     #   pytesseract
@@ -464,11 +513,11 @@ propcache==0.4.1
     # via
     #   aiohttp
     #   yarl
-protobuf==6.33.5
+protobuf==6.33.6
     # via
     #   googleapis-common-protos
     #   opentelemetry-proto
-pyasn1==0.6.2
+pyasn1==0.6.3
     # via
     #   python-jose
     #   rsa
@@ -497,7 +546,7 @@ pydantic[email]==2.12.5
     #   pydantic-settings
 pydantic-core==2.41.5
     # via pydantic
-pydantic-extra-types==2.11.0
+pydantic-extra-types==2.11.2
     # via fastapi
 pydantic-settings==2.13.1
     # via
@@ -506,11 +555,11 @@ pydantic-settings==2.13.1
     #   mcp
 pyflakes==3.4.0
     # via flake8
-pygments==2.19.2
+pygments==2.20.0
     # via
     #   pytest
     #   rich
-pyjwt[crypto]==2.11.0
+pyjwt[crypto]==2.12.1
     # via
     #   mcp
     #   redis
@@ -522,6 +571,8 @@ pynndescent==0.6.0
     # via umap-learn
 pypdf2==3.0.1
     # via -r requirements.in
+pyphen==0.17.2
+    # via textstat
 pysocks==1.7.1
     # via urllib3
 pytesseract==0.3.13
@@ -533,14 +584,14 @@ pytest==9.0.2
     #   pytest-cov
 pytest-asyncio==1.3.0
     # via -r requirements-dev.in
-pytest-cov==7.0.0
+pytest-cov==7.1.0
     # via -r requirements-dev.in
 python-dateutil==2.9.0.post0
     # via
     #   botocore
     #   dateparser
     #   pandas
-python-discovery==1.1.0
+python-discovery==1.2.1
     # via virtualenv
 python-docx==1.2.0
     # via -r requirements.in
@@ -554,7 +605,7 @@ python-jose[cryptography]==3.5.0
     # via -r requirements.in
 python-keycloak==7.1.1
     # via -r requirements.in
-python-multipart==0.0.22
+python-multipart==0.0.24
     # via
     #   fastapi
     #   mcp
@@ -582,7 +633,7 @@ referencing==0.37.0
     # via
     #   jsonschema
     #   jsonschema-specifications
-regex==2026.2.28
+regex==2026.4.4
     # via
     #   dateparser
     #   nltk
@@ -590,7 +641,7 @@ regex==2026.2.28
     #   syntok
     #   tiktoken
     #   transformers
-requests==2.32.5
+requests==2.33.1
     # via
     #   -r requirements.in
     #   any-agent
@@ -649,11 +700,11 @@ segtok==1.5.11
     # via yake
 selenium==4.41.0
     # via -r requirements.in
-sentence-transformers==5.2.3
+sentence-transformers==5.3.0
     # via
     #   bertopic
     #   keybert
-sentry-sdk==2.54.0
+sentry-sdk==2.57.0
     # via fastapi-cloud-cli
 sgmllib3k==1.0.0
     # via feedparser
@@ -675,14 +726,14 @@ sortedcontainers==2.4.0
     # via trio
 soupsieve==2.8.3
     # via beautifulsoup4
-sqlalchemy[asyncio]==2.0.48
+sqlalchemy[asyncio]==2.0.49
     # via
     #   -r requirements.in
     #   langchain-classic
     #   langchain-community
-sse-starlette==3.3.2
+sse-starlette==3.3.4
     # via mcp
-starlette==0.52.1
+starlette==1.0.0
     # via
     #   fastapi
     #   mcp
@@ -693,13 +744,15 @@ syntok==1.4.4
     # via -r requirements.in
 tabulate==0.10.0
     # via yake
-tavily-python==0.7.22
+tavily-python==0.7.23
     # via any-agent
 tenacity==9.1.4
     # via
     #   -r requirements.in
     #   langchain-community
     #   langchain-core
+textstat==0.7.13
+    # via -r requirements.in
 threadpoolctl==3.6.0
     # via scikit-learn
 tiktoken==0.12.0
@@ -711,7 +764,7 @@ tokenizers==0.22.2
     # via
     #   litellm
     #   transformers
-torch==2.10.0
+torch==2.11.0
     # via sentence-transformers
 tqdm==4.67.3
     # via
@@ -722,7 +775,7 @@ tqdm==4.67.3
     #   sentence-transformers
     #   transformers
     #   umap-learn
-transformers==5.3.0
+transformers==5.5.0
     # via sentence-transformers
 trio==0.33.0
     # via
@@ -730,6 +783,8 @@ trio==0.33.0
     #   trio-websocket
 trio-websocket==0.12.2
     # via selenium
+triton==3.6.0
+    # via torch
 typer==0.24.1
     # via
     #   fastapi-cli
@@ -792,7 +847,7 @@ uuid-utils==0.14.1
     # via
     #   langchain-core
     #   langsmith
-uvicorn[standard]==0.41.0
+uvicorn[standard]==0.43.0
     # via
     #   -r requirements.in
     #   fastapi
@@ -801,7 +856,7 @@ uvicorn[standard]==0.41.0
     #   mcp
 uvloop==0.22.1
     # via uvicorn
-virtualenv==21.1.0
+virtualenv==21.2.0
     # via pre-commit
 watchdog==6.0.0
     # via -r requirements.in
